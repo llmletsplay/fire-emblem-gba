@@ -1,0 +1,6 @@
+openai
+python-dotenv
+httpx
+Pillow
+websockets
+anthropic>=0.40.0

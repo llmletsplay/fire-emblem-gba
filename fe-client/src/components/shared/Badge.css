@@ -1,0 +1,67 @@
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+}
+
+/* Sizes */
+.badge--sm {
+  font-size: 10px;
+  padding: 2px 6px;
+}
+
+.badge--md {
+  font-size: 11px;
+  padding: 3px 8px;
+}
+
+/* Variants */
+.badge--default {
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-subtle);
+}
+
+.badge--action {
+  background: #1a1816;
+  color: #ffffff;
+  border: none;
+}
+
+.badge--tool {
+  background: rgba(181, 137, 0, 0.12);
+  color: var(--accent-gold);
+  border: 1px solid rgba(181, 137, 0, 0.3);
+}
+
+.badge--class {
+  background: var(--bg-card);
+  color: var(--text-primary);
+  border: 1px solid var(--border-default);
+}
+
+.badge--phase {
+  font-size: 10px;
+  padding: 2px 8px;
+}
+
+.badge--phase.player {
+  background: rgba(38, 139, 210, 0.15);
+  color: var(--fe-player);
+}
+
+.badge--phase.enemy {
+  background: rgba(220, 50, 47, 0.15);
+  color: var(--fe-enemy);
+}
+
+.badge--phase.ally {
+  background: rgba(133, 153, 0, 0.15);
+  color: var(--fe-ally);
+}

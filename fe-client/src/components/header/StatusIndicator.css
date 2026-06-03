@@ -1,0 +1,24 @@
+.status-indicator {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-xs) var(--space-md);
+  background: var(--bg-card);
+  border-radius: var(--radius-sm);
+}
+
+.status-indicator__label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  color: var(--text-muted);
+}
+
+.status-indicator--thinking .status-indicator__label {
+  color: var(--accent-gold);
+}
+
+.status-indicator--error .status-indicator__label {
+  color: var(--status-error);
+}

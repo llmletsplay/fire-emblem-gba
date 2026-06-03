@@ -1,0 +1,72 @@
+.info-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-xl);
+  padding: var(--space-md) var(--space-lg);
+  background: var(--bg-panel);
+  border-radius: var(--radius-md);
+  margin-top: var(--space-sm);
+}
+
+.info-bar__left {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.info-bar__chapter-num {
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.info-bar__chapter-title {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.info-bar__divider {
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.info-bar__phase {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.info-bar__phase--player {
+  color: var(--fe-player);
+}
+
+.info-bar__phase--enemy {
+  color: var(--fe-enemy);
+}
+
+.info-bar__phase--ally {
+  color: var(--fe-ally);
+}
+
+.info-bar__right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.info-bar__objective-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.info-bar__objective-text {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-primary);
+}

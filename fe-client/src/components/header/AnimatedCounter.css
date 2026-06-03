@@ -1,0 +1,22 @@
+.animated-counter {
+  display: inline-block;
+  transition: transform 0.1s ease-out;
+}
+
+.animated-counter--active {
+  animation: counter-pulse 0.4s ease-out;
+}
+
+@keyframes counter-pulse {
+  0% {
+    transform: scale(1.08);
+    opacity: 0.7;
+  }
+  30% {
+    transform: scale(1.04);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}

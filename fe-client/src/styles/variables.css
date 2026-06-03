@@ -1,0 +1,117 @@
+/**
+ * Design tokens for the Fire Emblem AI streaming overlay.
+ * Light solarized theme - warm, neutral, easy on eyes.
+ */
+
+:root {
+  /* Fonts */
+  --font-display: 'PoltawskiNowy', Georgia, 'Times New Roman', serif;
+  --font-mono: 'Sometype Mono', 'JetBrains Mono', 'SF Mono', 'Monaco', 'Consolas', monospace;
+  --font-body: var(--font-mono);
+
+  /* Backgrounds - Light with subtle rose/pink undertone */
+  --bg-root: #e8e3e2;
+  --bg-panel: #ded8d6;
+  --bg-card: #f0eae8;
+  --bg-card-hover: #f5efed;
+  --bg-input: #e8e3e2;
+
+  /* Accent - Near black */
+  --accent-gold: #1a1816;
+  --accent-gold-bright: #2d2a26;
+  --accent-gold-dim: #0f0e0d;
+
+  /* Text - Dark on light */
+  --text-primary: #2d2a26;
+  --text-secondary: #5a5550;
+  --text-muted: #8a8580;
+  --text-dim: #b0aaa5;
+
+  /* Fire Emblem Affiliations */
+  --fe-player: #2a6496;
+  --fe-player-dim: #1e4a70;
+  --fe-enemy: #a63d3d;
+  --fe-enemy-dim: #7a2d2d;
+  --fe-ally: #4a8a4a;
+  --fe-ally-dim: #366636;
+
+  /* HP Status Colors */
+  --hp-healthy: #4a8a4a;
+  --hp-healthy-bg: rgba(74, 138, 74, 0.15);
+  --hp-wounded: #b8860b;
+  --hp-wounded-bg: rgba(184, 134, 11, 0.15);
+  --hp-critical: #a63d3d;
+  --hp-critical-bg: rgba(166, 61, 61, 0.15);
+
+  /* Status Indicators */
+  --status-thinking: #8b5a2b;
+  --status-idle: #8a8580;
+  --status-error: #a63d3d;
+  --status-connected: #4a8a4a;
+  --status-disconnected: #a63d3d;
+
+  /* Borders */
+  --border-subtle: #d0cac8;
+  --border-default: #c0bab8;
+  --border-accent: rgba(26, 24, 22, 0.3);
+  --border-frame: #1a1816;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.1);
+  --shadow-md: 0 3px 8px rgba(0, 0, 0, 0.12);
+  --shadow-lg: 0 6px 16px rgba(0, 0, 0, 0.15);
+  --shadow-inset: inset 0 1px 3px rgba(0, 0, 0, 0.15);
+
+  /* Spacing */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 16px;
+  --space-xl: 24px;
+  --space-2xl: 32px;
+
+  /* Border Radius */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --radius-full: 9999px;
+
+  /* Layout Dimensions */
+  --header-height: 72px;
+  --party-bar-height: 140px;
+  --thought-panel-width: 625px;
+  --game-display-min-width: 480px;
+
+  /* Transitions */
+  --transition-fast: 150ms ease;
+  --transition-normal: 250ms ease;
+  --transition-slow: 400ms ease;
+
+  /* Z-Index Layers */
+  --z-base: 0;
+  --z-dropdown: 100;
+  --z-overlay: 200;
+  --z-modal: 300;
+}
+
+/* Animation keyframes */
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slide-in-left {
+  from {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}

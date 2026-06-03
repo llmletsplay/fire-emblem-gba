@@ -1,0 +1,11 @@
+* text=auto eol=lf
+
+# Treat common image formats as binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+
+# Ensure shell scripts retain executable bit
+*.sh linguist-language=Shell
+

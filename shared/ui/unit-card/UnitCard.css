@@ -1,0 +1,118 @@
+.unit-card {
+  display: flex;
+  gap: 12px;
+  padding: 12px;
+  background: linear-gradient(
+    135deg,
+    var(--bg-card, #f0eae8) 0%,
+    var(--bg-panel, #ded8d6) 100%
+  );
+  border: 1px solid var(--border-default, #c0bab8);
+  border-radius: 0;
+  min-width: 200px;
+  flex-shrink: 0;
+  position: relative;
+  transition: all 150ms ease;
+  clip-path: polygon(
+    0 6px,
+    6px 0,
+    100% 0,
+    100% 100%,
+    0 100%
+  );
+}
+
+.unit-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: #1a1816;
+}
+
+.unit-card:hover {
+  background: linear-gradient(
+    135deg,
+    var(--bg-card-hover, #f5efed) 0%,
+    var(--bg-card, #f0eae8) 100%
+  );
+  border-color: var(--border-accent, rgba(26, 24, 22, 0.3));
+}
+
+.unit-card--clickable {
+  cursor: pointer;
+}
+
+.unit-card--clickable:focus {
+  outline: 2px solid var(--accent-gold, #1a1816);
+  outline-offset: 2px;
+}
+
+.unit-card--compact {
+  min-width: 120px;
+  padding: 8px;
+  gap: 8px;
+}
+
+.unit-card--player::before,
+.unit-card--enemy::before,
+.unit-card--ally::before {
+  background: #1a1816;
+}
+
+.unit-card__info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.unit-card__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px;
+}
+
+.unit-card__name {
+  font-family: var(--font-mono, 'Sometype Mono', monospace);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary, #2d2a26);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.unit-card--compact .unit-card__name {
+  font-size: 11px;
+}
+
+.unit-card__level {
+  font-family: var(--font-mono, 'Sometype Mono', monospace);
+  font-size: 11px;
+  color: var(--text-secondary, #5a5550);
+  flex-shrink: 0;
+}
+
+.unit-card--compact .unit-card__level {
+  font-size: 10px;
+}
+
+.unit-card__class-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.unit-card__class-name {
+  font-family: var(--font-mono, 'Sometype Mono', monospace);
+  font-size: 10px;
+  color: var(--text-secondary, #5a5550);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}

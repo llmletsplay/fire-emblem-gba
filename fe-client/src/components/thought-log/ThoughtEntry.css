@@ -1,0 +1,195 @@
+.thought-entry {
+  padding: var(--space-sm) 0;
+  animation: slide-in-left 0.2s ease-out;
+}
+
+.thought-entry--new {
+  animation: slide-in-left 0.2s ease-out, flash-highlight 1.5s ease-out;
+}
+
+@keyframes flash-highlight {
+  0% {
+    background-color: rgba(100, 149, 237, 0.3);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+.thought-entry + .thought-entry {
+  margin-top: var(--space-md);
+  padding-top: var(--space-md);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.thought-entry__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-sm);
+}
+
+.thought-entry__timestamp {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.thought-entry__thumbnail {
+  width: 48px;
+  height: 32px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  image-rendering: pixelated;
+  flex-shrink: 0;
+}
+
+.thought-entry__text {
+  font-family: var(--font-display);
+  font-size: 18px;
+  line-height: 1.6;
+  color: var(--text-primary);
+  margin: 0;
+  word-wrap: break-word;
+}
+
+.thought-entry__thinking {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  margin: 0 0 var(--space-sm) 0;
+  font-style: italic;
+}
+
+/* Structured sections */
+.thought-entry__sections {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.thought-entry__section {
+  padding: var(--space-sm);
+  border-radius: var(--radius-md);
+  background: var(--bg-tertiary);
+}
+
+.thought-entry__section--observation {
+  background: rgba(100, 149, 237, 0.1);
+  border-left: 3px solid rgba(100, 149, 237, 0.5);
+}
+
+.thought-entry__section--reasoning {
+  background: rgba(147, 112, 219, 0.1);
+  border-left: 3px solid rgba(147, 112, 219, 0.5);
+}
+
+.thought-entry__section--action {
+  background: rgba(50, 205, 50, 0.1);
+  border-left: 3px solid rgba(50, 205, 50, 0.5);
+}
+
+.thought-entry__section-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  margin-bottom: var(--space-xs);
+}
+
+.thought-entry__section-icon {
+  font-size: 14px;
+}
+
+.thought-entry__section-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  letter-spacing: 0.5px;
+}
+
+.thought-entry__section-content {
+  font-family: var(--font-display);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+/* Action button sequence */
+.thought-entry__action-sequence {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+}
+
+.thought-entry__action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 24px;
+  padding: 0 var(--space-xs);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  background: var(--accent-blue);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.3);
+}
+
+/* Markdown element styles */
+.thought-entry__text p,
+.thought-entry__section-content p {
+  margin: var(--space-xs) 0;
+}
+
+.thought-entry__text p:first-child,
+.thought-entry__section-content p:first-child {
+  margin-top: 0;
+}
+
+.thought-entry__text p:last-child,
+.thought-entry__section-content p:last-child {
+  margin-bottom: 0;
+}
+
+.thought-entry__text strong,
+.thought-entry__section-content strong {
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.thought-entry__text em,
+.thought-entry__section-content em {
+  font-style: italic;
+}
+
+.thought-entry__text ul,
+.thought-entry__text ol,
+.thought-entry__section-content ul,
+.thought-entry__section-content ol {
+  display: block;
+  margin: var(--space-sm) 0;
+  padding-left: var(--space-lg);
+  list-style-position: outside;
+}
+
+.thought-entry__text li,
+.thought-entry__section-content li {
+  display: list-item;
+  margin: var(--space-xs) 0;
+}
+
+.thought-entry__text code,
+.thought-entry__section-content code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  background: rgba(0, 0, 0, 0.2);
+  padding: 1px 4px;
+  border-radius: 3px;
+}

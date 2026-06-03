@@ -1,0 +1,21 @@
+.class-sprite {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.class-sprite--sm {
+  width: 16px;
+  height: 16px;
+}
+
+.class-sprite--md {
+  width: 24px;
+  height: 24px;
+}
+
+.class-sprite--lg {
+  width: 32px;
+  height: 32px;
+}

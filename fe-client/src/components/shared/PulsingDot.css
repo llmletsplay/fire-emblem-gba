@@ -1,0 +1,43 @@
+.pulsing-dot {
+  display: inline-block;
+  border-radius: var(--radius-full);
+  flex-shrink: 0;
+}
+
+/* Sizes */
+.pulsing-dot--sm {
+  width: 6px;
+  height: 6px;
+}
+
+.pulsing-dot--md {
+  width: 8px;
+  height: 8px;
+}
+
+.pulsing-dot--lg {
+  width: 10px;
+  height: 10px;
+}
+
+/* Colors */
+.pulsing-dot--gold {
+  background: var(--accent-gold);
+}
+
+.pulsing-dot--green {
+  background: var(--status-connected);
+}
+
+.pulsing-dot--red {
+  background: var(--status-error);
+}
+
+.pulsing-dot--blue {
+  background: var(--fe-player);
+}
+
+/* Active animation */
+.pulsing-dot--active {
+  animation: pulse 1.5s ease-in-out infinite;
+}

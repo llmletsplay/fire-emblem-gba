@@ -1,0 +1,67 @@
+.hp-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+}
+
+.hp-bar__track {
+  flex: 1;
+  background: var(--bg-input, #e8e3e2);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.hp-bar--sm .hp-bar__track {
+  height: 4px;
+}
+
+.hp-bar--md .hp-bar__track {
+  height: 6px;
+}
+
+.hp-bar--lg .hp-bar__track {
+  height: 8px;
+}
+
+.hp-bar__fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 250ms ease, background 250ms ease;
+}
+
+.hp-bar__fill--healthy {
+  background: linear-gradient(90deg, #4a8a4a, #9aad00);
+}
+
+.hp-bar__fill--wounded {
+  background: linear-gradient(90deg, #b8860b, #e05a1a);
+}
+
+.hp-bar__fill--critical {
+  background: linear-gradient(90deg, #a63d3d, #e84744);
+  animation: hp-pulse 1s ease-in-out infinite;
+}
+
+@keyframes hp-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.hp-bar__numbers {
+  font-family: var(--font-mono, 'Sometype Mono', monospace);
+  font-size: 10px;
+  color: var(--text-secondary, #5a5550);
+  min-width: 40px;
+  text-align: right;
+}
+
+.hp-bar--sm .hp-bar__numbers {
+  font-size: 9px;
+  min-width: 32px;
+}
+
+.hp-bar--lg .hp-bar__numbers {
+  font-size: 11px;
+  min-width: 48px;
+}

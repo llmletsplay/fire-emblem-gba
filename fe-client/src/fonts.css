@@ -1,0 +1,76 @@
+/* Fire Emblem GBA - Shared Font & Color System */
+
+/* PoltawskiNowy for headings/logos - variable font with weight support */
+@font-face {
+  font-family: 'PoltawskiNowy';
+  src: url('/fonts/PoltawskiNowy-VariableFont_wght.ttf') format('truetype');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'PoltawskiNowy';
+  src: url('/fonts/PoltawskiNowy-Italic-VariableFont_wght.ttf') format('truetype');
+  font-weight: 100 900;
+  font-style: italic;
+  font-display: swap;
+}
+
+/* Monospace font for body */
+@font-face {
+  font-family: 'Sometype Mono';
+  src: url('/fonts/SometypeMono-VariableFont_wght.ttf') format('truetype');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Sometype Mono';
+  src: url('/fonts/SometypeMono-Italic-VariableFont_wght.ttf') format('truetype');
+  font-weight: 100 900;
+  font-style: italic;
+  font-display: swap;
+}
+
+:root {
+  /* Fonts */
+  --font-display: 'PoltawskiNowy', Georgia, 'Times New Roman', serif;
+  --font-mono: 'Sometype Mono', 'JetBrains Mono', 'SF Mono', 'Monaco', 'Consolas', monospace;
+  --font-body: var(--font-mono);
+
+  /* Fire Emblem Color Palette - Streaming overlay stays dark for OBS */
+  --fe-gold: #b8860b;
+  --fe-gold-bright: #daa520;
+  --fe-gold-dark: #8b6914;
+  --fe-crimson: #b22222;
+  --fe-crimson-dark: #8b0000;
+  --fe-blue: #4169e1;
+  --fe-blue-light: #6495ed;
+  --fe-green: #228b22;
+  --fe-green-light: #32cd32;
+  --fe-orange: #cd853f;
+
+  /* Background - Dark for streaming overlay */
+  --bg-darkest: #0f0f12;
+  --bg-dark: #16161a;
+  --bg-panel: #1c1c22;
+  --bg-card: #24242c;
+  --bg-hover: #2e2e38;
+
+  /* Text */
+  --text-primary: #f0f0f0;
+  --text-secondary: #b0b0b0;
+  --text-muted: #707070;
+
+  /* Borders */
+  --border-dark: #3a3a45;
+  --border-subtle: #2a2a32;
+  --border-gold: rgba(184, 134, 11, 0.4);
+
+  /* Shadows */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 3px 8px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 6px 16px rgba(0, 0, 0, 0.5);
+}

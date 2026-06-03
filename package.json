@@ -1,0 +1,37 @@
+{
+  "name": "fire-emblem-ai-agent",
+  "version": "1.0.0",
+  "description": "AI agent harness for GBA Fire Emblem games with FE7 and FE8 memory support",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/llmletsplay/fire-emblem-gba.git"
+  },
+  "homepage": "https://github.com/llmletsplay/fire-emblem-gba#readme",
+  "scripts": {
+    "start": "./start.sh",
+    "start:openai": "MODE=OPENAI ./start.sh",
+    "start:claude": "MODE=ANTHROPIC ./start.sh",
+    "start:ollama": "MODE=OLLAMA ./start.sh",
+    "start:custom": "MODE=CUSTOM ./start.sh",
+    "dev": "concurrently \"npm run backend\" \"npm run stream\"",
+    "backend": "python src/core/run.py --auto",
+    "stream": "cd fe-client && npm run dev",
+    "web": "cd fe-web && npm run dev",
+    "install:stream": "cd fe-client && npm install",
+    "install:web": "cd fe-web && npm install",
+    "install:all": "npm run install:stream && npm run install:web",
+    "build:stream": "cd fe-client && npm run build",
+    "build:web": "cd fe-web && npm run build",
+    "build:all": "npm run build:stream && npm run build:web",
+    "clean": "rm -rf fe-client/public/chronicle fe-client/dist fe-web/dist assets/chronicle screenshot_*.png latest.png"
+  },
+  "devDependencies": {
+    "baseline-browser-mapping": "^2.8.31",
+    "concurrently": "^8.2.2"
+  },
+  "engines": {
+    "node": ">=16.0.0",
+    "npm": ">=8.0.0"
+  }
+}

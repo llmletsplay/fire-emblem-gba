@@ -1,0 +1,14 @@
+# Windows-specific requirements
+# For Windows installations
+
+# Core dependencies
+Pillow>=10.0.0
+
+# Base requirements from main project
+websockets
+python-dotenv
+openai
+
+# Windows-specific optimizations
+pywin32  # Windows system integration
+psutil  # Process management on Windows

@@ -1,0 +1,44 @@
+.branding-block {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+}
+
+.branding-block__sword {
+  width: 72px;
+  height: 72px;
+  color: #1a1816;
+  flex-shrink: 0;
+}
+
+.branding-block__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.branding-block__title {
+  font-family: var(--font-display);
+  font-size: 32px;
+  font-weight: 700;
+  line-height: 1.1;
+  margin: 0;
+}
+
+.branding-block__prefix {
+  color: #1a1816;
+  font-weight: 800;
+}
+
+.branding-block__suffix {
+  color: #1a1816;
+  font-weight: 800;
+}
+
+.branding-block__subtitle {
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin: 0;
+}

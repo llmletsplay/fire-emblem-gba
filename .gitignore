@@ -1,0 +1,131 @@
+# Dependencies
+node_modules/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+.agents/
+.codex/
+*.swp
+*.swo
+*~
+.DS_Store
+.claude/
+.private/
+private/
+secrets/
+opencode.json
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# React/Node
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+dist/
+dist-ssr/
+*.local
+
+# ROMs (Important - never commit ROM files)
+*.gba
+*.gb
+*.gbc
+*.nds
+*.sav
+*.ss*
+roms/*
+!roms/README.md
+
+# Emulator files
+*.srm
+*.rtc
+*.sa1
+*.sa2
+
+# Screenshots and logs
+/latest.png
+/screenshot_*.png
+/minimap.png
+/screenshots/
+*.log
+/logs/
+
+# Build outputs
+*.dll
+*.exe
+*.dmg
+*.app
+*.deb
+*.rpm
+
+# Test coverage
+coverage/
+*.lcov
+.nyc_output/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+*.bak
+*.backup
+*.old
+
+# Project specific
+websocket.sock
+mgba.sock
+state.json
+benchmark_results/
+
+# Screenshot files (root only)
+/latest.png
+/screenshot_*.png
+
+# Chronicle data (dynamically generated)
+fe-client/public/chronicle/
+assets/chronicle/
+
+# Temporary files
+tmp/
+
+# Checkpoints (do not commit models)
+checkpoints/*
+!checkpoints/README.md
+
+# Runtime knowledge database
+**/fe_knowledge.json
+tmp/
+.llm_provider_result
+
+# Private key material
+*.key
+*.pem
+*.p12
+*.pfx

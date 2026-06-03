@@ -1,0 +1,222 @@
+.party-bar {
+  display: flex;
+  gap: var(--space-lg);
+  background: var(--bg-panel);
+  border-top: 1px solid var(--border-subtle);
+  padding: var(--space-md) var(--space-lg);
+}
+
+.party-bar__main {
+  flex: 1;
+  min-width: 0;
+  padding-right: var(--space-lg);
+}
+
+.party-bar__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-sm);
+}
+
+.party-bar__title {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.party-bar__count {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.party-bar__scroll {
+  display: flex;
+  gap: var(--space-sm);
+  overflow-x: hidden;
+  padding: var(--space-xs) 0;
+}
+
+.party-bar__empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: var(--space-lg);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+/* Sponsor section */
+.party-bar__sponsor {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding-left: var(--space-lg);
+  border-left: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+
+.party-bar__sponsor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  margin-bottom: var(--space-sm);
+}
+
+.party-bar__sponsor-label {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.party-bar__sponsor-link {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  text-decoration: none;
+}
+
+.party-bar__sponsor-link:hover {
+  color: var(--text-secondary);
+  text-decoration: underline;
+}
+
+.party-bar__sponsor-card {
+  display: flex;
+  gap: var(--space-md);
+  padding: var(--space-md);
+  background: linear-gradient(
+    135deg,
+    var(--bg-card) 0%,
+    var(--bg-panel) 100%
+  );
+  border: 1px solid var(--border-default);
+  position: relative;
+  min-width: 200px;
+  clip-path: polygon(
+    0 6px,
+    6px 0,
+    100% 0,
+    100% 100%,
+    0 100%
+  );
+}
+
+.party-bar__sponsor-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: #1a1816;
+}
+
+.party-bar__sponsor-portrait {
+  width: 96px;
+  height: 80px;
+  flex-shrink: 0;
+  background: var(--bg-input);
+  border: 2px solid #1a1816;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.party-bar__sponsor-portrait-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+.party-bar__sponsor-info {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  flex: 1;
+  min-width: 0;
+}
+
+.party-bar__sponsor-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-xs);
+}
+
+.party-bar__sponsor-name {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.party-bar__sponsor-level {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.party-bar__sponsor-hp {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.party-bar__sponsor-hp-track {
+  flex: 1;
+  height: 6px;
+  background: var(--bg-input);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.party-bar__sponsor-hp-fill {
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, #4a8a4a, #9aad00);
+  border-radius: var(--radius-sm);
+}
+
+.party-bar__sponsor-hp-text {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-secondary);
+  min-width: 32px;
+  text-align: right;
+}
+
+.party-bar__sponsor-class {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  margin-top: var(--space-xs);
+}
+
+.party-bar__sponsor-sprite {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+.party-bar__sponsor-class-name {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}

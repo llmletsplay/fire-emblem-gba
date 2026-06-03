@@ -1,0 +1,39 @@
+.main-content {
+  display: flex;
+  flex: 1;
+  gap: var(--space-lg);
+  padding: var(--space-lg);
+  min-height: 0;
+  overflow: hidden;
+}
+
+.main-content__left {
+  width: var(--thought-panel-width);
+  flex-shrink: 0;
+  min-height: 0;
+}
+
+.main-content__center {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: var(--game-display-min-width);
+  min-height: 0;
+}
+
+/* Responsive adjustments */
+@media (max-width: 1200px) {
+  .main-content {
+    flex-direction: column;
+  }
+
+  .main-content__left {
+    width: 100%;
+    max-height: 200px;
+  }
+
+  .main-content__center {
+    flex: 1;
+    min-width: 0;
+  }
+}

@@ -1,0 +1,221 @@
+/* Home.css - Fire Emblem Light Mode */
+
+.home {
+  display: flex;
+  flex-direction: column;
+  gap: 2.5rem;
+  position: relative;
+}
+
+/* Background Character Art */
+.hero-bg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 400px;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.bg-char {
+  position: absolute;
+  height: 350px;
+  width: auto;
+  opacity: 0.08;
+  filter: grayscale(30%);
+}
+
+.bg-char-left {
+  left: -50px;
+  bottom: 0;
+}
+
+.bg-char-right {
+  right: -50px;
+  bottom: 0;
+  transform: scaleX(-1);
+}
+
+/* Hero Section */
+.hero {
+  text-align: center;
+  padding: 2.5rem 0;
+  position: relative;
+  z-index: 1;
+}
+
+.hero-logo {
+  max-width: 320px;
+  width: 100%;
+  height: auto;
+  margin-bottom: 1.5rem;
+  filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.1));
+}
+
+.hero h1 {
+  font-family: var(--font-display);
+  font-size: 2.25rem;
+  margin-bottom: 0.75rem;
+  color: var(--fe-gold-dark);
+  font-weight: normal;
+}
+
+.hero-subtitle {
+  font-size: 16px;
+  color: var(--text-secondary);
+  margin-bottom: 1.5rem;
+  font-family: var(--font-body);
+  max-width: 600px;
+  margin-left: auto;
+  margin-right: auto;
+  line-height: 1.6;
+}
+
+.hero-actions {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+/* Features Section */
+.features {
+  padding: 1.5rem 0;
+  position: relative;
+  z-index: 1;
+}
+
+.features h2 {
+  text-align: center;
+  margin-bottom: 1.5rem;
+  font-family: var(--font-display);
+  color: var(--fe-gold-dark);
+  font-size: 1.5rem;
+  font-weight: normal;
+}
+
+.feature-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1.25rem;
+}
+
+.feature-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-dark);
+  border-radius: 4px;
+  padding: 1.5rem;
+  transition: all 0.2s;
+  box-shadow: var(--shadow-sm);
+}
+
+.feature-card:hover {
+  border-color: var(--fe-gold);
+  box-shadow: var(--shadow-md);
+}
+
+.feature-icon {
+  width: 40px;
+  height: 40px;
+  background: var(--fe-gold);
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 1rem;
+  color: #fff;
+  font-family: var(--font-display);
+}
+
+.feature-card h3 {
+  margin-bottom: 0.5rem;
+  font-family: var(--font-display);
+  font-size: 1.1rem;
+  color: var(--text-primary);
+  font-weight: normal;
+}
+
+.feature-card p {
+  color: var(--text-secondary);
+  margin-bottom: 0;
+  font-size: 14px;
+  font-family: var(--font-body);
+  line-height: 1.6;
+}
+
+/* Stats Preview */
+.stats-preview {
+  background: var(--bg-card);
+  border: 1px solid var(--border-dark);
+  border-left: 4px solid var(--fe-gold);
+  border-radius: 4px;
+  padding: 2rem;
+  text-align: center;
+  box-shadow: var(--shadow-sm);
+  position: relative;
+  z-index: 1;
+}
+
+.stats-preview h2 {
+  margin-bottom: 0.5rem;
+  font-family: var(--font-display);
+  color: var(--fe-gold-dark);
+  font-size: 1.35rem;
+  font-weight: normal;
+}
+
+.stats-preview > p {
+  color: var(--text-secondary);
+  margin-bottom: 1.5rem;
+  font-size: 14px;
+  font-family: var(--font-body);
+}
+
+.stats-actions {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 768px) {
+  .hero h1 {
+    font-size: 1.75rem;
+  }
+
+  .hero-subtitle {
+    font-size: 14px;
+  }
+
+  .hero-logo {
+    max-width: 240px;
+  }
+
+  .feature-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .bg-char {
+    opacity: 0.05;
+    height: 250px;
+  }
+}
+
+@media (min-width: 1200px) {
+  .bg-char-left {
+    left: 5%;
+  }
+
+  .bg-char-right {
+    right: 5%;
+  }
+
+  .bg-char {
+    opacity: 0.1;
+    height: 400px;
+  }
+}

@@ -1,0 +1,172 @@
+.chapter-tree {
+  display: flex;
+  align-items: center;
+  padding: var(--space-sm) 0;
+}
+
+.chapter-tree__track {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.chapter-tree__section {
+  display: flex;
+  align-items: center;
+}
+
+.chapter-tree__section--shared {
+  gap: 0;
+}
+
+.chapter-tree__section--final {
+  gap: var(--space-xs);
+  margin-left: var(--space-sm);
+}
+
+.chapter-tree__node-wrapper {
+  display: flex;
+  align-items: center;
+}
+
+.chapter-tree__node {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-sm);
+  border: 2px solid var(--border-default);
+  background: var(--bg-card);
+  transition: all var(--transition-fast);
+}
+
+.chapter-tree__node--sm {
+  width: 18px;
+  height: 18px;
+  font-size: 9px;
+}
+
+.chapter-tree__node-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+/* Node states */
+.chapter-tree__node--completed {
+  background: var(--accent-gold);
+  border-color: var(--accent-gold-bright);
+}
+
+.chapter-tree__node--completed .chapter-tree__node-label {
+  color: var(--bg-root);
+}
+
+.chapter-tree__node--current {
+  border-color: var(--accent-gold);
+  animation: pulse-border 2s ease-in-out infinite;
+}
+
+.chapter-tree__node--current .chapter-tree__node-label {
+  color: var(--accent-gold);
+}
+
+.chapter-tree__node--future {
+  opacity: 0.5;
+}
+
+/* Connectors */
+.chapter-tree__connector {
+  width: 8px;
+  height: 2px;
+  background: var(--border-default);
+}
+
+.chapter-tree__connector--completed {
+  background: var(--accent-gold-dim);
+}
+
+/* Route branch */
+.chapter-tree__branch {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  margin-left: var(--space-sm);
+  padding-left: var(--space-sm);
+  position: relative;
+}
+
+.chapter-tree__branch-split {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: var(--space-sm);
+  height: 100%;
+}
+
+.chapter-tree__branch-line {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background: var(--border-default);
+}
+
+.chapter-tree__branch-line--top {
+  top: 25%;
+}
+
+.chapter-tree__branch-line--bottom {
+  bottom: 25%;
+}
+
+.chapter-tree__route {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  opacity: 0.5;
+  transition: opacity var(--transition-fast);
+}
+
+.chapter-tree__route.active {
+  opacity: 1;
+}
+
+.chapter-tree__route-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  min-width: 48px;
+}
+
+.chapter-tree__route--eirika .chapter-tree__route-label {
+  color: var(--fe-player);
+}
+
+.chapter-tree__route--ephraim .chapter-tree__route-label {
+  color: var(--fe-ally);
+}
+
+.chapter-tree__route-nodes {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.chapter-tree__ellipsis {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-left: 2px;
+}
+
+.chapter-tree__merge-line {
+  width: 12px;
+  height: 2px;
+  background: var(--border-default);
+}

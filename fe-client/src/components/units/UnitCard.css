@@ -1,0 +1,111 @@
+.unit-card {
+  display: flex;
+  gap: var(--space-md);
+  padding: var(--space-md);
+  background: linear-gradient(
+    135deg,
+    var(--bg-card) 0%,
+    var(--bg-panel) 100%
+  );
+  border: 1px solid var(--border-default);
+  border-radius: 0;
+  min-width: 200px;
+  flex-shrink: 0;
+  position: relative;
+  transition: all var(--transition-fast);
+  /* Tactical cut corner - top-left only */
+  clip-path: polygon(
+    0 6px,
+    6px 0,
+    100% 0,
+    100% 100%,
+    0 100%
+  );
+}
+
+.unit-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: #1a1816;
+}
+
+.unit-card:hover {
+  background: linear-gradient(
+    135deg,
+    var(--bg-card-hover) 0%,
+    var(--bg-card) 100%
+  );
+  border-color: var(--border-accent);
+}
+
+.unit-card--compact {
+  min-width: 120px;
+  padding: var(--space-sm);
+  gap: var(--space-sm);
+}
+
+/* Affiliation top bar colors - all use near-black */
+.unit-card--player::before,
+.unit-card--enemy::before,
+.unit-card--ally::before {
+  background: #1a1816;
+}
+
+.unit-card__info {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  flex: 1;
+  min-width: 0;
+}
+
+.unit-card__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-xs);
+}
+
+.unit-card__name {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.unit-card--compact .unit-card__name {
+  font-size: 11px;
+}
+
+.unit-card__level {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.unit-card--compact .unit-card__level {
+  font-size: 10px;
+}
+
+.unit-card__class-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  margin-top: var(--space-xs);
+}
+
+.unit-card__class-name {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
