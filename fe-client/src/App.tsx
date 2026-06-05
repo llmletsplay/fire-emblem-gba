@@ -1,7 +1,7 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import "./styles/base.css";
 import { StreamOverlay } from "./components/layout/StreamOverlay";
-import type { GameState, LogEntry, ChronicleEntry } from "./types/gameTypes";
+import type { GameState, LogEntry } from "./types/gameTypes";
 import type {
   WsMessage,
   StateUpdatePayload,
@@ -24,9 +24,6 @@ const GAMEPLAY_LOG_TYPES = ["movement", "combat", "action", "battle", "ai"];
 // Type aliases for payload access
 type StatePayload = StateUpdatePayload & {
   screenshotUrl?: string;
-  chronicle_entries?: ChronicleEntry[];
-  chronicle_update?: ChronicleEntry;
-  session_id?: string;
 };
 
 const isKnownLogCategory = (value: string): value is LogEntry["type"] => {
@@ -53,9 +50,6 @@ function App() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [aiThoughts, setAiThoughts] = useState<string[]>([]);
   const [currentScreenshot, setCurrentScreenshot] = useState<string>("");
-  const [chronicle, setChronicle] = useState<ChronicleEntry[]>([]);
-  const [currentSessionId, setCurrentSessionId] = useState<string>("");
-  const [showAllSessions, setShowAllSessions] = useState(false);
   const [visionState, setVisionState] = useState<{
     description: string | null;
     processing: boolean;
@@ -69,14 +63,6 @@ function App() {
     model?: string;
   }>({ status: "idle" });
   const [, setWs] = useState<WebSocket | null>(null);
-
-  // Filter chronicle by session
-  const filteredChronicle = useMemo(() => {
-    if (showAllSessions || !currentSessionId) {
-      return chronicle;
-    }
-    return chronicle.filter((entry) => entry.session_id === currentSessionId);
-  }, [chronicle, currentSessionId, showAllSessions]);
 
   const addLog = useCallback(
     (
@@ -123,9 +109,6 @@ function App() {
         if (p.screenshotUrl) {
           setCurrentScreenshot(p.screenshotUrl);
         }
-        if (p.chronicle_entries) {
-          setChronicle(p.chronicle_entries);
-        }
         break;
       }
       case "state_update": {
@@ -135,23 +118,6 @@ function App() {
 
         if (p.screenshotUrl) {
           setCurrentScreenshot(p.screenshotUrl);
-        }
-
-        if (p.session_id) {
-          setCurrentSessionId(p.session_id);
-        }
-
-        if (p.chronicle_entries) {
-          setChronicle(p.chronicle_entries);
-        } else if (p.chronicle_update) {
-          setChronicle((prev) => {
-            const update = p.chronicle_update as ChronicleEntry;
-            if (!update.id) {
-              return [...prev, update];
-            }
-            const withoutDup = prev.filter((entry) => entry.id !== update.id);
-            return [...withoutDup, update];
-          });
         }
         break;
       }
@@ -208,7 +174,6 @@ function App() {
           | { session_id: string; start_time: string }
           | undefined;
         if (p?.session_id) {
-          setCurrentSessionId(p.session_id);
           addLog(`New session started: ${p.session_id}`, "system");
         }
         break;
@@ -257,14 +222,10 @@ function App() {
       logs={logs}
       aiThoughts={aiThoughts}
       currentScreenshot={currentScreenshot}
-      chronicle={filteredChronicle}
       visionDescription={visionState.description}
       visionProcessing={visionState.processing}
       memoryWrite={memoryWrite}
       onMemoryWriteClear={() => setMemoryWrite(null)}
-      currentSessionId={currentSessionId}
-      showAllSessions={showAllSessions}
-      onToggleAllSessions={() => setShowAllSessions((prev) => !prev)}
       aiProcessing={aiProcessing}
     />
   );

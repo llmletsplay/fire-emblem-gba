@@ -1,9 +1,5 @@
 import { useEffect, useRef } from "react";
-import type {
-  GameState,
-  LogEntry,
-  ChronicleEntry,
-} from "../../types/gameTypes";
+import type { GameState, LogEntry } from "../../types/gameTypes";
 import type { UnitDisplay } from "../../types/display";
 import { Header } from "./Header";
 import { MainContent } from "./MainContent";
@@ -21,14 +17,10 @@ interface StreamOverlayProps {
   logs: LogEntry[];
   aiThoughts: string[];
   currentScreenshot: string;
-  chronicle: ChronicleEntry[];
   visionDescription: string | null;
   visionProcessing: boolean;
   memoryWrite: string | null;
   onMemoryWriteClear: () => void;
-  currentSessionId?: string;
-  showAllSessions?: boolean;
-  onToggleAllSessions?: () => void;
   aiProcessing?: {
     status: "idle" | "thinking" | "complete" | "error";
     model?: string;

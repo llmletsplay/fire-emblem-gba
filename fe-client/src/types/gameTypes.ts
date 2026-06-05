@@ -220,20 +220,6 @@ export interface LogEntry {
   message: string;
 }
 
-export interface ChronicleEntry {
-  id?: string;
-  session_id?: string;
-  timestamp: string;
-  chapter?: string | null;
-  phase?: string;
-  interpretation?: string;
-  narrative?: string;
-  summary?: string;
-  screenshot?: string;
-  screenshot_url?: string;
-  actions?: string[];
-}
-
 export interface SessionInfo {
   session_id: string;
   start_time: string;

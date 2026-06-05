@@ -20,10 +20,8 @@ from tools.token_counter import count_tokens, calculate_prompt_tokens
 
 from src.core import config
 from src.game.fe_state import prep_fe_llm as prep_llm
-from src.game.story_tracker import story_tracker
 from src.game.button_mapping import normalize_button_sequence
 from src.utils.json_parser import parse_optional_fenced_json
-from src.utils.chronicle_manager import ChronicleManager
 from src.utils.screen_tracker import get_tracker as get_screen_tracker
 
 # Import knowledge base if persistent learning is enabled
@@ -107,7 +105,6 @@ SAVED_MINIMAP_PATH = MINIMAP_PATH
 client, MODEL, supports_reasoning = setup_llm_client()
 vision_client, vision_model = setup_vision_model()
 
-chronicle_manager = ChronicleManager()
 chat_history = []
 response_count = 0
 action_count = 0
@@ -1324,10 +1321,6 @@ async def run_auto_loop(sock, state: dict, broadcast_func, interval: float = 8.0
 
             current_mGBA_state = prep_llm(sock)
 
-            # Feed chapter objective into story tracker for frontend broadcast
-            if current_mGBA_state and current_mGBA_state.get("objective"):
-                story_tracker.context.current_objective = current_mGBA_state["objective"]
-
             if benchmark is not None:
                 # check if we complted the bench
                 if(benchmark.validation(current_mGBA_state)):
@@ -1703,16 +1696,15 @@ async def run_auto_loop(sock, state: dict, broadcast_func, interval: float = 8.0
                     # Log the vision model's raw interpretation
                     log.info(f"Vision model interpretation (first 200 chars): {screenshot_desc[:200]}...")
 
-                    # Detect game phase from vision description
+                    # Detect game phase from vision description.
                     phase = detect_game_phase(screenshot_desc)
-                    phase_response = story_tracker.update_phase(phase, screenshot_desc)
 
                     # Update knowledge base if enabled
                     if config.PERSISTENT_LEARNING and knowledge_base:
                         knowledge_base.update_battle_state({"vision": screenshot_desc, "phase": phase})
 
                     # Add phase context to the description
-                    enhanced_desc = f"{screenshot_desc}\n\nPHASE: {phase}\n{phase_response}"
+                    enhanced_desc = f"{screenshot_desc}\n\nPHASE: {phase}"
 
                     llm_input_state["screenshot_description"] = enhanced_desc
                     llm_input_state["screenshot"] = None  # Don't send image to text-only model
@@ -1731,28 +1723,7 @@ async def run_auto_loop(sock, state: dict, broadcast_func, interval: float = 8.0
                             log.info(f"Dialogue instruction captured: {instruction['instruction_type']} "
                                      f"units={instruction['unit_names']}")
 
-                    # Log phase detection result
-                    phase_detail = phase_response.split('\n')[1] if '\n' in phase_response else 'Processing...'
-                    log.info(f"PHASE DETECTED: {phase.upper()} - {phase_detail}")
-
-                    # Save to chronicle with session ID
-                    chronicle_entry = chronicle_manager.add_entry(
-                        interpretation=screenshot_desc,
-                        phase=phase,
-                        screenshot_path=SAVED_SCREENSHOT_PATH,
-                        chapter=story_tracker.context.current_chapter if story_tracker.context.current_chapter else None,
-                        session_id=session_id
-                    )
-
-                    # Add chronicle update to WebSocket payload
-                    if chronicle_entry:
-                        # Make screenshot path relative to public folder for web serving
-                        if 'screenshot' in chronicle_entry:
-                            chronicle_entry['screenshot_url'] = f"/chronicle/screenshots/{chronicle_entry['screenshot']}"
-                        update_payload['chronicle_update'] = chronicle_entry
-                        # Also send full chronicle list for initial load
-                        update_payload['chronicle_entries'] = chronicle_manager.get_recent_entries(50)
-                        update_payload['session_id'] = session_id
+                    log.info(f"PHASE DETECTED: {phase.upper()}")
                 else:
                     # Fallback: try to send image anyway (might error)
                     llm_input_state["screenshot"] = {"image_url": {"url": f"data:image/png;base64,{b64_ss}", "detail": IMAGE_DETAIL}}
@@ -1785,8 +1756,6 @@ async def run_auto_loop(sock, state: dict, broadcast_func, interval: float = 8.0
 
         # Build memory-aware system prompt with context from past turns
         memory_window_text = memory_manager.format_for_llm()
-        journal_summary = chronicle_manager.generate_smart_summary()
-        journal_index = chronicle_manager.get_journal_index()
         session_stats = memory_manager.get_pattern_stats(vision_description or "")
 
         # Update system prompt with memory context
@@ -1802,8 +1771,6 @@ async def run_auto_loop(sock, state: dict, broadcast_func, interval: float = 8.0
 
         memory_system_prompt = build_memory_aware_prompt(
             memory_window_text=memory_window_text,
-            journal_summary=journal_summary,
-            journal_index=journal_index,
             session_stats=session_stats,
             benchmark_instruction=benchInstructions,
             game_title=_game_title,
@@ -1842,7 +1809,7 @@ async def run_auto_loop(sock, state: dict, broadcast_func, interval: float = 8.0
         # Build temporary messages list to check token count
         temp_messages = chat_history + [{"role": "user", "content": [{"type": "text", "text": json.dumps(llm_input_state)}]}]
         _, chat_history, thumbnail_count = compact_context_to_budget(
-            temp_messages, chat_history, memory_manager, chronicle_manager
+            temp_messages, chat_history, memory_manager
         )
 
         # Update memory thumbnails with compacted count
@@ -1889,8 +1856,8 @@ async def run_auto_loop(sock, state: dict, broadcast_func, interval: float = 8.0
                 screen_description=vision_description[:config.MEMORY_DESCRIPTION_TRUNCATE] if vision_description else "",
                 thumbnail_base64=memory_manager.generate_thumbnail(SAVED_SCREENSHOT_PATH),
                 game_state={
-                    "phase": story_tracker.current_phase,
-                    "chapter": story_tracker.context.current_chapter if story_tracker.context.current_chapter else "unknown"
+                    "phase": current_mGBA_state.get("phase", "unknown"),
+                    "chapter": current_mGBA_state.get("chapter", "unknown"),
                 },
                 ai_reasoning=game_analysis[:config.MEMORY_REASONING_TRUNCATE] if game_analysis else "",
                 action_taken=action
@@ -1926,12 +1893,6 @@ async def run_auto_loop(sock, state: dict, broadcast_func, interval: float = 8.0
                 # Track action and state for next cycle's inference
                 _last_action_sent = action_to_send
                 _last_game_state = copy.deepcopy(current_mGBA_state)
-
-                # Update the latest chronicle entry with the action taken
-                if chronicle_manager.entries:
-                    latest_entry = chronicle_manager.entries[-1]
-                    latest_entry['actions'].append(action_to_send)
-                    chronicle_manager.save_entries()
             except socket.error as se:
                 log.error(f"Socket error sending action '{action_to_send}': {se}. Stopping loop.")
                 break
@@ -1994,8 +1955,8 @@ async def run_auto_loop(sock, state: dict, broadcast_func, interval: float = 8.0
             state['modelName'] = MODEL
             update_payload['modelName'] = MODEL
 
-        # Broadcast current objective from story tracker
-        current_objective = story_tracker.context.current_objective
+        # Broadcast current objective from memory/chapter data.
+        current_objective = current_mGBA_state.get("objective") if current_mGBA_state else None
         if current_objective and state.get('objective') != current_objective:
             state['objective'] = current_objective
             update_payload['objective'] = current_objective
@@ -2035,7 +1996,7 @@ async def run_auto_loop(sock, state: dict, broadcast_func, interval: float = 8.0
 
         elapsed_loop_time = time.time() - loop_start_time
         game_phase = current_mGBA_state.get("phase", "unknown") if current_mGBA_state else "unknown"
-        log.info(f"Cycle {current_cycle} took {elapsed_loop_time:.2f}s. Game Phase: {game_phase}, Story: {story_tracker.current_phase}")
+        log.info(f"Cycle {current_cycle} took {elapsed_loop_time:.2f}s. Game Phase: {game_phase}")
 
 
     # Save knowledge and end session on exit

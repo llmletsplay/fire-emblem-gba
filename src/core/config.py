@@ -57,11 +57,6 @@ MOVEMENT_TILE_DETECTION = _env_bool('FE_MOVEMENT_TILE_DETECTION', True)
 MOVEMENT_BLUE_THRESHOLD = _env_int('FE_MOVEMENT_BLUE_THRESHOLD', 20)  # Blue channel dominance for movement tiles
 MOVEMENT_RED_THRESHOLD = _env_int('FE_MOVEMENT_RED_THRESHOLD', 30)    # Red channel dominance for attack tiles
 
-# Chronicle configuration
-CHRONICLE_ENABLED = True  # Enable saving story interpretations and screenshots
-CHRONICLE_PATH = os.path.join(PROJECT_ROOT, 'assets/chronicle')
-MAX_CHRONICLE_ENTRIES = 100  # Maximum number of chronicle entries to keep
-
 # Map feature configuration
 USE_MAP_CONTEXT = False  # Enable/disable using chapter maps for vision context
 MAPS_PATH = os.path.join(PROJECT_ROOT, 'assets/maps')

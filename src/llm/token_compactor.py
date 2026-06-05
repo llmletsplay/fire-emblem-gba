@@ -18,12 +18,10 @@ def compact_context_to_budget(
     messages: list,
     chat_hist: list,
     mem_manager,
-    chron_manager,
     max_tokens: int = None
 ) -> tuple:
     """
     Progressively reduce context until under token budget.
-    Dropped content is archived to journal for later retrieval.
 
     Returns:
         tuple: (compacted_messages, compacted_chat_history, thumbnail_count)
@@ -83,9 +81,7 @@ def compact_context_to_budget(
         thumbnail_count = 0
         log.info(f"Compaction L4: Removed all thumbnails")
 
-    # Archive dropped content to journal
-    if dropped_content and chron_manager:
-        chron_manager.archive_dropped_context(dropped_content)
-        log.info(f"Archived {len(dropped_content)} dropped items to journal")
+    if dropped_content:
+        log.info(f"Dropped {len(dropped_content)} old context items during compaction")
 
     return messages, chat_hist, thumbnail_count

@@ -19,8 +19,8 @@ def cmd_units(sock):
     try:
         reader = get_memory_reader(sock)
         if not reader:
-            from src.utils.fe8_memory_reader import FE8MemoryReader
-            reader = FE8MemoryReader(sock)
+            print("Could not initialize FE7/FE8 memory reader. Set FE_GAME or ROM_FILE.")
+            return
 
         lookup = get_lookup_module(reader.game.game_id)
         state = reader.read_game_state()

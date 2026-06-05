@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import "./StreamLayout.css";
-import type { GameState, LogEntry, ChronicleEntry } from "../types/gameTypes";
+import type { GameState, LogEntry } from "../types/gameTypes";
 
 interface StreamLayoutProps {
   gameState: GameState;
@@ -8,7 +8,6 @@ interface StreamLayoutProps {
   logs: LogEntry[];
   aiThoughts: string[];
   currentScreenshot: string;
-  chronicle: ChronicleEntry[];
   visionDescription: string | null;
   visionProcessing: boolean;
   ws: WebSocket | null;

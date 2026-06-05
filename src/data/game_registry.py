@@ -38,10 +38,10 @@ class GameAddresses:
     # gEventSlots (IWRAM) — 14 x s32, tutorial target coords
     # Set to 0 until verified via memory_probe --find-event-slots
     event_slots_base: int = 0
-    # Map terrain — gBmMap struct (2D terrain grid)
-    terrain_base: int = 0  # Pointer to terrain data, set per-game
-    map_width: int = 0     # Map width
-    map_height: int = 0    # Map height
+    # Live map buffers. These point to engine globals, not packed map data.
+    # gBmMapSize is a Vec2; gBmMapTerrain is a u8** row-pointer map.
+    map_size: int = 0
+    map_terrain: int = 0
 
 
 @dataclass(frozen=True)
@@ -78,7 +78,7 @@ GAME_REGISTRY = {
             turn=0x0202BD00,
             cursor_x=0x0202BD02,
             cursor_y=0x0202BD03,
-            # BmSt base=0x0202BCB0 (PlaySt-0x40) — ESTIMATED, needs verification
+            # BmSt base=0x0202BCB0 (gBmSt from FE8 decomp)
             bm_lock=0x0202BCB1,
             bm_camera_x=0x0202BCBC,
             bm_camera_y=0x0202BCBE,
@@ -88,10 +88,9 @@ GAME_REGISTRY = {
             bm_taken_action=0x0202BCED,
             # gEventSlots — 14 x s32 at 0x030004B8 (from FE8 decomp)
             event_slots_base=0x030004B8,
-            # Map terrain — gBmMap at 0x0202E3D8 (same as FE7)
-            terrain_base=0x0202E3D8,
-            map_width=0,
-            map_height=0,
+            # gBmMapSize / gBmMapTerrain from FE8 decomp symbols.
+            map_size=0x0202E4D4,
+            map_terrain=0x0202E4DC,
         ),
     ),
     "AE7E": GameInfo(
@@ -136,10 +135,10 @@ GAME_REGISTRY = {
             # gEventSlots — address unknown for FE7, needs discovery
             # FE8 uses 0x030004B8 (14 x s32 in IWRAM)
             event_slots_base=0,
-            # Map terrain — gBmMap at 0x0202E3D8
-            terrain_base=0x0202E3D8,
-            map_width=0,
-            map_height=0,
+            # FE7 terrain symbols are not public in the partial US decomp.
+            # Keep disabled until verified by live probe or a named symbol table.
+            map_size=0,
+            map_terrain=0,
         ),
     ),
 }

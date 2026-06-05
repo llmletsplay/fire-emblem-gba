@@ -79,6 +79,11 @@ def prep_fe_llm(sock) -> Dict[str, Any]:
         "npc_units": len(game_state.npc_units),
     }
 
+    map_size = reader.read_map_size()
+    if map_size:
+        context["map_width"] = map_size[0]
+        context["map_height"] = map_size[1]
+
     # Inject chapter objective data for LLM context
     chapter_data = chapters.get_chapter_objective(game_state.chapter)
     if chapter_data:
@@ -260,13 +265,15 @@ def prep_fe_llm(sock) -> Dict[str, Any]:
                         if u.is_alive and u.current_hp > 0 and (u.x, u.y) != (cx, cy):
                             occupied.add((u.x, u.y))
                     
+                    movement_map_size = map_size or (16, 16)
+
                     # Calculate reachable tiles
                     reachable = calculate_movement_tiles(
                         unit_x=cx,
                         unit_y=cy,
                         movement=movement,
-                        map_width=16,
-                        map_height=16,
+                        map_width=movement_map_size[0],
+                        map_height=movement_map_size[1],
                         occupied_tiles=occupied,
                     )
                     

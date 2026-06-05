@@ -9,15 +9,13 @@ The AI learns organically from its memory and past experiences.
 from typing import Dict, Any, List, Optional
 
 
-# Default values used when no game_info is provided (FE8 for backward compat)
-_DEFAULT_TITLE = "Fire Emblem: The Sacred Stones"
-_DEFAULT_LORDS = ["Eirika", "Ephraim"]
+# Default values used when no game_info is available.
+_DEFAULT_TITLE = "Fire Emblem GBA"
+_DEFAULT_LORDS = ["the lord"]
 
 
 def build_memory_aware_prompt(
     memory_window_text: str = "",
-    journal_summary: str = "",
-    journal_index: str = "",
     session_stats: Optional[Dict[str, Any]] = None,
     benchmark_instruction: str = "",
     game_title: str = "",
@@ -28,8 +26,6 @@ def build_memory_aware_prompt(
 
     The AI receives:
     - Its recent memory (what it saw, thought, did, and what happened)
-    - A journal summary of past learnings
-    - A journal index showing what's available to query
     - Session stats (how many times it's seen this screen, etc.)
 
     No prescriptive hints - the AI figures out patterns itself.
@@ -59,12 +55,6 @@ def build_memory_aware_prompt(
     prompt = f"""You are playing {game_title} on GBA. Your goal is to complete each chapter.
 
 {memory_window_text}
-
-## What You've Learned (Journal)
-{journal_summary}
-
-## Journal Index (query with JOURNAL_QUERY: [topic])
-{journal_index}
 
 ## Session Awareness
 {stats_text}
@@ -590,8 +580,6 @@ def build_system_prompt(actionSummary: str = "", benchmarkInstruction: str = "")
     """
     return build_memory_aware_prompt(
         memory_window_text="",
-        journal_summary="",
-        journal_index="",
         session_stats=None,
         benchmark_instruction=benchmarkInstruction
     )

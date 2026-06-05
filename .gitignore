@@ -103,12 +103,13 @@ websocket.sock
 mgba.sock
 state.json
 benchmark_results/
+runtime/
 
 # Screenshot files (root only)
 /latest.png
 /screenshot_*.png
 
-# Chronicle data (dynamically generated)
+# Legacy runtime data from older harness versions
 fe-client/public/chronicle/
 assets/chronicle/
 

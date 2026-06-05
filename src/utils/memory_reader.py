@@ -805,6 +805,48 @@ class GBAMemoryReader:
         result["taken_action"] = data[0x3D]
         return result
 
+    def read_map_size(self) -> Optional[Tuple[int, int]]:
+        """
+        Read live battle-map dimensions from gBmMapSize.
+
+        FE8 exposes gBmMapSize as a Vec2 of two 16-bit coordinates. FE7 is
+        disabled until an equivalent symbol or live probe verifies its address.
+        """
+        if self.addrs.map_size == 0:
+            return None
+
+        data = self.read_memory(self.addrs.map_size, 4)
+        if len(data) < 4:
+            return None
+
+        width, height = struct.unpack_from("<hh", data, 0)
+        if width <= 0 or height <= 0 or width > 255 or height > 255:
+            logger.warning(
+                "Ignoring implausible map size from 0x%X: %sx%s",
+                self.addrs.map_size,
+                width,
+                height,
+            )
+            return None
+
+        return (width, height)
+
+    def _format_terrain(self, x: int, y: int, terrain_id: int) -> dict:
+        terrain_info = TERRAIN_TYPES.get(
+            terrain_id,
+            {"name": f"Unknown({terrain_id})", "def": 0, "avo": 0, "cost": 99, "visit": False},
+        )
+        return {
+            "x": x,
+            "y": y,
+            "id": terrain_id,
+            "name": terrain_info["name"],
+            "def": terrain_info["def"],
+            "avo": terrain_info["avo"],
+            "cost": terrain_info["cost"],
+            "visit": terrain_info.get("visit", False),
+        }
+
     def read_terrain(self, x: int, y: int) -> Optional[dict]:
         """
         Read terrain at specific map coordinates.
@@ -816,41 +858,40 @@ class GBAMemoryReader:
         Returns:
             dict with keys: name, def, avo, cost, or None if unavailable
         """
-        if self.addrs.terrain_base == 0:
+        if self.addrs.map_terrain == 0:
             return None
 
-        # Read map header to get dimensions and data offset
-        header = self.read_memory(self.addrs.terrain_base, 8)
-        if len(header) < 8:
+        size = self.read_map_size()
+        if not size:
             return None
 
-        # Format: u16 width, u16 height, u32 data_offset
-        width = struct.unpack_from("<H", header, 0)[0]
-        height = struct.unpack_from("<H", header, 2)[0]
-        data_offset = struct.unpack_from("<I", header, 4)[0]
-
+        width, height = size
         if x < 0 or x >= width or y < 0 or y >= height:
             return None
 
-        # Read terrain data (1 byte per tile)
-        terrain_addr = self.addrs.terrain_base + data_offset + (y * width + x)
-        terrain_data = self.read_memory(terrain_addr, 1)
+        terrain_map_ptr_data = self.read_memory(self.addrs.map_terrain, 4)
+        if len(terrain_map_ptr_data) < 4:
+            return None
+
+        terrain_rows_ptr = struct.unpack_from("<I", terrain_map_ptr_data, 0)[0]
+        if terrain_rows_ptr < 0x02000000 or terrain_rows_ptr > 0x0203FFFF:
+            logger.debug("Invalid gBmMapTerrain pointer: 0x%X", terrain_rows_ptr)
+            return None
+
+        row_ptr_data = self.read_memory(terrain_rows_ptr + (y * 4), 4)
+        if len(row_ptr_data) < 4:
+            return None
+
+        row_ptr = struct.unpack_from("<I", row_ptr_data, 0)[0]
+        if row_ptr < 0x02000000 or row_ptr > 0x0203FFFF:
+            logger.debug("Invalid gBmMapTerrain row pointer: 0x%X", row_ptr)
+            return None
+
+        terrain_data = self.read_memory(row_ptr + x, 1)
         if len(terrain_data) < 1:
             return None
 
-        terrain_id = terrain_data[0]
-        terrain_info = TERRAIN_TYPES.get(terrain_id, {"name": f"Unknown({terrain_id})", "def": 0, "avo": 0, "cost": 99, "visit": False})
-
-        return {
-            "x": x,
-            "y": y,
-            "id": terrain_id,
-            "name": terrain_info["name"],
-            "def": terrain_info["def"],
-            "avo": terrain_info["avo"],
-            "cost": terrain_info["cost"],
-            "visit": terrain_info.get("visit", False),
-        }
+        return self._format_terrain(x, y, terrain_data[0])
 
     def read_map_terrain_grid(self, width: int = 16, height: int = 10) -> Optional[List[List[dict]]]:
         """
@@ -863,36 +904,39 @@ class GBAMemoryReader:
         Returns:
             2D list of terrain dicts, or None if unavailable
         """
-        if self.addrs.terrain_base == 0:
+        if self.addrs.map_terrain == 0:
             return None
 
-        header = self.read_memory(self.addrs.terrain_base, 8)
-        if len(header) < 8:
+        size = self.read_map_size()
+        if not size:
             return None
 
-        map_width = struct.unpack_from("<H", header, 0)[0]
-        map_height = struct.unpack_from("<H", header, 2)[0]
-        data_offset = struct.unpack_from("<I", header, 4)[0]
+        map_width, map_height = size
+        terrain_map_ptr_data = self.read_memory(self.addrs.map_terrain, 4)
+        if len(terrain_map_ptr_data) < 4:
+            return None
+
+        terrain_rows_ptr = struct.unpack_from("<I", terrain_map_ptr_data, 0)[0]
+        if terrain_rows_ptr < 0x02000000 or terrain_rows_ptr > 0x0203FFFF:
+            return None
 
         terrain_grid = []
         for y in range(min(height, map_height)):
             row = []
+            row_ptr_data = self.read_memory(terrain_rows_ptr + (y * 4), 4)
+            if len(row_ptr_data) < 4:
+                terrain_grid.append([None] * min(width, map_width))
+                continue
+
+            row_ptr = struct.unpack_from("<I", row_ptr_data, 0)[0]
+            if row_ptr < 0x02000000 or row_ptr > 0x0203FFFF:
+                terrain_grid.append([None] * min(width, map_width))
+                continue
+
             for x in range(min(width, map_width)):
-                terrain_addr = self.addrs.terrain_base + data_offset + (y * map_width + x)
-                terrain_data = self.read_memory(terrain_addr, 1)
+                terrain_data = self.read_memory(row_ptr + x, 1)
                 if len(terrain_data) >= 1:
-                    terrain_id = terrain_data[0]
-                    terrain_info = TERRAIN_TYPES.get(terrain_id, {"name": f"Unknown({terrain_id})", "def": 0, "avo": 0, "cost": 99, "visit": False})
-                    row.append({
-                        "x": x,
-                        "y": y,
-                        "id": terrain_id,
-                        "name": terrain_info["name"],
-                        "def": terrain_info["def"],
-                        "avo": terrain_info["avo"],
-                        "cost": terrain_info["cost"],
-                        "visit": terrain_info.get("visit", False),
-                    })
+                    row.append(self._format_terrain(x, y, terrain_data[0]))
                 else:
                     row.append(None)
             terrain_grid.append(row)

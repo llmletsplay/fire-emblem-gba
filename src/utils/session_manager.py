@@ -19,8 +19,8 @@ from pathlib import Path
 
 log = logging.getLogger(__name__)
 
-SESSIONS_FILE = "fe-client/public/chronicle/sessions.json"
-CHRONICLE_SCREENSHOTS_DIR = "fe-client/public/chronicle/screenshots"
+SESSIONS_FILE = "runtime/sessions/sessions.json"
+SESSION_SCREENSHOTS_DIR = "runtime/sessions/screenshots"
 ACTIVE_SCREENSHOTS = ["screenshot_0.png", "screenshot_1.png", "screenshot_2.png"]
 
 
@@ -61,7 +61,7 @@ class SessionManager:
         self.max_sessions = max_sessions
         self.max_screenshots = max_screenshots_per_session
         self.sessions_file = self.base_path / SESSIONS_FILE
-        self.screenshots_dir = self.base_path / CHRONICLE_SCREENSHOTS_DIR
+        self.screenshots_dir = self.base_path / SESSION_SCREENSHOTS_DIR
         self.current_session: Optional[SessionMetadata] = None
         self._sessions: List[SessionMetadata] = []
 
