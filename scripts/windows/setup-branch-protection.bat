@@ -34,10 +34,10 @@ if errorlevel 1 (
     echo Main branch protection configured
 )
 
-REM Protect develop branch
-echo Configuring develop branch protection...
+REM Protect development branch
+echo Configuring development branch protection...
 gh api ^
-  repos/%REPO%/branches/develop/protection ^
+  repos/%REPO%/branches/development/protection ^
   --method PUT ^
   --field "required_status_checks={\"strict\":true,\"contexts\":[]}" ^
   --field "enforce_admins=false" ^
@@ -47,9 +47,9 @@ gh api ^
   --field "allow_deletions=false"
 
 if errorlevel 1 (
-    echo Failed to configure develop branch protection
+    echo Failed to configure development branch protection
 ) else (
-    echo Develop branch protection configured
+    echo Development branch protection configured
 )
 
 echo.
@@ -57,7 +57,7 @@ echo Branch protection setup complete!
 echo.
 echo Branch rules configured:
 echo   main: Requires 2 reviews, dismisses stale reviews
-echo   develop: Requires 1 review
+echo   development: Requires 1 review
 echo.
 echo To modify these settings, visit:
 echo https://github.com/%REPO%/settings/branches
