@@ -45,7 +45,7 @@ from src.llm.prompts import (
 # Import memory and session managers
 from src.utils.memory_manager import MemoryManager, MemoryEntry
 from src.utils.session_manager import SessionManager
-from src.llm.client_setup import setup_llm_client, setup_vision_model
+from src.llm.client_setup import setup_llm_client, setup_vision_model, provider_request_extras
 from src.services.benchmark import Benchmark
 from src.llm.client_setup import DEFAULT_MODE, ONE_IMAGE_PER_PROMPT, REASONING_ENABLED, USES_DEFAULT_TEMPERATURE, REASONING_EFFORT, IMAGE_DETAIL, USES_MAX_COMPLETION_TOKENS, MAX_TOKENS, TEMPERATURE, MINIMAP_ENABLED, MINIMAP_2D, SYSTEM_PROMPT_UNSUPPORTED
 from src.game.feature_config import (
@@ -79,6 +79,17 @@ COORD_RE = re.compile(r'^([0-9]),([0-8])$')
 ANALYSIS_RE = re.compile(r"<game_analysis>([\s\S]*?)</game_analysis>", re.IGNORECASE)
 # Strip model-specific wrapper tokens (GLM <|begin_of_box|>, deepseek <|tool_call|>, etc.)
 _MODEL_TOKEN_RE = re.compile(r'<\|[^|]*\|>')
+_THINK_TAG_RE = re.compile(r'<think>[\s\S]*?</think>', re.IGNORECASE)
+_THINK_TAG_RE_ALT = re.compile(r'<thinking>[\s\S]*?</thinking>', re.IGNORECASE)
+
+def _clean_model_text(text: str) -> str:
+    if not text:
+        return ''
+    text = _THINK_TAG_RE.sub('', text)
+    text = _THINK_TAG_RE_ALT.sub('', text)
+    text = _MODEL_TOKEN_RE.sub('', text)
+    return text.strip()
+
 IS_LOCAL = DEFAULT_MODE == "LMSTUDIO" or DEFAULT_MODE == "OLLAMA"
 
 # Use configurable timeouts from config/environment
@@ -741,9 +752,10 @@ def summarize_and_reset(benchmark: Benchmark = None):
         kwargs["temperature"] = TEMPERATURE
 
     try:
+        kwargs.update(provider_request_extras())
         summary_resp = client.chat.completions.create(**kwargs)
         if summary_resp.choices and summary_resp.choices[0].message.content:
-            summary_text = summary_resp.choices[0].message.content.strip()
+            summary_text = _clean_model_text(summary_resp.choices[0].message.content or "")
             summary_output_tokens = count_tokens(summary_text)
         else:
             log.warning("LLM Summary: No choices or empty content.")
@@ -889,10 +901,11 @@ def llm_stream_action(state_data: dict, timeout: float = STREAM_TIMEOUT, benchma
             else:
                 log.info("Skipping reasoning_effort for ZAI adapter (not supported)")
 
+            kwargs.update(provider_request_extras())
             response = client.chat.completions.create(**kwargs)
             log.info(f"LLM request completed in {time.time() - request_start:.2f}s")
             choice = response.choices[0]
-            content = choice.message.content
+            content = _clean_model_text(choice.message.content or "")
 
             if content:
                 full_output = content.strip()
@@ -911,6 +924,7 @@ def llm_stream_action(state_data: dict, timeout: float = STREAM_TIMEOUT, benchma
             request_start = time.time()
             kwargs["stream"] = True
 
+            kwargs.update(provider_request_extras())
             response = client.chat.completions.create(**kwargs)
 
             iterator = iter(response)
@@ -1087,6 +1101,7 @@ def llm_stream_action(state_data: dict, timeout: float = STREAM_TIMEOUT, benchma
                 kwargs["messages"] = [chat_history[0], retry_user_msg]
                 kwargs["stream"] = False  # simplify retry
                 log.info("Retrying API call with emergency-trimmed context...")
+                kwargs.update(provider_request_extras())
                 response = client.chat.completions.create(**kwargs)
                 choice = response.choices[0]
                 if choice.message.content:

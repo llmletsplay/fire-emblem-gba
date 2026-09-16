@@ -130,3 +130,4 @@ tmp/
 *.pem
 *.p12
 *.pfx
+.minimax_api_key
