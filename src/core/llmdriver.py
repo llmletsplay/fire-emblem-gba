@@ -56,6 +56,8 @@ from src.game.feature_config import (
 )
 
 from src.game.command_parser import parse_command_from_llm_output, extract_command_text
+from src.game.command_parser import parse_move_id_line
+from src.game.legal_moves import build_legal_moves, resolve_move_id, legal_moves_for_prompt
 from src.game.command_executor import execute_with_validation, execute_command_sequence
 from src.game.command_validator import validate_command_sequence, get_validation_feedback
 from src.game.actions import ActionResult
@@ -140,6 +142,8 @@ MAX_INPUT_TOKENS = config.MAX_INPUT_TOKENS       # Token budget for compaction
 _last_action_sent = None
 _last_game_state = None
 _last_action_type = None  # For result capture: "SELECT", "MOVE", "ATTACK", etc.
+_pending_command_parse_error = None
+_current_legal_moves = []  # full catalog for MOVE: id → command  # Feed parse rejects back to the next LLM turn
 # Tracks tiles where actions failed (cursor pos → failure info)
 # Key: (x, y) tuple.  Value: {"count": int, "actions": [str], "last_cycle": int}
 _failed_tiles = {}
@@ -169,6 +173,8 @@ def _emergency_trim_payload(payload: dict):
     payload.pop("navigation", None)
     payload.pop("memory_thumbnails", None)
     payload.pop("movement_tiles", None)
+    # Keep legal_moves — model must see the catalog
+    # (intentionally not popped)
     payload.pop("attack_tiles", None)
     payload.pop("flash_indicators", None)
     payload.pop("minimap_description", None)
@@ -804,6 +810,7 @@ def llm_stream_action(state_data: dict, timeout: float = STREAM_TIMEOUT, benchma
         - needs_summary: Whether to summarize chat history
         - semantic_action: CommandSequence from new semantic command system (or None)
     """
+    global _pending_command_parse_error
     global response_count, tokens_used_session, chat_history, last_input_tokens
 
     # This function intelligently switches between streaming and non-streaming API calls.
@@ -1006,15 +1013,47 @@ def llm_stream_action(state_data: dict, timeout: float = STREAM_TIMEOUT, benchma
         if match:
             analysis_text = match.group(1).strip()
 
-        # NEW: Try semantic COMMAND format first
-        command_seq = parse_command_from_llm_output(full_output)
+        # Prefer deterministic MOVE: <id> over free-form COMMAND:/ACTION:
+        global _current_legal_moves, _pending_command_parse_error
+        move_id = parse_move_id_line(full_output)
+        if move_id:
+            chosen = resolve_move_id(move_id, _current_legal_moves)
+            if chosen is None:
+                # Fall back to commands embedded in state_data if present
+                cmd_map = state_data.get("_legal_move_commands") or {}
+                cmd = cmd_map.get(move_id)
+                if cmd:
+                    chosen = {"id": move_id, "command": cmd, "summary": cmd}
+            if chosen:
+                synthetic = f'COMMAND: {chosen["command"]}'
+                log.info(f"MOVE:{move_id} → {synthetic} ({chosen.get('summary','')})")
+                command_seq = parse_command_from_llm_output(synthetic)
+                if command_seq and not command_seq.is_empty:
+                    semantic_action = command_seq
+                    # Skip button ACTION path when a legal move resolved
+                    action = None
+                else:
+                    _pending_command_parse_error = (
+                        f"MOVE:{move_id} mapped to an unparsable command: {chosen.get('command')}"
+                    )
+                    command_seq = parse_command_from_llm_output(full_output)
+            else:
+                _pending_command_parse_error = (
+                    f"MOVE:{move_id} is not in legal_moves. Pick an id from the legal_moves list."
+                )
+                command_seq = parse_command_from_llm_output(full_output)
+        else:
+            # NEW: Try semantic COMMAND format first
+            command_seq = parse_command_from_llm_output(full_output)
         if command_seq and not command_seq.is_empty:
             log.info(f"Parsed semantic command sequence: {command_seq}")
             # We have a semantic command - will execute in the main loop with game_state
             # Store in a special variable for execution later
             semantic_action = command_seq
         else:
-            semantic_action = None
+            semantic_action = command_seq  # may be empty with reject_reason
+            if command_seq is not None and getattr(command_seq, "reject_reason", None):
+                _pending_command_parse_error = command_seq.reject_reason
 
         # Extract action JSON or fallback
         # First strip any leading/trailing quotes and whitespace
@@ -1159,6 +1198,14 @@ def llm_stream_action(state_data: dict, timeout: float = STREAM_TIMEOUT, benchma
     # Only log error if BOTH action AND semantic_action are None
     if action is None and (semantic_action is None or semantic_action.is_empty):
         log.error("No valid action extracted from LLM output.")
+        if semantic_action is not None and getattr(semantic_action, "reject_reason", None):
+            _pending_command_parse_error = semantic_action.reject_reason
+        elif not _pending_command_parse_error:
+            _pending_command_parse_error = (
+                "No valid COMMAND: or ACTION: found. Reply with one line like "
+                'COMMAND: SELECT unit="Lyn" MOVE to=[x,y] or COMMAND: A (dismiss). '
+                "Do not put raw L;R;U;D;A; chords after COMMAND:."
+            )
         # Check if the output was likely truncated
         if len(full_output) > 2000 or not full_output.rstrip().endswith('}'):
             log.warning("Output may have been truncated due to token limit. Consider shorter action sequences.")
@@ -1179,13 +1226,22 @@ def llm_stream_action(state_data: dict, timeout: float = STREAM_TIMEOUT, benchma
             log.debug(f"Full output was: {full_output[:500]}...")
             log.debug(f"Output end: ...{full_output[-200:] if len(full_output) > 200 else full_output}")
 
-    return action, analysis_text, needs_summary, semantic_action
 
+    # Deterministic mode: reject free-form ACTION button chords when a catalog exists
+    if _current_legal_moves and action and (semantic_action is None or semantic_action.is_empty):
+        log.warning(f"Rejecting free-form ACTION while legal_moves is active: {action!r}")
+        _pending_command_parse_error = (
+            "Do not output ACTION button chords. Pick one id from legal_moves and reply "
+            "with a single line: MOVE: mN"
+        )
+        action = None
+
+    return action, analysis_text, needs_summary, semantic_action
 
 
 async def run_auto_loop(sock, state: dict, broadcast_func, interval: float = 8.0, max_loops = math.inf, benchmark: Benchmark = None):
     """Main async loop: Get state, call LLM, send action, update/broadcast state."""
-    global action_count, tokens_used_session, start_time, chat_history, SCREENSHOT_PATH, MINIMAP_PATH, SAVED_SCREENSHOT_PATH, SAVED_MINIMAP_PATH, _last_action_sent, _last_game_state, _failed_tiles, _current_cycle_num, _dialogue_buffer, _unit_attempt_tracker
+    global action_count, tokens_used_session, start_time, chat_history, SCREENSHOT_PATH, MINIMAP_PATH, SAVED_SCREENSHOT_PATH, SAVED_MINIMAP_PATH, _last_action_sent, _last_game_state, _failed_tiles, _current_cycle_num, _dialogue_buffer, _unit_attempt_tracker, _pending_command_parse_error
 
     b64_mm = None
 
@@ -1193,6 +1249,7 @@ async def run_auto_loop(sock, state: dict, broadcast_func, interval: float = 8.0
     _last_action_sent = None
     _last_game_state = None
     _last_action_type = None
+    _pending_command_parse_error = None
     _failed_tiles = {}
     _unit_attempt_tracker = {}
     _dialogue_buffer = []
@@ -1393,6 +1450,11 @@ async def run_auto_loop(sock, state: dict, broadcast_func, interval: float = 8.0
         )
         llm_input_state["previous_action"] = screen_context["previous_action"]
         llm_input_state["screen_context"] = screen_context["screen_context"]
+        # Surface prior COMMAND: parse failures so the model can correct format
+        if _pending_command_parse_error:
+            llm_input_state["command_parse_error"] = _pending_command_parse_error
+            log.info(f"Injecting command_parse_error: {_pending_command_parse_error[:80]}...")
+            _pending_command_parse_error = None
         if config.CONTEXT_HINTS_ENABLED and screen_context["context_hints"]:
             llm_input_state["context_hints"] = screen_context["context_hints"]
         if screen_context.get("failed_tiles"):
@@ -1836,6 +1898,26 @@ async def run_auto_loop(sock, state: dict, broadcast_func, interval: float = 8.0
                 llm_input_state.pop("memory_thumbnails", None)
 
         # Call LLM for decision
+        
+        # Deterministic move catalog: model picks MOVE: mN; harness executes buttons.
+        global _current_legal_moves
+        try:
+            _current_legal_moves = build_legal_moves(llm_input_state)
+            llm_input_state["legal_moves"] = legal_moves_for_prompt(_current_legal_moves)
+            # Keep a private full map for resolution (not needed in prompt beyond id/summary)
+            llm_input_state["_legal_move_commands"] = {
+                m["id"]: m["command"] for m in _current_legal_moves
+            }
+            log.info(
+                f"legal_moves ({len(_current_legal_moves)}): "
+                + ", ".join(f'{m["id"]}={m["summary"]}' for m in _current_legal_moves[:8])
+                + ("..." if len(_current_legal_moves) > 8 else "")
+            )
+        except Exception as e:
+            log.warning(f"legal_moves build failed: {e}")
+            _current_legal_moves = []
+            llm_input_state["legal_moves"] = []
+
         action, game_analysis, needs_summary, semantic_action = await call_llm_with_timeout(llm_input_state, benchmark=benchmark)
 
         # NEW: Try semantic command execution first

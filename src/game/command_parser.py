@@ -75,6 +75,7 @@ class CommandSequence:
     """An ordered list of commands parsed from one LLM output."""
     commands: List[Command] = field(default_factory=list)
     raw_text: str = ""  # original text for logging
+    reject_reason: Optional[str] = None  # why parse produced no commands (fed back to LLM)
 
     @property
     def is_empty(self) -> bool:
@@ -281,6 +282,11 @@ def parse_command(text: str) -> CommandSequence:
     # REJECT RAW BUTTON SEQUENCES - Only accept semantic commands
     if is_raw_button_sequence(text):
         log.warning(f"Raw button sequence detected and rejected: '{text}'. Use COMMAND format instead.")
+        seq.reject_reason = (
+            f"Rejected raw button sequence after COMMAND: '{text}'. "
+            "Use semantic form, e.g. COMMAND: SELECT unit=\"Lyn\" MOVE to=[x,y] or COMMAND: A / COMMAND: B. "
+            "Do not put L;R;U;D;A; strings after COMMAND:."
+        )
         return seq
 
     segments = _split_by_keywords(text)
@@ -313,6 +319,37 @@ def parse_command_from_llm_output(llm_output: str) -> Optional[CommandSequence]:
     # If it's raw buttons, return empty sequence (will trigger retry with proper format)
     if is_raw_button_sequence(cmd_text):
         log.warning(f"Raw button sequence in LLM output rejected: '{cmd_text[:50]}...'")
-        return CommandSequence(raw_text=cmd_text)
+        return CommandSequence(
+            raw_text=cmd_text,
+            reject_reason=(
+                f"Rejected raw button sequence after COMMAND: '{cmd_text}'. "
+                "Use semantic COMMAND: SELECT/MOVE/ATTACK/WAIT/DISMISS/A/B — "
+                "not button chords like L;L;A; after COMMAND:."
+            ),
+        )
     
     return parse_command(cmd_text)
+
+
+
+def parse_move_id_line(text: str) -> Optional[str]:
+    """Extract MOVE: mN id from model output. Returns id or None."""
+    if not text:
+        return None
+    for raw in text.splitlines():
+        line = raw.strip()
+        while line[:1] in '#*`':
+            line = line.lstrip('#*` ').strip()
+        if not line.upper().startswith('MOVE:'):
+            continue
+        rest = line.split(':', 1)[1].strip().strip('`"\'')
+        token = rest.split()[0] if rest.split() else ''
+        token = token.strip(',.;')
+        low = token.lower()
+        if low.startswith('m') and low[1:].isdigit():
+            return low
+        if token.isdigit():
+            return f'm{token}'
+    return None
+
+

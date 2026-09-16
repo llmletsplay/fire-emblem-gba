@@ -71,6 +71,24 @@ If you see file slots or "New Game":
 - Select Continue or the active save file
 - Press A; to confirm selection
 
+
+## OUTPUT CONTRACT (HARD RULE — DETERMINISTIC MOVES)
+
+The game state includes `legal_moves`: a list of {id, kind, summary}.
+These are the ONLY legal actions this turn. The harness executes them as button presses.
+
+You MUST end every reply with exactly one line:
+MOVE: mN
+
+where mN is an id from `legal_moves` (example: MOVE: m0).
+
+Rules:
+- Pick the best id for the tactical goal. Do NOT invent ids.
+- Do NOT output ACTION: button chords (L;R;U;D;A;). The harness presses buttons for you.
+- Do NOT output free-form COMMAND: lines when `legal_moves` is present — use MOVE: mN only.
+- Brief reasoning above the MOVE line is fine. The last line must be MOVE: mN.
+- If `command_parse_error` is set, you violated this contract last turn — fix it.
+
 ## CONTROLS
 - U/D/L/R: Move the cursor on the map
 - A: Select/Confirm
@@ -83,7 +101,8 @@ If you see file slots or "New Game":
 You are playing a tactical combat game. **The whole point is to move your units toward enemies and attack them.**
 
 **Every cycle, ask yourself: "Am I moving closer to an enemy to attack?"**
-- If `attack_opportunities` is in game_state → FOLLOW IT. Move to the suggested tile and attack. This is pre-computed for you.
+- If `legal_moves` is present → pick a move_attack id (MOVE: mN). The harness executes it.
+- If `attack_opportunities` is in game_state and legal_moves is missing → FOLLOW IT.
 - If a unit is selected (blue squares visible) → move TOWARD the nearest enemy, get ADJACENT (1 tile away), press A; to confirm
 - After moving next to an enemy → select "Attack" from the action menu (press A;)
 - Do NOT wander randomly, press random buttons, or move away from enemies
@@ -138,7 +157,7 @@ Different weapons have different attack ranges:
 - If `attack_tiles` is present → IGNORE (deprecated). Use `attack_opportunities` instead for attack options.
 - If `failed_tiles` lists a tile you were planning to visit → pick a DIFFERENT destination. The tile is a dead end.
 
-## COMMAND FORMAT (PREFERRED)
+## COMMAND FORMAT (LEGACY — ONLY IF legal_moves IS MISSING)
 
 Use the COMMAND format for all actions. Examples:
 - `COMMAND: SELECT unit="Lyn"` - select a unit
@@ -146,6 +165,15 @@ Use the COMMAND format for all actions. Examples:
 - `COMMAND: DROP at=[5,5]` - drop a rescued unit (release them to act)
 - `COMMAND: A` - dismiss dialogue (shorthand)
 - `COMMAND: B` - cancel/go back (shorthand)
+- `COMMAND: DISMISS` - dismiss dialogue
+- `COMMAND: WAIT` - wait with selected unit
+- `COMMAND: END_TURN` - end player phase
+
+**HARD RULE:** After `COMMAND:` never write raw button chords (`L;L;A;`, `R;R;D;A;`, etc.).
+Those are rejected and waste a turn. If you must use buttons, use the separate legacy
+`ACTION: L;L;A;` line instead — but prefer semantic COMMAND.
+
+If `game_state.command_parse_error` is set, your previous COMMAND: was rejected — fix the format.
 
 The system handles button execution - focus on tactics, not buttons.
 
@@ -482,7 +510,7 @@ Flash indicator: `{{"estimated_map_pos": [8, 7], "warning": "SUSPECT: Tile [8,7]
 6. After EVERY action, observe what changed before acting again — ONE step per cycle
 7. If stuck on the same screen, try something DIFFERENT (B; to cancel, or move cursor elsewhere)
 
-## SEMANTIC COMMAND FORMAT (NEW - PREFERRED)
+## SEMANTIC COMMAND FORMAT (LEGACY — prefer MOVE: mN from legal_moves)
 
 Instead of calculating button presses yourself, output high-level tactical **COMMANDs**.
 The system will translate them into perfect button sequences using ground-truth memory data.
@@ -657,4 +685,4 @@ def create_enhanced_prompt_system(
 Controls: U/D/L/R=move cursor, A=select, B=back, Start=menu, Select=end turn
 
 Observe the screen and decide your action.
-ACTION: [buttons;separated;by;semicolons]"""
+MOVE: mN"""
