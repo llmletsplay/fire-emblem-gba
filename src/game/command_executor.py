@@ -187,13 +187,158 @@ def calculate_direction_to_target(cursor: Tuple[int, int], target: Tuple[int, in
         return "DOWN" if dy > 0 else "UP"
 
 
-def get_enemy_by_name(enemies: List[Dict], name: str) -> Optional[Dict]:
-    """Find enemy by name (case-insensitive partial match)."""
-    name_lower = name.lower()
+def _name_match_score(entity: Dict, name: str) -> int:
+    """Score how well an entity matches a target name/id. Higher is better."""
+    if not name:
+        return 0
+    needle = str(name).strip().lower()
+    ename = str(entity.get("name") or "").strip().lower()
+    eid = entity.get("id")
+    eid_s = str(eid).lower() if eid is not None else ""
+    # Exact name
+    if ename and ename == needle:
+        return 100
+    # Hex/id forms: "0x3e", "unit 0x3e", "62"
+    needle_hex = needle.replace("unit ", "").replace("unit_", "").strip()
+    if needle_hex.startswith("0x"):
+        try:
+            want = int(needle_hex, 16)
+            if eid is not None and int(eid) == want:
+                return 95
+            if ename.endswith(needle_hex) or needle_hex in ename:
+                return 90
+        except ValueError:
+            pass
+    else:
+        try:
+            want = int(needle_hex)
+            if eid is not None and int(eid) == want:
+                return 95
+        except ValueError:
+            pass
+    if eid_s and (eid_s == needle or eid_s == needle_hex):
+        return 92
+    # Prefer exact token containment over weak substring
+    if ename and needle == ename:
+        return 100
+    if ename and (ename.startswith(needle) or needle.startswith(ename)) and min(len(ename), len(needle)) >= 4:
+        return 70
+    # Weak substring — keep low so adjacency/cursor can override duplicates
+    if ename and needle in ename and len(needle) >= 4:
+        return 40
+    if ename and ename in needle and len(ename) >= 4:
+        return 35
+    return 0
+
+
+def get_enemy_by_name(
+    enemies: List[Dict],
+    name: str,
+    cursor: Optional[Tuple[int, int]] = None,
+) -> Optional[Dict]:
+    """Find enemy by exact/id match; break ties by proximity to cursor."""
+    if not enemies or not name:
+        return None
+    scored = []
     for e in enemies:
-        if name_lower in e.get("name", "").lower():
-            return e
-    return None
+        score = _name_match_score(e, name)
+        if score <= 0:
+            continue
+        ex, ey = int(e.get("x", 0) or 0), int(e.get("y", 0) or 0)
+        dist = 10**9
+        if cursor is not None:
+            dist = abs(ex - cursor[0]) + abs(ey - cursor[1])
+        scored.append((score, dist, e))
+    if not scored:
+        return None
+    scored.sort(key=lambda t: (-t[0], t[1]))
+    best = scored[0]
+    if cursor is not None and best[0] < 90:
+        adjacent = [t for t in scored if t[1] == 1]
+        if adjacent:
+            adjacent.sort(key=lambda t: (-t[0], t[1]))
+            return adjacent[0][2]
+    return best[2]
+
+
+def resolve_attack_target_tile(
+    game_state: Dict[str, Any],
+    target_name: Optional[str],
+    cursor: Tuple[int, int],
+):
+    """Prefer attack_opportunities at cursor, else adjacent name match, else raw xy."""
+    enemies = game_state.get("enemies", []) or []
+    opps = game_state.get("attack_opportunities", []) or []
+    cx, cy = cursor
+
+    def _opp_target_name(opp):
+        return str(opp.get("target") or opp.get("enemy") or opp.get("name") or "")
+
+    def _opp_enemy_at(opp):
+        ea = opp.get("enemy_at") or opp.get("enemy_pos") or opp.get("target_pos") or opp.get("at")
+        if isinstance(ea, (list, tuple)) and len(ea) >= 2:
+            return int(ea[0]), int(ea[1])
+        return None
+
+    def _opp_move_to(opp):
+        mt = opp.get("move_to") or opp.get("from") or opp.get("tile") or opp.get("move_tile")
+        if isinstance(mt, (list, tuple)) and len(mt) >= 2:
+            return int(mt[0]), int(mt[1])
+        return None
+
+    matching = []
+    for opp in opps:
+        mt = _opp_move_to(opp)
+        if mt != (cx, cy):
+            continue
+        if target_name:
+            if _name_match_score({"name": _opp_target_name(opp), "id": opp.get("target_id")}, target_name) <= 0:
+                ea = _opp_enemy_at(opp)
+                if ea is None:
+                    continue
+                hit = any(
+                    _name_match_score(e, target_name) > 0 and (int(e.get("x", -1)), int(e.get("y", -1))) == ea
+                    for e in enemies
+                )
+                if not hit:
+                    continue
+        ea = _opp_enemy_at(opp)
+        if ea:
+            matching.append((opp, ea))
+    if matching:
+        opp, ea = matching[0]
+        enemy = next((e for e in enemies if (int(e.get("x", -1)), int(e.get("y", -1))) == ea), None)
+        if enemy is None and target_name:
+            enemy = get_enemy_by_name(enemies, target_name, cursor=cursor)
+        return ea, "attack_opportunities", enemy
+
+    if target_name:
+        adjacent = []
+        for e in enemies:
+            if _name_match_score(e, target_name) <= 0:
+                continue
+            ex, ey = int(e.get("x", 0) or 0), int(e.get("y", 0) or 0)
+            if abs(ex - cx) + abs(ey - cy) == 1:
+                adjacent.append((e, (ex, ey)))
+        if adjacent:
+            adjacent.sort(key=lambda t: -_name_match_score(t[0], target_name))
+            e, tile = adjacent[0]
+            return tile, "adjacent_to_cursor", e
+        enemy = get_enemy_by_name(enemies, target_name, cursor=cursor)
+        if enemy:
+            tile = (int(enemy.get("x", 0) or 0), int(enemy.get("y", 0) or 0))
+            return tile, "raw", enemy
+
+    for opp in opps:
+        if _opp_move_to(opp) == (cx, cy):
+            ea = _opp_enemy_at(opp)
+            if ea:
+                return ea, "attack_opportunities", None
+    for e in enemies:
+        ex, ey = int(e.get("x", 0) or 0), int(e.get("y", 0) or 0)
+        if abs(ex - cx) + abs(ey - cy) == 1:
+            return (ex, ey), "adjacent_to_cursor", e
+    return None, "unresolved", None
 
 
 def execute_command_sequence(
@@ -334,14 +479,16 @@ def execute_command_sequence(
                     button_sequence.append("A")  # Select Attack from menu
                     
                     if target_name:
-                        enemy = get_enemy_by_name(enemies, target_name)
-                        if enemy:
-                            ex, ey = enemy.get("x", 0), enemy.get("y", 0)
+                        tile, src, enemy = resolve_attack_target_tile(game_state, target_name, cursor)
+                        if tile:
+                            ex, ey = tile
                             dir_btn = calculate_direction_to_target(cursor, (ex, ey))
                             button_sequence.append(BUTTONS.get(dir_btn, "A"))
                             button_sequence.append("A")  # Confirm target
                             cmd_desc = f"ATTACK {target_name}"
-                            log.info(f"ATTACK target: {target_name} at {enemy.get('x')},{enemy.get('y')}")
+                            log.info(
+                                f"ATTACK target: {target_name} from-cursor={cursor} to-tile={tile} source={src}"
+                            )
                         else:
                             cmd_desc = f"ATTACK {target_name} (target not found)"
                     else:

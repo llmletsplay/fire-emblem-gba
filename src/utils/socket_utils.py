@@ -107,3 +107,19 @@ def send_command(sock, cmd: str) -> str:
             raise RuntimeError(f"Timeout waiting for response to command '{cmd}'")
 
         return data.decode('utf-8').rstrip("\n")
+
+
+def reconnect_socket(old_sock=None, host="localhost", port=None, timeout=10):
+    """Close old socket (if any) and open a fresh connection to mGBA Lua."""
+    import socket as _socket
+    from src.core import config as _config
+    if port is None:
+        port = getattr(_config, "PORT", 8888)
+    if old_sock is not None:
+        try:
+            old_sock.close()
+        except Exception:
+            pass
+    sock = _socket.create_connection((host, port), timeout=2)
+    sock.settimeout(timeout)
+    return sock

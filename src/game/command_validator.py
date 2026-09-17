@@ -79,7 +79,21 @@ def validate_command_sequence(
             game_state_requirements=requirements,
         )
 
-    phase = game_state.get("phase", "unknown")
+    phase = game_state.get("phase") or "unknown"
+    # Memory often returns None/"player" mid-frame; coerce to player_phase when
+    # any map-play signal or living party is present.
+    if phase in (None, "", "unknown", "player", "Player", "PLAYER"):
+        if (
+            game_state.get("movement_tiles")
+            or game_state.get("cursor_on_player")
+            or game_state.get("unit_is_selected")
+            or game_state.get("selected_unit")
+            or game_state.get("attack_opportunities")
+            or game_state.get("party")
+        ):
+            phase = "player_phase"
+        else:
+            phase = "unknown"
     if phase != "player_phase":
         errors.append(f"Cannot execute commands during {phase}. Wait for player phase.")
 

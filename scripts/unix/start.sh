@@ -121,7 +121,7 @@ sleep 3
 # Check if LLM_PROVIDER is already configured in .env
 MODE="${LLM_PROVIDER:-}"
 case "$MODE" in
-  ""|OPENAI|ANTHROPIC|GEMINI|GROQ|TOGETHER|GROK|OLLAMA|LMSTUDIO|CUSTOM|ZAI)
+  ""|OPENAI|ANTHROPIC|GEMINI|GROQ|TOGETHER|GROK|OLLAMA|LMSTUDIO|CUSTOM|ZAI|MINIMAX)
     ;;
   *)
     echo -e "${YELLOW}Ignoring unsupported LLM_PROVIDER from .env: $MODE${NC}"

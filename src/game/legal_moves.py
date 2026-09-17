@@ -64,13 +64,33 @@ def build_legal_moves(state: dict, max_moves: int = 28) -> List[Dict[str, Any]]:
             }
         )
 
-    text_box = bool(state.get("text_box_visible") or state.get("input_locked"))
+    text_box = bool(state.get("text_box_visible"))
+    input_locked = bool(state.get("input_locked"))
+    in_dialogue = bool(state.get("in_dialogue"))
     in_menu = bool(state.get("in_menu"))
     screen = (state.get("screen_context") or "") + " " + (state.get("previous_action") or "")
     screen_l = screen.lower()
 
-    # Dialogue / locked input: only UI advances
-    if text_box or "dialogue" in screen_l or "text box" in screen_l:
+    # Map-play signals: never collapse to dialogue-only when these are present.
+    has_map_play = bool(
+        state.get("movement_tiles")
+        or state.get("attack_opportunities")
+        or state.get("unit_is_selected")
+        or state.get("selected_unit")
+        or state.get("cursor_on_player")
+    )
+
+    # Dialogue only when clearly in a text box / cutscene AND not mid map action.
+    # Match llmdriver story-dialogue rule: text_box + locked (or explicit in_dialogue).
+    dialogue_mode = (
+        not has_map_play
+        and (
+            in_dialogue
+            or (text_box and input_locked)
+            or (text_box and ("dialogue" in screen_l or "text box" in screen_l))
+        )
+    )
+    if dialogue_mode:
         add("dismiss", "DISMISS", "Dismiss dialogue / advance text")
         add("ui_a", "A", "Press A once")
         add("ui_b", "B", "Press B / cancel")

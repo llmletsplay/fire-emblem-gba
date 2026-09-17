@@ -810,7 +810,7 @@ def llm_stream_action(state_data: dict, timeout: float = STREAM_TIMEOUT, benchma
         - needs_summary: Whether to summarize chat history
         - semantic_action: CommandSequence from new semantic command system (or None)
     """
-    global _pending_command_parse_error
+    global _pending_command_parse_error, _current_legal_moves
     global response_count, tokens_used_session, chat_history, last_input_tokens
 
     # This function intelligently switches between streaming and non-streaming API calls.
@@ -999,6 +999,7 @@ def llm_stream_action(state_data: dict, timeout: float = STREAM_TIMEOUT, benchma
         output_tokens = count_tokens(full_output)
         tokens_used_session += call_input_tokens + output_tokens
         log.info(f"Used ~{output_tokens} output tokens; session total: {tokens_used_session}")
+        log.info("post-stream: history append + MOVE parse")
 
         user_hist_content = [text_segment] # Images are not saved in history
         chat_history.append({"role": "user", "content": user_hist_content})
@@ -1013,38 +1014,58 @@ def llm_stream_action(state_data: dict, timeout: float = STREAM_TIMEOUT, benchma
         if match:
             analysis_text = match.group(1).strip()
 
-        # Prefer deterministic MOVE: <id> over free-form COMMAND:/ACTION:
+        # Prefer MOVE: <id>; if that id is a weak UI filler but a real COMMAND:
+        # line exists, prefer the COMMAND (guards against stale dialogue catalogs).
         global _current_legal_moves, _pending_command_parse_error
         move_id = parse_move_id_line(full_output)
+        direct_command_seq = parse_command_from_llm_output(full_output)
+        weak_ui = {"A", "B", "DISMISS", "DISMISS_DIALOGUE"}
         if move_id:
             chosen = resolve_move_id(move_id, _current_legal_moves)
             if chosen is None:
-                # Fall back to commands embedded in state_data if present
                 cmd_map = state_data.get("_legal_move_commands") or {}
                 cmd = cmd_map.get(move_id)
                 if cmd:
                     chosen = {"id": move_id, "command": cmd, "summary": cmd}
             if chosen:
-                synthetic = f'COMMAND: {chosen["command"]}'
-                log.info(f"MOVE:{move_id} → {synthetic} ({chosen.get('summary','')})")
-                command_seq = parse_command_from_llm_output(synthetic)
-                if command_seq and not command_seq.is_empty:
+                cmd_text = (chosen.get("command") or "").strip()
+                kind = (chosen.get("kind") or "")
+                is_weak = (
+                    kind in ("ui_a", "ui_b", "dismiss")
+                    or cmd_text.upper() in weak_ui
+                )
+                if (
+                    is_weak
+                    and direct_command_seq is not None
+                    and not direct_command_seq.is_empty
+                    and any(c.type in ("SELECT", "MOVE", "ATTACK", "WAIT", "END_TURN") for c in direct_command_seq.commands)
+                ):
+                    log.info(
+                        f"MOVE:{move_id} was weak UI ({cmd_text}); preferring COMMAND line {direct_command_seq}"
+                    )
+                    command_seq = direct_command_seq
                     semantic_action = command_seq
-                    # Skip button ACTION path when a legal move resolved
                     action = None
                 else:
-                    _pending_command_parse_error = (
-                        f"MOVE:{move_id} mapped to an unparsable command: {chosen.get('command')}"
-                    )
-                    command_seq = parse_command_from_llm_output(full_output)
+                    synthetic = f'COMMAND: {cmd_text}'
+                    log.info(f"MOVE:{move_id} → {synthetic} ({chosen.get('summary','')})")
+                    command_seq = parse_command_from_llm_output(synthetic)
+                    if command_seq and not command_seq.is_empty:
+                        semantic_action = command_seq
+                        action = None
+                    else:
+                        _pending_command_parse_error = (
+                            f"MOVE:{move_id} mapped to an unparsable command: {cmd_text}"
+                        )
+                        command_seq = direct_command_seq
             else:
                 _pending_command_parse_error = (
                     f"MOVE:{move_id} is not in legal_moves. Pick an id from the legal_moves list."
                 )
-                command_seq = parse_command_from_llm_output(full_output)
+                command_seq = direct_command_seq
         else:
             # NEW: Try semantic COMMAND format first
-            command_seq = parse_command_from_llm_output(full_output)
+            command_seq = direct_command_seq
         if command_seq and not command_seq.is_empty:
             log.info(f"Parsed semantic command sequence: {command_seq}")
             # We have a semantic command - will execute in the main loop with game_state
@@ -1309,7 +1330,20 @@ async def run_auto_loop(sock, state: dict, broadcast_func, interval: float = 8.0
             screenshots = []
             for i in range(config.SCREENSHOT_CAPTURE_COUNT):
                 screenshot_name = f"screenshot_{i}.png"
-                capture(sock, screenshot_name)
+                try:
+                    capture(sock, screenshot_name)
+                except Exception as cap_err:
+                    log.warning(f"CAP {i} failed: {cap_err}")
+                    if i == 0:
+                        try:
+                            from src.utils.socket_utils import reconnect_socket
+                            sock = reconnect_socket(sock)
+                            capture(sock, screenshot_name)
+                            log.info("CAP succeeded after mid-cycle reconnect.")
+                        except Exception:
+                            raise cap_err
+                    else:
+                        raise
                 screenshots.append(screenshot_name)
                 if i < config.SCREENSHOT_CAPTURE_COUNT - 1:
                     t.sleep(2.0)
@@ -1420,9 +1454,15 @@ async def run_auto_loop(sock, state: dict, broadcast_func, interval: float = 8.0
              log.warning("Socket timeout getting state from mGBA (game may be in transition). Retrying next cycle.")
              await asyncio.sleep(2)
              continue
-        except socket.error as se:
-             log.error(f"Socket error getting state from mGBA: {se}. Stopping loop.")
-             break
+        except (socket.error, TimeoutError, OSError) as se:
+             log.error(f"Socket error getting state from mGBA: {se}. Reconnecting and continuing...")
+             try:
+                 from src.utils.socket_utils import reconnect_socket
+                 sock = reconnect_socket(sock)
+             except Exception as re:
+                 log.error(f"Reconnect failed: {re}")
+             await asyncio.sleep(2)
+             continue
         except Exception as e:
             log.error(f"Error getting state from mGBA: {e}", exc_info=True)
             await asyncio.sleep(max(0, interval - (time.time() - loop_start_time)))
@@ -1925,7 +1965,21 @@ async def run_auto_loop(sock, state: dict, broadcast_func, interval: float = 8.0
         action_description = None
         if semantic_action and not semantic_action.is_empty:
             log.info(f"Executing semantic command: {semantic_action}")
-            buttons, desc, success = execute_with_validation(semantic_action, current_mGBA_state)
+            try:
+                # Prefer llm_input_state map-play signals so phase inference sees player_phase
+                exec_state = dict(current_mGBA_state or {})
+                for k in (
+                    "movement_tiles", "attack_opportunities", "unit_is_selected",
+                    "selected_unit", "cursor_on_player", "party", "enemies", "phase",
+                ):
+                    if k in llm_input_state and llm_input_state[k] is not None:
+                        exec_state[k] = llm_input_state[k]
+                if not exec_state.get("phase") or exec_state.get("phase") in ("unknown", "player", "Player"):
+                    exec_state["phase"] = "player_phase"
+                buttons, desc, success = execute_with_validation(semantic_action, exec_state)
+            except Exception as e:
+                log.error(f"Semantic command execution crashed: {e}", exc_info=True)
+                buttons, desc, success = "", f"CRASH: {e}", False
             if success:
                 action_to_send = buttons
                 action_description = desc
@@ -1990,9 +2044,24 @@ async def run_auto_loop(sock, state: dict, broadcast_func, interval: float = 8.0
                 # Track action and state for next cycle's inference
                 _last_action_sent = action_to_send
                 _last_game_state = copy.deepcopy(current_mGBA_state)
-            except socket.error as se:
-                log.error(f"Socket error sending action '{action_to_send}': {se}. Stopping loop.")
-                break
+
+                # Let mGBA finish movement/combat anims before next CAP/state read.
+                settle = float(os.environ.get("FE_ACTION_SETTLE_SEC", "2.5"))
+                desc_l = (action_description or "").lower()
+                if "attack" in desc_l or (action_to_send and action_to_send.count("A") >= 3):
+                    settle = max(settle, float(os.environ.get("FE_ATTACK_SETTLE_SEC", "6.0")))
+                if settle > 0:
+                    log.info(f"Settling {settle:.1f}s for mGBA animations...")
+                    await asyncio.sleep(settle)
+            except (socket.error, TimeoutError, OSError) as se:
+                log.error(f"Socket error sending action '{action_to_send}': {se}. Reconnecting and continuing...")
+                try:
+                    from src.utils.socket_utils import reconnect_socket
+                    sock = reconnect_socket(sock)
+                except Exception as re:
+                    log.error(f"Reconnect failed: {re}")
+                await asyncio.sleep(2)
+                continue
             except Exception as e:
                 log.error(f"Unexpected error sending action '{action_to_send}': {e}", exc_info=True)
 

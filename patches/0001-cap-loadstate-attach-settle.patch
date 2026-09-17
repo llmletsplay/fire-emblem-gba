@@ -1,0 +1,635 @@
+diff --git a/src/core/config.py b/src/core/config.py
+index aebefd8..a669312 100644
+--- a/src/core/config.py
++++ b/src/core/config.py
+@@ -30,6 +30,11 @@ def _env_float(name: str, default: float) -> float:
+ 
+ PORT = _env_int('FE_MGBA_PORT', 8888)
+ LOAD_SAVESTATE = _env_bool('FE_LOAD_SAVESTATE', False)
++ACTION_SETTLE_SEC = _env_float('FE_ACTION_SETTLE_SEC', 1.5)  # Wait after sending action before next CAP
++ATTACH_EXISTING = _env_bool('FE_ATTACH_EXISTING', True)  # Prefer attach when port already listening
++QUIT_MGBA_ON_EXIT = _env_bool('FE_QUIT_MGBA_ON_EXIT', False)  # Don't quit attached mGBA by default
++CAP_TIMEOUT = _env_float('FE_CAP_TIMEOUT', 5.0)
++CAP_RETRIES = _env_int('FE_CAP_RETRIES', 2)
+ LUA_SCRIPT = os.path.join(PROJECT_ROOT, 'lua/socketserver.lua')
+ benchmark_path = None   # default: no external benchmark
+ 
+diff --git a/src/core/llmdriver.py b/src/core/llmdriver.py
+index 1c6d886..489c383 100644
+--- a/src/core/llmdriver.py
++++ b/src/core/llmdriver.py
+@@ -1237,7 +1237,25 @@ async def run_auto_loop(sock, state: dict, broadcast_func, interval: float = 8.0
+             screenshots = []
+             for i in range(config.SCREENSHOT_CAPTURE_COUNT):
+                 screenshot_name = f"screenshot_{i}.png"
+-                capture(sock, screenshot_name)
++                try:
++                    capture(sock, screenshot_name)
++                except Exception as cap_err:
++                    log.warning(f"CAP {i} failed: {cap_err}")
++                    # One reconnect attempt mid-cycle, then re-raise to outer soft-continue
++                    if i == 0:
++                        try:
++                            from src.utils.socket_utils import reconnect_socket
++                            try:
++                                sock.close()
++                            except Exception:
++                                pass
++                            sock = reconnect_socket(port=getattr(config, "PORT", None))
++                            capture(sock, screenshot_name)
++                            log.info("CAP succeeded after mid-cycle reconnect.")
++                        except Exception:
++                            raise cap_err
++                    else:
++                        raise
+                 screenshots.append(screenshot_name)
+                 if i < config.SCREENSHOT_CAPTURE_COUNT - 1:
+                     t.sleep(2.0)
+@@ -1344,15 +1362,30 @@ async def run_auto_loop(sock, state: dict, broadcast_func, interval: float = 8.0
+                 menu_sel = current_mGBA_state.get("menu_selection", -1)
+                 menu_lbl = current_mGBA_state.get("menu_selection_label", "")
+                 log.info(f"Game State: Ch{chapter} Turn{turn} Phase:{phase} Cursor:{cursor} On:{cursor_on} Menu:{menu_in}({menu_sel}{menu_lbl})")
+-        except socket.timeout:
+-             log.warning("Socket timeout getting state from mGBA (game may be in transition). Retrying next cycle.")
++        except (socket.timeout, TimeoutError) as te:
++             log.warning(f"Socket timeout getting state from mGBA ({te}). Soft-continue next cycle.")
+              await asyncio.sleep(2)
+              continue
+         except socket.error as se:
+-             log.error(f"Socket error getting state from mGBA: {se}. Stopping loop.")
+-             break
++             log.error(f"Socket error getting state from mGBA: {se}. Attempting reconnect (not killing loop).")
++             try:
++                 from src.utils.socket_utils import reconnect_socket
++                 new_sock = reconnect_socket(port=getattr(config, "PORT", None))
++                 # Mutate caller's socket object in place if possible; else rebind local ref.
++                 try:
++                     sock.close()
++                 except Exception:
++                     pass
++                 # Replace the nonlocal sock used by run_auto_loop
++                 sock = new_sock
++                 log.info("mGBA socket reconnected after CAP/state error.")
++             except Exception as re_err:
++                 log.error(f"Reconnect failed: {re_err}. Will retry next cycle.")
++             await asyncio.sleep(2)
++             continue
+         except Exception as e:
+             log.error(f"Error getting state from mGBA: {e}", exc_info=True)
++            # Soft-continue — never sys.exit / break on CAP failures
+             await asyncio.sleep(max(0, interval - (time.time() - loop_start_time)))
+             continue
+ 
+@@ -1890,12 +1923,27 @@ async def run_auto_loop(sock, state: dict, broadcast_func, interval: float = 8.0
+                 sock.sendall((action_to_send + "\n").encode("utf-8"))
+                 log.info(f"Action '{action_to_send}' sent to mGBA.")
+ 
++                # Let animations/menus settle before the next CAP (prevents mid-transition hangs).
++                settle = float(getattr(config, "ACTION_SETTLE_SEC", 1.5) or 0)
++                if settle > 0:
++                    log.info(f"Post-action settle {settle:.2f}s (FE_ACTION_SETTLE_SEC)")
++                    await asyncio.sleep(settle)
++
+                 # Track action and state for next cycle's inference
+                 _last_action_sent = action_to_send
+                 _last_game_state = copy.deepcopy(current_mGBA_state)
+             except socket.error as se:
+-                log.error(f"Socket error sending action '{action_to_send}': {se}. Stopping loop.")
+-                break
++                log.error(f"Socket error sending action '{action_to_send}': {se}. Attempting reconnect.")
++                try:
++                    from src.utils.socket_utils import reconnect_socket
++                    try:
++                        sock.close()
++                    except Exception:
++                        pass
++                    sock = reconnect_socket(port=getattr(config, "PORT", None))
++                    log.info("mGBA socket reconnected after action send error.")
++                except Exception as re_err:
++                    log.error(f"Reconnect after action send failed: {re_err}. Continuing loop.")
+             except Exception as e:
+                 log.error(f"Unexpected error sending action '{action_to_send}': {e}", exc_info=True)
+ 
+diff --git a/src/core/run.py b/src/core/run.py
+index 9748fdc..a0e9d8b 100644
+--- a/src/core/run.py
++++ b/src/core/run.py
+@@ -50,29 +50,68 @@ state = {
+     "chronicle_entries": []  # Add chronicle entries to state
+ }
+ 
+-def start_mgba_with_scripting(rom_path=None, port=config.PORT):
+-    # Handle both direct execution and module import
+-    script_dir = os.path.dirname(os.path.abspath(__file__)) if '__file__' in globals() else os.getcwd()
+-    rom_path = rom_path or config.ROM_PATH
+-    if not rom_path:
+-        log.error("ROM_FILE is not configured.")
+-        log.info(f"Set ROM_FILE in .env to FE7.gba or FE8.gba and place it in '{config.ROMS_FOLDER}'.")
+-        sys.exit(1)
+-    if not os.path.exists(rom_path):
+-        log.error(f"ROM file not found: {rom_path}")
+-        log.info(f"Please place your ROM file in the '{config.ROMS_FOLDER}' folder")
+-        sys.exit(1)
+-    if not os.path.exists(config.MGBA_EXE):
+-         log.error(f"mGBA executable not found: {config.MGBA_EXE}")
+-         sys.exit(1)
+-    if not os.path.exists(config.LUA_SCRIPT):
+-        log.error(f"Lua script not found: {config.LUA_SCRIPT}")
++def _port_is_listening(port: int, host: str = "127.0.0.1") -> bool:
++    """Return True if something accepts TCP connections on host:port."""
++    try:
++        with socket.create_connection((host, port), timeout=0.4):
++            return True
++    except OSError:
++        return False
++
++
++def _connect_mgba_socket(port: int, retries: int = 5, delay: float = 1.0):
++    """Connect to the Lua socket server with a finite timeout (never leave timeout=None)."""
++    last_err = None
++    for attempt in range(retries):
++        try:
++            sock = socket.create_connection(("127.0.0.1", port), timeout=2)
++            # Explicit timeout — setblocking(True) alone sets timeout=None and can hang CAP forever.
++            sock.settimeout(2.0)
++            log.info(f"Connected to mGBA scripting server on port {port}")
++            return sock
++        except (ConnectionRefusedError, socket.timeout, OSError) as e:
++            last_err = e
++            log.warning(f"mGBA socket connect attempt {attempt+1}/{retries} failed: {e}")
++            time.sleep(delay)
++    raise RuntimeError(f"Failed to connect to mGBA at 127.0.0.1:{port}: {last_err}")
++
++
++def _maybe_loadstate(sock) -> None:
++    """LOADSTATE only when explicitly enabled. Skipping avoids wedging Lua on attach."""
++    if not getattr(config, "LOAD_SAVESTATE", False):
++        log.info("Skipping LOADSTATE on attach/start (FE_LOAD_SAVESTATE is false).")
++        return
++    log.info("Loading save state slot 0 (FE_LOAD_SAVESTATE=true)...")
++    try:
++        resp = send_command(sock, "LOADSTATE 0")
++        log.info(f"Save state load result: {resp}")
++    except Exception as e:
++        log.warning(f"Failed to load save state 0 (may not exist / timed out): {e}")
++        # Flush any partial response so CAP is not poisoned.
++        try:
++            from src.utils.socket_utils import _flush_socket
++            _flush_socket(sock)
++        except Exception:
++            pass
++
++
++def _start_mgba_process(rom_path: str):
++    """Start mGBA with the Lua script. On Darwin prefer `open -a mGBA` when no binary path."""
++    if sys.platform == "darwin" and (not config.MGBA_EXE or not os.path.exists(config.MGBA_EXE or "")):
++        # Detached GUI launch — we do not own the process handle.
++        cmd = ["open", "-a", "mGBA", "--args", "--script", config.LUA_SCRIPT, rom_path]
++        log.info(f"Starting mGBA via open: {' '.join(cmd)}")
++        subprocess.Popen(cmd)
++        time.sleep(3)
++        return None  # attached later; do not terminate on exit
++
++    if not config.MGBA_EXE or not os.path.exists(config.MGBA_EXE):
++        log.error(f"mGBA executable not found: {config.MGBA_EXE}")
+         sys.exit(1)
+ 
+-    cmd = [config.MGBA_EXE, '--script', config.LUA_SCRIPT, rom_path]
++    cmd = [config.MGBA_EXE, "--script", config.LUA_SCRIPT, rom_path]
+     log.info(f"Starting mGBA: {' '.join(cmd)}")
+     try:
+-        # Redirect stdout to DEVNULL, capture stderr
+         proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+     except FileNotFoundError:
+         log.error(f"Failed to start mGBA. Ensure '{config.MGBA_EXE}' is correct and executable.")
+@@ -81,65 +120,59 @@ def start_mgba_with_scripting(rom_path=None, port=config.PORT):
+         log.error(f"Error starting mGBA: {e}", exc_info=True)
+         sys.exit(1)
+ 
+-    # Wait a bit for mGBA and Lua script to initialize the socket server
+-    time.sleep(3) # Might need adjustment based on system speed
+-
+-    # Check if mGBA exited prematurely
++    time.sleep(3)
+     if proc.poll() is not None:
+-        stderr_output = proc.stderr.read() # Read captured stderr
++        stderr_output = proc.stderr.read() if proc.stderr else ""
+         log.error(f"mGBA process terminated unexpectedly shortly after start. Exit code: {proc.returncode}")
+         if stderr_output:
+             log.error(f"mGBA stderr:\n{stderr_output.strip()}")
+-        else:
+-            log.error("mGBA stderr is empty.")
+         sys.exit(1)
++    return proc
+ 
+-    # Attempt to connect to the mGBA socket
+-    sock = None
+-    retries = 5
+-    for attempt in range(retries):
++
++def start_mgba_with_scripting(rom_path=None, port=config.PORT):
++    # Handle both direct execution and module import
++    rom_path = rom_path or config.ROM_PATH
++    if not rom_path:
++        log.error("ROM_FILE is not configured.")
++        log.info(f"Set ROM_FILE in .env to FE7.gba or FE8.gba and place it in '{config.ROMS_FOLDER}'.")
++        sys.exit(1)
++    if not os.path.exists(rom_path):
++        log.error(f"ROM file not found: {rom_path}")
++        log.info(f"Please place your ROM file in the '{config.ROMS_FOLDER}' folder")
++        sys.exit(1)
++    if not os.path.exists(config.LUA_SCRIPT):
++        log.error(f"Lua script not found: {config.LUA_SCRIPT}")
++        sys.exit(1)
++
++    proc = None
++    attach_existing = getattr(config, "ATTACH_EXISTING", True) and _port_is_listening(port)
++
++    if attach_existing:
++        log.info(f"Port {port} already listening — attaching to existing mGBA (skip spawn).")
+         try:
+-            # create_connection handles both IPv4/IPv6
+-            sock = socket.create_connection(('localhost', port), timeout=2)
+-            # Keep blocking for simplicity in current setup (console/llmdriver manage reads)
+-            sock.setblocking(True)
+-            log.info(f"Connected to mGBA scripting server on port {port}")
+-            # Give mGBA a moment to fully initialize
+-            time.sleep(0.5)
+-            log.info("Loading save state slot 0...")
+-            try:
+-                resp = send_command(sock, "LOADSTATE 0")
+-                log.info(f"Save state load result: {resp}")
+-            except Exception as e:
+-                log.warning(f"Failed to load save state 0 (may not exist yet): {e}")
+-            return proc, sock # Success
+-        except ConnectionRefusedError:
+-            log.warning(f"Connection to mGBA refused (attempt {attempt+1}/{retries}). Is mGBA running and script loaded?")
+-            if proc.poll() is not None: # Check again if mGBA died while waiting
+-                 stderr_output = proc.stderr.read()
+-                 log.error(f"mGBA process terminated while attempting to connect. Exit code: {proc.returncode}")
+-                 if stderr_output:
+-                     log.error(f"mGBA stderr:\n{stderr_output.strip()}")
+-                 sys.exit(1)
+-            time.sleep(1.5) # Wait longer between retries
+-        except socket.timeout:
+-            log.warning(f"Connection to mGBA timed out (attempt {attempt+1}/{retries}).")
+-            time.sleep(1)
++            sock = _connect_mgba_socket(port, retries=3, delay=0.5)
+         except Exception as e:
+-            # Catch other potential socket errors
+-            log.error(f"Unexpected error connecting to mGBA socket: {e}", exc_info=True)
+-            if proc and proc.poll() is None:
+-                proc.terminate()
+-                proc.wait()
++            log.error(f"Attach to existing mGBA failed: {e}")
+             sys.exit(1)
++        # Prefer skip LOADSTATE when attaching to a live session (avoids CAP hang).
++        _maybe_loadstate(sock)
++        return proc, sock
++
++    # Nothing listening — start mGBA, then connect.
++    proc = _start_mgba_process(rom_path)
++    try:
++        sock = _connect_mgba_socket(port, retries=8, delay=1.5)
++    except Exception as e:
++        log.error(f"Failed to connect to mGBA scripting server at localhost:{port}: {e}")
++        if proc and proc.poll() is None:
++            log.info("Terminating mGBA process due to connection failure.")
++            proc.terminate()
++            proc.wait()
++        sys.exit(1)
+ 
+-    # If loop finishes without returning, connection failed
+-    log.error(f"Failed to connect to mGBA scripting server at localhost:{port} after {retries} attempts.")
+-    if proc and proc.poll() is None:
+-        log.info("Terminating mGBA process due to connection failure.")
+-        proc.terminate()
+-        proc.wait()
+-    sys.exit(1)
++    _maybe_loadstate(sock)
++    return proc, sock
+ 
+ 
+ # helper functions to reduce redundant code
+@@ -148,23 +181,28 @@ def start_mgba_with_scripting(rom_path=None, port=config.PORT):
+ async def shutdown_socket(sock, is_async):
+   if sock:
+       try:
+-          log.info("Sending quit command to mGBA script...")
+-          try:
+-              sock.sendall(b"quit\n")
+-              
+-              if is_async:
+-                await asyncio.sleep(0.2)
+-              else:
+-                time.sleep(0.2) 
+-              
+-          except OSError as send_err:
+-              log.warning(f"Could not send quit command to mGBA (socket likely closed): {send_err}")
++          should_quit = getattr(config, "QUIT_MGBA_ON_EXIT", False)
++          if should_quit:
++              log.info("Sending quit command to mGBA script...")
++              try:
++                  sock.sendall(b"quit\n")
++                  if is_async:
++                    await asyncio.sleep(0.2)
++                  else:
++                    time.sleep(0.2)
++              except OSError as send_err:
++                  log.warning(f"Could not send quit command to mGBA (socket likely closed): {send_err}")
++          else:
++              log.info("Leaving mGBA running (FE_QUIT_MGBA_ON_EXIT=false); closing client socket only.")
+           sock.close()
+           log.info("mGBA socket closed.")
+       except Exception as e:
+           log.error(f"Error closing mGBA socket: {e}")
+           
+ async def terminate_process(proc, is_async):
++  if proc is None:
++      log.info("No owned mGBA process to terminate (attached / open -a).")
++      return
+   if proc and proc.poll() is None:
+       log.info("Terminating mGBA process...")
+       proc.terminate()
+@@ -298,7 +336,7 @@ if __name__ == '__main__':
+ 
+     parser = argparse.ArgumentParser(description="Run the pyAIAgent.")
+     parser.add_argument('--auto', action='store_true', help='Enable auto mode, starting the LLM driver.')
+-    parser.add_argument('--load_savestate', action='store_true', help='(Deprecated: save state 0 is always loaded on start.)')
++    parser.add_argument('--load_savestate', action='store_true', help='Load save state slot 0 on start/attach (sets FE_LOAD_SAVESTATE).')
+     parser.add_argument('--benchmark', type=str, metavar='PATH', help='Path to a benchmark file to run.')
+     parser.add_argument('--max_loops', type=max_loops_type, metavar='N', help='Maximum number of loops for the LLM driver to run.')
+ 
+@@ -307,6 +345,8 @@ if __name__ == '__main__':
+     # Set global config based on parsed arguments
+     if args.benchmark:
+         config.benchmark_path = args.benchmark
++    if args.load_savestate:
++        config.LOAD_SAVESTATE = True
+ 
+     if args.auto:
+         try:
+diff --git a/src/utils/file_utils.py b/src/utils/file_utils.py
+index 4cda164..d68ae9b 100644
+--- a/src/utils/file_utils.py
++++ b/src/utils/file_utils.py
+@@ -7,12 +7,28 @@ from tqdm import tqdm
+ log = logging.getLogger(__name__)
+ 
+ def find_mgba():
+-    # os.name == "nt" for window
+-    exe_name = "mgba.exe" if os.name == "nt" else "mgba"
+-    path = shutil.which(exe_name)
+-    if path:
+-        log.debug("Found mGBA executable at %s", path)
+-        return path
++    # os.name == "nt" for window; Darwin app bundle uses "mGBA"
++    if os.name == "nt":
++        candidates = ["mgba.exe"]
++    elif sys.platform == "darwin":
++        candidates = ["mGBA", "mgba-qt", "mgba"]
++    else:
++        candidates = ["mgba-qt", "mgba", "mGBA"]
++
++    for exe_name in candidates:
++        path = shutil.which(exe_name)
++        if path:
++            log.debug("Found mGBA executable at %s", path)
++            return path
++
++    # Darwin app bundle direct path
++    if sys.platform == "darwin":
++        app_bin = "/Applications/mGBA.app/Contents/MacOS/mGBA"
++        if os.path.exists(app_bin):
++            log.debug("Found mGBA app bundle at %s", app_bin)
++            return app_bin
++
++    exe_name = candidates[0]
+ 
+     # fallback for search common install locations
+     search_paths = []
+@@ -37,10 +53,12 @@ def find_mgba():
+             os.path.expanduser("~/.local/bin"),
+         ]
+ 
++    names = candidates if isinstance(candidates, (list, tuple)) else [exe_name]
+     for folder in search_paths:
+-        full_path = os.path.join(folder, exe_name)
+-        if os.path.exists(full_path):
+-            return full_path
++        for name in names:
++            full_path = os.path.join(folder, name)
++            if os.path.exists(full_path):
++                return full_path
+     
+     print_dot_interval = 2000  # status dot every 2000 dirs
+     log.info("Searching for mGBA executable under home directory...")
+@@ -60,8 +78,10 @@ def find_mgba():
+ 
+     for root in tqdm(dirs, desc="Scanning directories"):
+         try:
+-            if exe_name in os.listdir(root):
+-                return os.path.join(root, exe_name)
++            listing = os.listdir(root)
++            for name in names:
++                if name in listing:
++                    return os.path.join(root, name)
+         except (PermissionError, FileNotFoundError):
+             continue
+     log.warning("mGBA executable not found in PATH or common locations")
+diff --git a/src/utils/image_utils.py b/src/utils/image_utils.py
+index 762f1c6..165cd1f 100644
+--- a/src/utils/image_utils.py
++++ b/src/utils/image_utils.py
+@@ -88,15 +88,21 @@ def to_numpy(screenshot: Any):
+     raise ValueError(f"Unsupported screenshot type: {type(screenshot)}")
+ 
+ 
+-def capture(sock, filename: str, timeout: float = 3.0, retries: int = 2, retry_delay: float = 0.2) -> str:
++def capture(sock, filename: str, timeout: float = 5.0, retries: int = 2, retry_delay: float = 0.2) -> str:
+     """Capture current emulator screen via socket 'CAP' and save as PNG.
+ 
+     Protocol: server sends 4‑byte big‑endian length followed by ARGB32 pixels.
+     Resolution is 240x160 for GBA; infer from payload length when possible.
++
++    Always uses a finite socket timeout so a wedged Lua/LOADSTATE cannot hang
++    the backend forever. Raises the last error after retries (caller should
++    soft-continue the auto loop, not sys.exit).
+     """
+     # Avoid importing numpy here; use pure Python/PIL to keep LLM mode lean
+-    from src.utils.socket_utils import _flush_socket
++    from src.utils.socket_utils import _flush_socket, _socket_lock, SOCKET_TIMEOUT
+     import os as _os
++    import socket as _socket
++    import time as _t
+ 
+     # Allow environment overrides for tuning without code changes
+     try:
+@@ -112,44 +118,58 @@ def capture(sock, filename: str, timeout: float = 3.0, retries: int = 2, retry_d
+     except Exception:
+         pass
+ 
+-    _flush_socket(sock)
+-    prev_timeout = sock.gettimeout()
++    # Never allow non-positive / None-like timeouts (would block forever)
++    if not timeout or timeout <= 0:
++        timeout = 5.0
++
++    prev_timeout = None
++    try:
++        prev_timeout = sock.gettimeout()
++    except Exception:
++        prev_timeout = SOCKET_TIMEOUT
++
+     tries = 0
+     last_err = None
+     while tries <= max(0, retries):
+       try:
+-        sock.settimeout(timeout)
+-        sock.sendall(b"CAP\n")
+-
+-        # Read exactly 4 bytes for length, or detect error line
+-        header = bytearray()
+-        while len(header) < 4:
+-            chunk = sock.recv(4 - len(header))
+-            if not chunk:
+-                raise RuntimeError("Socket closed before CAP length header")
+-            header.extend(chunk)
+-
+-        # If server returned ASCII error (e.g., 'ERR '), handle gracefully
+-        if header.startswith(b"ERR"):
+-            # Read remainder of the line
+-            rest = bytearray()
+-            while True:
+-                chunk = sock.recv(4096)
+-                if not chunk or b"\n" in chunk:
+-                    break
+-                rest.extend(chunk)
+-            msg = (header + rest).decode("utf-8", errors="ignore").strip()
+-            raise RuntimeError(f"CAP failed: {msg}")
+-
+-        size = struct.unpack(">I", bytes(header))[0]
+-        payload = bytearray()
+-        while len(payload) < size:
+-            chunk = sock.recv(min(65536, size - len(payload)))
+-            if not chunk:
+-                raise RuntimeError("Socket closed during CAP payload")
+-            payload.extend(chunk)
+-
+-        # Determine dimensions (default to GBA native resolution)
++        with _socket_lock:
++            _flush_socket(sock)
++            sock.settimeout(timeout)
++            sock.sendall(b"CAP\n")
++
++            # Read exactly 4 bytes for length, or detect error line
++            header = bytearray()
++            while len(header) < 4:
++                chunk = sock.recv(4 - len(header))
++                if not chunk:
++                    raise RuntimeError("Socket closed before CAP length header")
++                header.extend(chunk)
++
++            # If server returned ASCII error (e.g., 'ERR '), handle gracefully
++            if header.startswith(b"ERR"):
++                # Read remainder of the line
++                rest = bytearray()
++                while True:
++                    chunk = sock.recv(4096)
++                    if not chunk or b"\n" in chunk:
++                        if chunk:
++                            rest.extend(chunk)
++                        break
++                    rest.extend(chunk)
++                msg = (header + rest).decode("utf-8", errors="ignore").strip()
++                raise RuntimeError(f"CAP failed: {msg}")
++
++            size = struct.unpack(">I", bytes(header))[0]
++            if size <= 0 or size > 16_000_000:
++                raise RuntimeError(f"CAP invalid payload size: {size}")
++            payload = bytearray()
++            while len(payload) < size:
++                chunk = sock.recv(min(65536, size - len(payload)))
++                if not chunk:
++                    raise RuntimeError("Socket closed during CAP payload")
++                payload.extend(chunk)
++
++        # Determine dimensions (default to GBA native resolution) — outside lock
+         width, height = 240, 160
+         pixels = size // 4
+         if pixels == 240 * 160:
+@@ -181,30 +201,32 @@ def capture(sock, filename: str, timeout: float = 3.0, retries: int = 2, retry_d
+         img.putdata(rgba)
+         img.save(filename)
+         return filename
+-      except TimeoutError as e:
++      except (_socket.timeout, TimeoutError) as e:
+         last_err = e
+         log.warning("CAP timeout (try %d/%d). Retrying...", tries + 1, max(1, retries + 1))
+-        # drain and wait a bit before retry
+-        _flush_socket(sock)
+-        time_sleep = retry_delay if retry_delay and retry_delay > 0 else 0
+-        if time_sleep:
+-            import time as _t
+-            _t.sleep(time_sleep)
++        try:
++            _flush_socket(sock)
++        except Exception:
++            pass
++        if retry_delay and retry_delay > 0:
++            _t.sleep(retry_delay)
+         tries += 1
+         continue
+       except Exception as e:
+         last_err = e
+         # For non-timeout errors, only retry once
+         log.warning("CAP error (try %d/%d): %s", tries + 1, max(1, retries + 1), e)
+-        _flush_socket(sock)
+-        import time as _t
++        try:
++            _flush_socket(sock)
++        except Exception:
++            pass
+         _t.sleep(retry_delay)
+         tries += 1
+         continue
+       finally:
+-        # Restore previous timeout behavior
++        # Restore previous timeout behavior (never None)
+         try:
+-            sock.settimeout(prev_timeout)
++            sock.settimeout(prev_timeout if prev_timeout is not None else SOCKET_TIMEOUT)
+         except Exception:
+             pass
+     # If all retries failed, raise the last error
+diff --git a/src/utils/socket_utils.py b/src/utils/socket_utils.py
+index b40de1a..e0c60e9 100644
+--- a/src/utils/socket_utils.py
++++ b/src/utils/socket_utils.py
+@@ -107,3 +107,26 @@ def send_command(sock, cmd: str) -> str:
+             raise RuntimeError(f"Timeout waiting for response to command '{cmd}'")
+ 
+         return data.decode('utf-8').rstrip("\n")
++
++
++def reconnect_socket(port: int = None, host: str = "127.0.0.1", timeout: float = 2.0):
++    """Open a fresh connection to the mGBA Lua socket server.
++
++    Caller must discard the old socket. Used when CAP/commands time out or the
++    stream is desynchronized after a failed LOADSTATE.
++    """
++    import os
++    if port is None:
++        try:
++            port = int(os.getenv("FE_MGBA_PORT", "8888"))
++        except Exception:
++            port = 8888
++    log.warning(f"Reconnecting mGBA socket to {host}:{port} ...")
++    sock = socket_module.create_connection((host, port), timeout=timeout)
++    sock.settimeout(SOCKET_TIMEOUT)
++    try:
++        _flush_socket(sock)
++    except Exception:
++        pass
++    log.info(f"Reconnected to mGBA scripting server on port {port}")
++    return sock

@@ -338,9 +338,10 @@ def parse_move_id_line(text: str) -> Optional[str]:
         return None
     for raw in text.splitlines():
         line = raw.strip()
-        while line[:1] in '#*`':
+        # NOTE: ``'' in '#*`'` is True in Python — must guard with ``line``.
+        while line and line[:1] in '#*`':
             line = line.lstrip('#*` ').strip()
-        if not line.upper().startswith('MOVE:'):
+        if not line or not line.upper().startswith('MOVE:'):
             continue
         rest = line.split(':', 1)[1].strip().strip('`"\'')
         token = rest.split()[0] if rest.split() else ''

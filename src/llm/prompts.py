@@ -74,7 +74,7 @@ If you see file slots or "New Game":
 
 ## OUTPUT CONTRACT (HARD RULE — DETERMINISTIC MOVES)
 
-The game state includes `legal_moves`: a list of {id, kind, summary}.
+The game state includes `legal_moves`: a list of {{{{id, kind, summary}}}}.
 These are the ONLY legal actions this turn. The harness executes them as button presses.
 
 You MUST end every reply with exactly one line:
