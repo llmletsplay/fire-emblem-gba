@@ -110,8 +110,13 @@ def send_command(sock, cmd: str) -> str:
 
 
 def reconnect_socket(old_sock=None, host="localhost", port=None, timeout=10):
-    """Close old socket (if any) and open a fresh connection to mGBA Lua."""
+    """Close old socket (if any) and open a fresh connection to mGBA Lua.
+
+    Waits for the listen port, then probes with a tiny READRANGE so we do not
+    hand back a half-dead accept that dies on the next CAP.
+    """
     import socket as _socket
+    import time as _time
     from src.core import config as _config
     if port is None:
         port = getattr(_config, "PORT", 8888)
@@ -120,6 +125,39 @@ def reconnect_socket(old_sock=None, host="localhost", port=None, timeout=10):
             old_sock.close()
         except Exception:
             pass
-    sock = _socket.create_connection((host, port), timeout=2)
-    sock.settimeout(timeout)
-    return sock
+
+    last_err = None
+    deadline = _time.time() + max(8.0, float(timeout))
+    while _time.time() < deadline:
+        try:
+            sock = _socket.create_connection((host, port), timeout=2)
+            sock.settimeout(timeout)
+            # Probe: 1-byte read at a safe WRAM address. If Lua is wedged,
+            # this fails fast and we retry instead of failing mid-CAP.
+            try:
+                _flush_socket(sock)
+                sock.sendall(b"READRANGE 0x0202BD08 1\n")
+                hdr = sock.recv(4)
+                if len(hdr) < 4:
+                    raise RuntimeError("probe: short header")
+                size = int.from_bytes(hdr, "big")
+                got = 0
+                while got < size:
+                    chunk = sock.recv(min(4096, size - got))
+                    if not chunk:
+                        raise RuntimeError("probe: closed mid-body")
+                    got += len(chunk)
+                return sock
+            except Exception as probe_err:
+                last_err = probe_err
+                try:
+                    sock.close()
+                except Exception:
+                    pass
+                _time.sleep(0.4)
+                continue
+        except Exception as e:
+            last_err = e
+            _time.sleep(0.35)
+            continue
+    raise RuntimeError(f"reconnect_socket failed after wait/probe: {last_err}")

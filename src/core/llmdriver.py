@@ -2048,11 +2048,20 @@ async def run_auto_loop(sock, state: dict, broadcast_func, interval: float = 8.0
                 # Let mGBA finish movement/combat anims before next CAP/state read.
                 settle = float(os.environ.get("FE_ACTION_SETTLE_SEC", "2.5"))
                 desc_l = (action_description or "").lower()
-                if "attack" in desc_l or (action_to_send and action_to_send.count("A") >= 3):
+                # Only stretch settle for real attacks — MOVE+WAIT button A spam is not combat.
+                if "attack" in desc_l:
                     settle = max(settle, float(os.environ.get("FE_ATTACK_SETTLE_SEC", "6.0")))
                 if settle > 0:
                     log.info(f"Settling {settle:.1f}s for mGBA animations...")
                     await asyncio.sleep(settle)
+                # Combat/anim often wedges the Lua TCP socket even after settle.
+                # Always reconnect before the next CAP/memory cycle.
+                try:
+                    from src.utils.socket_utils import reconnect_socket
+                    sock = reconnect_socket(sock)
+                    log.info("Post-action socket reconnect OK.")
+                except Exception as re:
+                    log.warning(f"Post-action reconnect failed (will retry next CAP): {re}")
             except (socket.error, TimeoutError, OSError) as se:
                 log.error(f"Socket error sending action '{action_to_send}': {se}. Reconnecting and continuing...")
                 try:
