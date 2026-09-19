@@ -1,0 +1,13 @@
+[Unit]
+Description=FE GBA — full RTMP streaming stack
+Documentation=https://github.com/llmletsplay/fire-emblem-gba
+Requires=fe-romfetch.service
+After=fe-romfetch.service
+# fe-backend and fe-ffmpeg are Wants= (not Requires=) so the stream can
+# still come up if either downstream service flaps. Watch journalctl if it
+# stops on its own.
+Wants=fe-mgba.service fe-backend.service fe-ffmpeg.service
+After=fe-mgba.service fe-backend.service fe-ffmpeg.service
+
+[Install]
+WantedBy=multi-user.target

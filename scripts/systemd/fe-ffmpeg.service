@@ -1,0 +1,27 @@
+[Unit]
+Description=FE GBA — ffmpeg RTMP encoder (Twitch / YouTube / Kick)
+Documentation=https://github.com/llmletsplay/fire-emblem-gba
+After=fe-mgba.service fe-romfetch.service
+Wants=fe-mgba.service fe-romfetch.service
+
+[Service]
+Type=simple
+User=fe
+WorkingDirectory=/opt/fe-gba
+EnvironmentFile=/opt/fe-gba/.env
+ExecStart=/opt/fe-gba/scripts/stream/ffmpeg-stream.sh
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=15
+
+# libx264 -preset veryfast at 1080p30 wants ~1.5 cores on modern x86_64.
+# Cap at 2 cores so a runaway ffmpeg never starves the emulator.
+CPUQuota=200%
+# libx264 + filter graph needs ~300MB RSS; cap at 1G as a safety valve.
+MemoryMax=1G
+
+StandardOutput=append:/var/log/fe-gba/ffmpeg.log
+StandardError=append:/var/log/fe-gba/ffmpeg.log
+
+[Install]
+WantedBy=fe-stream.target
