@@ -263,9 +263,20 @@ Each tick:
 |---|---|
 | `idle` → `live` | (optional) TEST message — only if `HEALTHCHECK_TEST_ALERT=on` |
 | `live` → `offline` | silent record — just marks the start of the outage |
-| `offline` past `HEALTHCHECK_OFFLINE_THRESHOLD` | 🔴 **DOWN** with service diagnostic |
-| `offline` past `HEALTHCHECK_ALERT_COOLDOWN` (still offline) | ⚠️ **STILL OFFLINE** reminder every N seconds |
-| `offline` → `live` | ✅ **BACK** with duration + viewer count |
+| `offline` past `HEALTHCHECK_OFFLINE_THRESHOLD` | 🔴 **DOWN** with service diagnostic + screenshot |
+| `offline` past `HEALTHCHECK_ALERT_COOLDOWN` (still offline) | ⚠️ **STILL OFFLINE** reminder every N seconds (text only) |
+| `offline` → `live` | ✅ **BACK** with duration + viewer count + screenshot |
+
+**Screenshots**: the agent already writes `screenshots/latest.png` on every
+LLM cycle. The healthcheck attaches it to DOWN and BACK alerts via Discord's
+multipart webhook upload (8 MB cap, GBA PNGs are typically 10-40 KB, plenty
+of room). STILL OFFLINE reminders skip the attachment — same frame, no new
+info. If `screenshots/latest.png` is missing (e.g. the backend died too), the
+alert falls back to text-only and notes that in the healthcheck log.
+
+Each DOWN alert also archives a copy to `HEALTHCHECK_SNAPSHOT_DIR`
+(default `/var/log/fe-gba/snapshots/`) named `down-<epoch>.png`, so you have
+a history of what the AI was doing each time something broke.
 
 Debounce is the point: a 5-second Twitch API blip or a supervisor-restart
 should never wake you up. The first DOWN alert only fires after 2 minutes
@@ -341,6 +352,11 @@ sudo systemctl start fe-healthcheck.service
 
 # Inspect the state machine
 cat /var/lib/fe-gba/healthcheck.state
+
+# Browse the snapshot archive (PNG of what the AI was doing at each DOWN alert)
+sudo ls -lt /var/log/fe-gba/snapshots/ | head -20
+# Copy the latest one to your local machine to view
+sudo scp fe@<vultr-host>:/var/log/fe-gba/snapshots/down-$(date +%s).png ./last-down.png
 
 # Force-reset the state (e.g. after fixing a long outage)
 sudo -u fe bash -c 'echo "last_state=idle" > /var/lib/fe-gba/healthcheck.state'

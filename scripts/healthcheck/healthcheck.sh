@@ -37,6 +37,8 @@ TOKEN_CACHE="${HEALTHCHECK_TOKEN_CACHE:-/var/lib/fe-gba/twitch-token.json}"
 OFFLINE_THRESHOLD="${HEALTHCHECK_OFFLINE_THRESHOLD:-120}"
 ALERT_COOLDOWN="${HEALTHCHECK_ALERT_COOLDOWN:-600}"
 TEST_ALERT="${HEALTHCHECK_TEST_ALERT:-off}"
+SCREENSHOT_PATH="${HEALTHCHECK_SCREENSHOT_PATH:-/opt/fe-gba/screenshots/latest.png}"
+SNAPSHOT_DIR="${HEALTHCHECK_SNAPSHOT_DIR:-/var/log/fe-gba/snapshots}"
 
 mkdir -p "$(dirname "$STATE_FILE")" "$(dirname "$TOKEN_CACHE")"
 NOW=$(date +%s)
@@ -113,6 +115,43 @@ discord_post() {
         echo "[healthcheck] Discord post failed" >&2
 }
 
+# discord_post_with_image  - same as discord_post, but attaches a single PNG
+# (Discord webhook multipart form upload). Falls back to text-only post if the
+# image is missing or empty. 8MB upload limit per Discord webhook.
+discord_post_with_image() {
+    local content="$1" image_path="$2"
+
+    if [[ ! -s "$image_path" ]]; then
+        echo "[healthcheck] no screenshot at $image_path; posting text only" >&2
+        discord_post "$content"
+        return
+    fi
+
+    # Discord expects the JSON body under the field name "payload_json" when
+    # uploading alongside a file.
+    local payload
+    payload=$(jq -nc --arg c "$content" '{content: $c}')
+
+    if curl -fsS -X POST \
+        -F "file=@${image_path}" \
+        -F "payload_json=${payload}" \
+        "$DISCORD_WEBHOOK_URL" >/dev/null 2>&1; then
+        return 0
+    fi
+
+    echo "[healthcheck] Discord post with image failed; falling back to text" >&2
+    discord_post "$content"
+}
+
+# snapshot_archive - copy the live screenshot into a date-stamped history file
+# so we keep a record of what the AI was doing when the alert fired. Best-effort.
+snapshot_archive() {
+    local src="$SCREENSHOT_PATH" tag="$1"
+    [[ -s "$src" ]] || return 0
+    mkdir -p "$SNAPSHOT_DIR" 2>/dev/null || return 0
+    cp -f "$src" "$SNAPSHOT_DIR/${tag}-${NOW}.png" 2>/dev/null || true
+}
+
 # ---------------------------------------------------------------------------
 #  "Should we expect to be live right now?" — only alert if the stream is
 #  supposed to be running. If fe-stream.target is inactive, we're intentionally
@@ -163,12 +202,13 @@ if [[ "$is_live" -gt 0 ]]; then
     if [[ "$S_LAST_STATE" == "offline" ]]; then
         # Recovery
         duration_offline=$((NOW - S_LAST_CHANGE))
-        discord_post "✅ **$TWITCH_CHANNEL_LOGIN stream is BACK** after ${duration_offline}s offline. Viewers: $viewer_count. Title: $title"
+        discord_post_with_image "✅ **$TWITCH_CHANNEL_LOGIN stream is BACK** after ${duration_offline}s offline. Viewers: $viewer_count. Title: $title" "$SCREENSHOT_PATH"
+        snapshot_archive "back"
         write_state "live" "$NOW" "$S_LAST_ALERT"
     elif [[ "$S_LAST_STATE" != "live" ]]; then
         # First time going live (e.g. fresh boot, or recovered from idle)
         if [[ "$TEST_ALERT" == "on" ]]; then
-            discord_post "✅ **$TWITCH_CHANNEL_LOGIN stream is LIVE** (healthcheck initialised). Viewers: $viewer_count. Title: $title"
+            discord_post_with_image "✅ **$TWITCH_CHANNEL_LOGIN stream is LIVE** (healthcheck initialised). Viewers: $viewer_count. Title: $title" "$SCREENSHOT_PATH"
         fi
         write_state "live" "$NOW" "$S_LAST_ALERT"
     else
@@ -191,12 +231,15 @@ offline_duration=$((NOW - S_LAST_CHANGE))
 # First DOWN alert when threshold is crossed.
 if [[ $offline_duration -ge $OFFLINE_THRESHOLD && $S_LAST_ALERT -lt $S_LAST_CHANGE ]]; then
     diag=$(systemctl is-active fe-mgba fe-backend fe-ffmpeg 2>&1 | tr '\n' ' ')
-    discord_post "🔴 **$TWITCH_CHANNEL_LOGIN stream is DOWN** — ${offline_duration}s offline. Services: \`$diag\`. Check \`/var/log/fe-gba/supervisor.log\`."
+    discord_post_with_image "🔴 **$TWITCH_CHANNEL_LOGIN stream is DOWN** — ${offline_duration}s offline. Services: \`$diag\`. Check \`/var/log/fe-gba/supervisor.log\`." "$SCREENSHOT_PATH"
+    snapshot_archive "down"
     write_state "offline" "$S_LAST_CHANGE" "$NOW"
     exit 0
 fi
 
 # Escalation: still offline past cooldown, send a reminder.
+# Skip the screenshot here — repeats are just noise and we'd be re-attaching
+# the same frame.
 time_since_alert=$((NOW - S_LAST_ALERT))
 if [[ $time_since_alert -ge $ALERT_COOLDOWN ]]; then
     diag=$(systemctl is-active fe-mgba fe-backend fe-ffmpeg 2>&1 | tr '\n' ' ')
