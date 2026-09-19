@@ -131,3 +131,7 @@ tmp/
 *.p12
 *.pfx
 .minimax_api_key
+
+# Local phantasy runtime + config (managed services, postgres data, agent overrides)
+.phantasy/
+config/
