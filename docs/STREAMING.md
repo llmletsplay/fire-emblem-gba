@@ -134,6 +134,9 @@ sudo systemctl stop fe-stream.target
 
 # Status of every component
 systemctl status fe-romfetch fe-mgba fe-backend fe-ffmpeg fe-stream.target
+
+# Just the supervisor's restart decisions
+sudo tail -F /var/log/fe-gba/supervisor.log
 ```
 
 ## Smoke-test the pipeline WITHOUT going live
@@ -166,6 +169,74 @@ If a 30-second sample of `/tmp/test-stream.mp4` looks right, you're good.
 | `STREAM_FPS` | 30 vs 60. GBA is 59.7 fps native; 60 is fine but 30 halves encode cost. | `.env` |
 | `STREAM_AUDIO_RATE` | AAC bitrate. 128k is overkill for GBA chiptune; 96k is fine. | `.env` |
 | GOP (`-g` in ffmpeg) | Currently fixed to `STREAM_FPS` (1-second GOP). Faster reconnects on viewer side. | ffmpeg-stream.sh |
+| `STREAM_TUNE` | x264 `-tune`. `animation` (default, best for game art) or `zerolatency` (disables lookahead). | `.env` |
+| `STREAM_LOW_LATENCY` | `on` flips to `-bf 0 -flush_packets 1 -tune zerolatency` for ~2-3s RTMP latency. | `.env` |
+
+## Low-latency mode
+
+Set `STREAM_LOW_LATENCY=on` in `.env` when you want chat to react to the AI's
+in-game moves within a couple of seconds. Three things change:
+
+| Flag | Default | Low-latency | Effect |
+|---|---|---|---|
+| `-bf` | 2 | 0 | Removes B-frame reordering delay (~40ms at 60fps) |
+| `-flush_packets` | (default) | `1` | Forces ffmpeg to flush the muxer after each packet instead of batching |
+| `-tune` | `animation` | `zerolatency` | Disables lookahead, motion estimation skips for low-latency modes |
+
+Trade-off: ~10-15% worse compression at the same bitrate. If you start seeing
+Twitch capping you at 6000 kbps, lower `STREAM_BITRATE` to 4500k.
+
+> **True sub-2-second latency** requires Twitch Enhanced Broadcasting (LL-HLS
+> over WebSocket) which is a completely different ingest protocol. RTMP with
+> these settings is the practical floor for an ffmpeg-only pipeline.
+
+## Supervisor — auto-restart on RTMP drop
+
+The systemd unit `fe-ffmpeg.service` no longer runs ffmpeg directly. It runs
+`scripts/stream/supervisor-stream.sh`, a thin wrapper that:
+
+- Restarts ffmpeg on any non-zero exit (network hiccup, Twitch ingest failover,
+  brief server restart, etc.) with exponential backoff capped at `STREAM_BACKOFF_MAX`.
+- Tracks "stable runtime" — only runs lasting less than `STREAM_STABLE_RUNTIME`
+  (default 60s) increment a rapid-failure counter.
+- After `STREAM_MAX_RAPID_FAILS` consecutive short runs (default 5), the
+  supervisor tails the last 30 lines of `ffmpeg.log` to its own log, then exits
+  non-zero. systemd's `Restart=on-failure` then schedules another full restart
+  after `RestartSec`, so the stream recovers automatically once the operator
+  fixes whatever's wrong (bad `RTMP_URL`, expired `STREAM_KEY`, etc.).
+- Forwards SIGTERM from systemd to ffmpeg so a clean `systemctl stop` ends
+  the ffmpeg child instead of orphaning it.
+
+Watch the supervisor's decisions:
+
+```bash
+sudo tail -F /var/log/fe-gba/supervisor.log
+```
+
+A healthy run looks like:
+
+```
+[supervisor 2026-09-19T12:00:00-04:00] starting ffmpeg (attempt 1, rapid_fails=0)
+[supervisor 2026-09-19T14:23:11-04:00] ffmpeg exited rc=1 after 8191s
+[supervisor 2026-09-19T14:23:11-04:00]   ↳ was stable; resetting rapid_fails=0
+[supervisor 2026-09-19T14:23:11-04:00]   ↳ backing off 5s before restart
+[supervisor 2026-09-19T14:23:16-04:00] starting ffmpeg (attempt 2, rapid_fails=0)
+```
+
+A bad-config loop looks like:
+
+```
+[supervisor 2026-09-19T14:23:11-04:00] starting ffmpeg (attempt 1, rapid_fails=0)
+[supervisor 2026-09-19T14:23:11-04:00] ffmpeg exited rc=1 after 2s
+[supervisor 2026-09-19T14:23:11-04:00]   ↳ short run (2 < 60); rapid_fails=1/5
+[supervisor 2026-09-19T14:23:11-04:00]   ↳ backing off 10s before restart
+... (5x) ...
+[supervisor 2026-09-19T14:23:11-04:00] FATAL — 5 rapid failures in a row; likely config error
+[supervisor 2026-09-19T14:23:11-04:00] FATAL — supervisor exiting non-zero; systemd Restart=on-failure will pick up
+```
+
+After seeing the FATAL line, check `ffmpeg.log` for the actual reason, fix
+`.env`, then `systemctl reset-failed fe-ffmpeg && systemctl start fe-stream.target`.
 
 ## Troubleshooting
 
@@ -190,18 +261,27 @@ If a 30-second sample of `/tmp/test-stream.mp4` looks right, you're good.
 **CPU pinned at 100%:**
 - `CPUQuota=200%` on the ffmpeg unit caps it. If you're regularly hitting that, your box is undersized for the chosen preset. Move to `vhf-4c-8gb` or drop to 720p.
 
+**Stream keeps dropping and reconnecting every few minutes:**
+- Likely a Twitch ingest issue or upstream network blip. The supervisor will keep restarting, so the stream stays up — but check `supervisor.log` for restart frequency.
+- If restarts are every ~5-10s, the box can't keep up — drop `STREAM_PRESET` to `superfast` or `STREAM_RESOLUTION` to `1280x720`.
+- If restarts are every few hours, that's normal Twitch behavior and the supervisor is doing its job.
+
+**Supervisor FATAL'd — 5 rapid failures:**
+- See the section above. Read `/var/log/fe-gba/ffmpeg.log` (last 30 lines were also captured in `supervisor.log`), fix the root cause in `.env`, then `systemctl reset-failed fe-ffmpeg && systemctl start fe-stream.target`.
+
 ## Files added by this setup
 
 ```
 lua/stream_wrapper.lua                 # mGBA entry point — dofile()s socketserver.lua
 scripts/stream/create-fifos.sh         # one-shot FIFO maker (systemd oneshot)
-scripts/stream/ffmpeg-stream.sh        # the ffmpeg invocation
+scripts/stream/ffmpeg-stream.sh        # the ffmpeg invocation (called by supervisor)
+scripts/stream/supervisor-stream.sh    # wraps ffmpeg with restart + backoff + circuit breaker
 scripts/stream/start-stream.sh         # manual stack launcher (no systemd)
 scripts/stream/install-systemd.sh      # copies units into /etc/systemd/system/
 scripts/systemd/fe-romfetch.service    # one-shot: FIFOs + log dir
 scripts/systemd/fe-mgba.service        # mGBA + Lua wrapper
 scripts/systemd/fe-backend.service     # Python orchestrator
-scripts/systemd/fe-ffmpeg.service      # ffmpeg RTMP push
+scripts/systemd/fe-ffmpeg.service      # supervisor-stream.sh (not raw ffmpeg)
 scripts/systemd/fe-stream.target       # rolls the four services up into one start/stop
 docs/STREAMING.md                      # this file
 .env.example                           # extended with STREAM_* + RTMP_* keys

@@ -34,6 +34,27 @@ RESOLUTION="${STREAM_RESOLUTION:-1920x1080}"
 FPS="${STREAM_FPS:-60}"
 AUDIO_BITRATE="${STREAM_AUDIO_RATE:-128k}"
 
+# Encoder personality.
+#   STREAM_TUNE         - x264 -tune value. animation (default, best for game
+#                         content) or zerolatency (sub-frame lookahead off,
+#                         slightly worse compression).
+#   STREAM_LOW_LATENCY  - "on" adds -bf 0 + -flush_packets 1 for the lowest
+#                         RTMP latency (~2-3s on Twitch). "off" (default)
+#                         uses -bf 2 which gets better compression at the
+#                         cost of one extra frame of latency (~3-4s).
+LOW_LATENCY="${STREAM_LOW_LATENCY:-off}"
+TUNE="${STREAM_TUNE:-animation}"
+
+if [[ "$LOW_LATENCY" == "on" ]]; then
+    BFRAMES=0
+    LATENCY_FLAGS="-flush_packets 1"
+    # zerolatency tune overrides animation; both can't be active at once.
+    TUNE="zerolatency"
+else
+    BFRAMES=2
+    LATENCY_FLAGS=""
+fi
+
 # ---------------------------------------------------------------------------
 #  Wait up to ~30s for the video FIFO to exist (mGBA may still be loading the
 #  ROM). Without this we race mGBA and ffmpeg fails immediately.
@@ -79,8 +100,9 @@ exec ffmpeg -hide_banner -loglevel info \
     -i "$AUDIO_FIFO" \
     -filter_complex "[0:v]scale=${GAME_W}:${OUT_H}:flags=lanczos,pad=${OUT_W}:${OUT_H}:${PAD_X}:0:black,fps=${FPS}[v];[1:a]aresample=44100[a]" \
     -map "[v]" -map "[a]" \
-    -c:v libx264 -preset "$PRESET" -tune animation \
+    -c:v libx264 -preset "$PRESET" -tune "$TUNE" \
     -b:v "$BITRATE" -maxrate "$BITRATE" -bufsize "$(awk -v b="$BITRATE" 'BEGIN{printf "%dk", 2*b}')" \
-    -g "$FPS" -bf 2 -pix_fmt yuv420p \
+    -g "$FPS" -bf "$BFRAMES" -pix_fmt yuv420p \
+    $LATENCY_FLAGS \
     -c:a aac -b:a "$AUDIO_BITRATE" \
     -f flv "${RTMP_URL%/}/${STREAM_KEY}"

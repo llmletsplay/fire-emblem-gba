@@ -9,10 +9,17 @@ Type=simple
 User=fe
 WorkingDirectory=/opt/fe-gba
 EnvironmentFile=/opt/fe-gba/.env
-ExecStart=/opt/fe-gba/scripts/stream/ffmpeg-stream.sh
+# The supervisor wraps ffmpeg-stream.sh and handles auto-restart on RTMP
+# drops. systemd's Restart=on-failure then handles supervisor exits (e.g.
+# the rapid-failure circuit breaker firing on a broken config).
+ExecStart=/opt/fe-gba/scripts/stream/supervisor-stream.sh
 Restart=on-failure
 RestartSec=3
-TimeoutStopSec=15
+# Give the supervisor time to finish its ffmpeg-stream.sh child cleanly.
+TimeoutStopSec=30
+# Kill the whole process group on stop so the inner ffmpeg goes with it.
+KillMode=process
+KillSignal=SIGTERM
 
 # libx264 -preset veryfast at 1080p30 wants ~1.5 cores on modern x86_64.
 # Cap at 2 cores so a runaway ffmpeg never starves the emulator.
