@@ -1,0 +1,30 @@
+[Unit]
+Description=FE GBA — stream health check (Twitch API → Discord webhook)
+Documentation=https://github.com/llmletsplay/fire-emblem-gba
+# Run only when the stream is supposed to be live, but don't gate on it
+# explicitly — the script itself decides via 'systemctl is-active fe-stream.target'.
+After=fe-stream.target network-online.target
+
+[Service]
+Type=oneshot
+User=fe
+WorkingDirectory=/opt/fe-gba
+EnvironmentFile=/opt/fe-gba/.env
+ExecStart=/opt/fe-gba/scripts/healthcheck/healthcheck.sh
+# The script is short-lived (a handful of HTTP calls) so cap it well below
+# the timer interval. If it hangs longer than this, something is wrong with
+# the network and a fresh run will start in 60s anyway.
+TimeoutStartSec=30
+# No auto-restart. If the script exits non-zero, the timer just fires again
+# in 60 seconds. Restart= here would cause a tight restart storm on
+# persistent failures.
+Restart=no
+# Light caps — healthcheck is a few curl calls.
+MemoryMax=128M
+CPUQuota=50%
+
+StandardOutput=append:/var/log/fe-gba/healthcheck.log
+StandardError=append:/var/log/fe-gba/healthcheck.log
+
+[Install]
+WantedBy=multi-user.target

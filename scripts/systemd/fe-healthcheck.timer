@@ -1,0 +1,17 @@
+[Unit]
+Description=FE GBA — fire healthcheck every 60s while stream is running
+Documentation=https://github.com/llmletsplay/fire-emblem-gba
+# Run independently of fe-stream.target — even if the stream target is
+# stopped, the healthcheck still ticks, sees fe-stream.target is inactive,
+# and records 'idle' state (no alert).
+
+[Timer]
+OnBootSec=30
+OnUnitActiveSec=60
+AccuracySec=5
+# If the box was off at the scheduled time, run missed checks on boot.
+Persistent=true
+Unit=fe-healthcheck.service
+
+[Install]
+WantedBy=timers.target

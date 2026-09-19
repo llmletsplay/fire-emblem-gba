@@ -41,7 +41,7 @@ Tokyo for JP). Ubuntu 24.04 LTS.
 ```bash
 # 1. System packages
 sudo apt update && sudo apt install -y --no-install-recommends \
-    build-essential cmake pkg-config git ca-certificates \
+    build-essential cmake pkg-config git ca-certificates curl jq \
     libpng-dev libzip-dev libedit-dev libqt5opengl5-dev \
     libSDL2-dev libzstd-dev ffmpeg python3 python3-venv python3-dev \
     rsync
@@ -101,6 +101,12 @@ MINIMAX_SUPPORTS_REASONING=true
 # Streaming — fill these in
 RTMP_URL=rtmp://live.twitch.tv/app
 STREAM_KEY=live_1234567890_abcdef...
+
+# Healthcheck — see "Healthcheck + Discord alerts" below
+TWITCH_CLIENT_ID=...
+TWITCH_CLIENT_SECRET=...
+TWITCH_CHANNEL_LOGIN=your_twitch_username
+DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
 ```
 
 ```bash
@@ -238,6 +244,118 @@ A bad-config loop looks like:
 After seeing the FATAL line, check `ffmpeg.log` for the actual reason, fix
 `.env`, then `systemctl reset-failed fe-ffmpeg && systemctl start fe-stream.target`.
 
+## Healthcheck + Discord alerts
+
+A systemd timer fires `scripts/healthcheck/healthcheck.sh` every 60 seconds.
+Each tick:
+
+1. Calls Twitch Helix `GET /streams?user_login=<you>` using a cached
+   Client-Credentials token (refreshed ~every 60 days when it expires).
+2. Compares the result against the local expectation — "should we be live
+   right now?" is determined by `systemctl is-active fe-stream.target`. If
+   the target is intentionally stopped, the script resets to `idle` and
+   never alerts.
+3. Transitions a small state machine (`live` / `offline` / `idle`) persisted
+   in `/var/lib/fe-gba/healthcheck.state`. On transitions it posts to your
+   Discord webhook:
+
+| Transition | Alert |
+|---|---|
+| `idle` → `live` | (optional) TEST message — only if `HEALTHCHECK_TEST_ALERT=on` |
+| `live` → `offline` | silent record — just marks the start of the outage |
+| `offline` past `HEALTHCHECK_OFFLINE_THRESHOLD` | 🔴 **DOWN** with service diagnostic |
+| `offline` past `HEALTHCHECK_ALERT_COOLDOWN` (still offline) | ⚠️ **STILL OFFLINE** reminder every N seconds |
+| `offline` → `live` | ✅ **BACK** with duration + viewer count |
+
+Debounce is the point: a 5-second Twitch API blip or a supervisor-restart
+should never wake you up. The first DOWN alert only fires after 2 minutes
+(default), and repeats every 10 minutes until the stream comes back.
+
+### One-time setup
+
+**1. Register a Twitch app**
+
+Go to <https://dev.twitch.tv/console/apps> → Register Your Application.
+- Name: anything (e.g. `fe-gba-healthcheck`)
+- OAuth Redirect URL: `http://localhost` (not used, but required)
+- Category: Other
+
+Copy the **Client ID** and generate a **Client Secret**. Drop both into
+`.env`:
+
+```bash
+TWITCH_CLIENT_ID=abc123...
+TWITCH_CLIENT_SECRET=xyz789...
+TWITCH_CHANNEL_LOGIN=your_twitch_username   # lowercase
+```
+
+**2. Create a Discord webhook**
+
+In the Discord server where you want alerts (ideally a private channel
+visible only to you):
+
+```
+Channel ⚙ Settings → Integrations → Webhooks → New Webhook
+  Name:     FE GBA Stream
+  Channel:  #stream-alerts  (or whatever you want)
+  → Copy Webhook URL
+```
+
+Paste into `.env`:
+
+```bash
+DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/1234567890/aBcDeF...
+```
+
+To get phone push notifications: open Discord on your phone → ⚙ → Notifications
+→ enable push for that channel (or for everything).
+
+**3. Test it**
+
+```bash
+# Set this once to send a one-shot test alert on the next healthcheck tick
+sudo -u fe sed -i 's/^HEALTHCHECK_TEST_ALERT=off/HEALTHCHECK_TEST_ALERT=on/' /opt/fe-gba/.env
+
+# Or trigger a check manually
+sudo -u fe /opt/fe-gba/scripts/healthcheck/healthcheck.sh
+
+# Confirm the test message arrived in Discord, then turn it off:
+sudo -u fe sed -i 's/^HEALTHCHECK_TEST_ALERT=on/HEALTHCHECK_TEST_ALERT=off/' /opt/fe-gba/.env
+```
+
+The timer is enabled by `install-systemd.sh` and runs independently of the
+stream target, so it'll keep ticking even when the stream is intentionally
+off (just recording `idle` state without alerting).
+
+### Operations
+
+```bash
+# Watch the most recent healthcheck decisions
+sudo tail -F /var/log/fe-gba/healthcheck.log
+
+# See when the next check is scheduled
+systemctl list-timers fe-healthcheck.timer
+
+# Force a check right now
+sudo systemctl start fe-healthcheck.service
+
+# Inspect the state machine
+cat /var/lib/fe-gba/healthcheck.state
+
+# Force-reset the state (e.g. after fixing a long outage)
+sudo -u fe bash -c 'echo "last_state=idle" > /var/lib/fe-gba/healthcheck.state'
+```
+
+### Adding YouTube or Kick
+
+The current script is Twitch-only. To extend it for YouTube Live or Kick,
+fork `get_token()` and `streams_resp=$(curl ...)` per-platform and select at
+runtime via a `STREAM_PLATFORM=twitch|youtube|kick` env var. Both platforms
+have public live-status endpoints:
+
+- **YouTube:** `GET https://www.googleapis.com/youtube/v3/liveBroadcasts?part=status&broadcastStatus=active&access_token=<oauth>` (requires an OAuth user token, not a service account).
+- **Kick:** `GET https://kick.com/api/v2/channels/<slug>` — no auth, returns a `livestream` object when live.
+
 ## Troubleshooting
 
 **No video on stream:**
@@ -269,22 +387,38 @@ After seeing the FATAL line, check `ffmpeg.log` for the actual reason, fix
 **Supervisor FATAL'd — 5 rapid failures:**
 - See the section above. Read `/var/log/fe-gba/ffmpeg.log` (last 30 lines were also captured in `supervisor.log`), fix the root cause in `.env`, then `systemctl reset-failed fe-ffmpeg && systemctl start fe-stream.target`.
 
+**Healthcheck fires DOWN alerts even though the stream is fine:**
+- Likely the cached Twitch token expired and the API call is failing silently. Check `journalctl -u fe-healthcheck --since "5 minutes ago"` — if you see `Twitch /streams call failed`, the cached token is bad. Delete it and let the next run re-authenticate: `sudo -u fe rm /var/lib/fe-gba/twitch-token.json`.
+- Verify `TWITCH_CLIENT_ID` / `TWITCH_CLIENT_SECRET` are correct and the app hasn't been deleted from the Twitch dev console.
+
+**Healthcheck never fires at all:**
+- `systemctl status fe-healthcheck.timer` should show `active (waiting)`. If it's `inactive`, run `systemctl enable --now fe-healthcheck.timer`.
+- `journalctl -u fe-healthcheck.service` shows the most recent script runs. If you see only token errors, see the entry above.
+
+**Discord never receives alerts:**
+- Confirm the webhook URL works: `curl -X POST -H "Content-Type: application/json" -d '{"content":"test"}' "$DISCORD_WEBHOOK_URL"` from the server. If that fails, the URL is wrong or the webhook was deleted.
+- Verify the channel has you as a member (private servers won't push to non-members).
+- For phone push: open Discord mobile → ⚙ → Notifications → make sure push is on for that channel.
+
 ## Files added by this setup
 
 ```
-lua/stream_wrapper.lua                 # mGBA entry point — dofile()s socketserver.lua
-scripts/stream/create-fifos.sh         # one-shot FIFO maker (systemd oneshot)
-scripts/stream/ffmpeg-stream.sh        # the ffmpeg invocation (called by supervisor)
-scripts/stream/supervisor-stream.sh    # wraps ffmpeg with restart + backoff + circuit breaker
-scripts/stream/start-stream.sh         # manual stack launcher (no systemd)
-scripts/stream/install-systemd.sh      # copies units into /etc/systemd/system/
-scripts/systemd/fe-romfetch.service    # one-shot: FIFOs + log dir
-scripts/systemd/fe-mgba.service        # mGBA + Lua wrapper
-scripts/systemd/fe-backend.service     # Python orchestrator
-scripts/systemd/fe-ffmpeg.service      # supervisor-stream.sh (not raw ffmpeg)
-scripts/systemd/fe-stream.target       # rolls the four services up into one start/stop
-docs/STREAMING.md                      # this file
-.env.example                           # extended with STREAM_* + RTMP_* keys
+lua/stream_wrapper.lua                       # mGBA entry point — dofile()s socketserver.lua
+scripts/stream/create-fifos.sh               # one-shot FIFO maker (systemd oneshot)
+scripts/stream/ffmpeg-stream.sh              # the ffmpeg invocation (called by supervisor)
+scripts/stream/supervisor-stream.sh          # wraps ffmpeg with restart + backoff + circuit breaker
+scripts/stream/start-stream.sh               # manual stack launcher (no systemd)
+scripts/stream/install-systemd.sh            # copies units into /etc/systemd/system/
+scripts/healthcheck/healthcheck.sh           # Twitch API → Discord webhook alerter
+scripts/systemd/fe-romfetch.service          # one-shot: FIFOs + log dir
+scripts/systemd/fe-mgba.service              # mGBA + Lua wrapper
+scripts/systemd/fe-backend.service           # Python orchestrator
+scripts/systemd/fe-ffmpeg.service            # supervisor-stream.sh (not raw ffmpeg)
+scripts/systemd/fe-stream.target             # rolls the four services up into one start/stop
+scripts/systemd/fe-healthcheck.service       # one-shot healthcheck run
+scripts/systemd/fe-healthcheck.timer         # fires fe-healthcheck.service every 60s
+docs/STREAMING.md                            # this file
+.env.example                                 # extended with STREAM_* + RTMP_* + TWITCH_* + DISCORD_WEBHOOK_URL keys
 ```
 
 The existing `lua/socketserver.lua` (TCP control), `src/core/run.py --auto`

@@ -51,19 +51,28 @@ mkdir -p /var/log/fe-gba
 chown "$SERVICE_USER":"$SERVICE_USER" /var/log/fe-gba
 
 # Install units
-install -m 0644 "$UNIT_SRC/fe-romfetch.service"  /etc/systemd/system/
-install -m 0644 "$UNIT_SRC/fe-mgba.service"      /etc/systemd/system/
-install -m 0644 "$UNIT_SRC/fe-backend.service"   /etc/systemd/system/
-install -m 0644 "$UNIT_SRC/fe-ffmpeg.service"    /etc/systemd/system/
-install -m 0644 "$UNIT_SRC/fe-stream.target"     /etc/systemd/system/
+install -m 0644 "$UNIT_SRC/fe-romfetch.service"     /etc/systemd/system/
+install -m 0644 "$UNIT_SRC/fe-mgba.service"         /etc/systemd/system/
+install -m 0644 "$UNIT_SRC/fe-backend.service"      /etc/systemd/system/
+install -m 0644 "$UNIT_SRC/fe-ffmpeg.service"       /etc/systemd/system/
+install -m 0644 "$UNIT_SRC/fe-stream.target"        /etc/systemd/system/
+install -m 0644 "$UNIT_SRC/fe-healthcheck.service"  /etc/systemd/system/
+install -m 0644 "$UNIT_SRC/fe-healthcheck.timer"    /etc/systemd/system/
 
 systemctl daemon-reload
 systemctl enable fe-stream.target
 systemctl enable fe-romfetch.service
+systemctl enable fe-healthcheck.timer
+
+# Persistent state dirs (only writable by the service user)
+mkdir -p /var/lib/fe-gba
+chown "$SERVICE_USER":"$SERVICE_USER" /var/lib/fe-gba
+chmod 755 /var/lib/fe-gba
 
 echo
 echo "[install] done. To start the stream:"
 echo "    systemctl start fe-stream.target"
 echo
+echo "[install] The healthcheck timer is enabled; it will fire every 60s."
 echo "[install] To watch the live logs:"
-echo "    journalctl -u fe-mgba -u fe-backend -u fe-ffmpeg -f"
+echo "    journalctl -u fe-mgba -u fe-backend -u fe-ffmpeg -u fe-healthcheck -f"
