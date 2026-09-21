@@ -76,6 +76,15 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(level
 log = logging.getLogger('llmdriver')
 
 
+def _print_stream_delta(delta: str) -> None:
+    """Print streamed model text without crashing Windows CP1252 consoles."""
+    try:
+        print(delta, end="", flush=True)
+    except UnicodeEncodeError:
+        safe = delta.encode("ascii", errors="replace").decode("ascii")
+        print(safe, end="", flush=True)
+
+
 # Updated regex to accept full button names
 ACTION_RE = re.compile(r'^(?:[LRUDAB]|Start|Select)(?:;(?:[LRUDAB]|Start|Select))*(?:;)?$', re.IGNORECASE)
 COORD_RE = re.compile(r'^([0-9]),([0-8])$')
@@ -1022,7 +1031,7 @@ def llm_stream_action(state_data: dict, timeout: float = STREAM_TIMEOUT, benchma
                 # Process first chunk
                 delta = chunk.choices[0].delta.content
                 if delta:
-                    print(delta, end="", flush=True)
+                    _print_stream_delta(delta)
                     collected_chunks.append(delta)
                 
                 # Continue until finish or total timeout
@@ -1035,7 +1044,7 @@ def llm_stream_action(state_data: dict, timeout: float = STREAM_TIMEOUT, benchma
 
                         delta = chunk.choices[0].delta.content
                         if delta:
-                            print(delta, end="", flush=True)
+                            _print_stream_delta(delta)
                             collected_chunks.append(delta)
 
                         if chunk.choices[0].finish_reason:

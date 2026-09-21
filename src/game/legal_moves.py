@@ -295,7 +295,19 @@ def build_legal_moves(state: dict, max_moves: int = 28) -> List[Dict[str, Any]]:
                     if matching_opp:
                         tgt = matching_opp.get("target") or "Enemy"
                     else:
-                        tgt = (state.get("boss_target") or "Enemy")
+                        adjacent_enemy = next(
+                            (
+                                e
+                                for e in enemies
+                                if abs(int(e.get("x", 0)) - tx) + abs(int(e.get("y", 0)) - ty) == 1
+                            ),
+                            None,
+                        )
+                        tgt = (
+                            (adjacent_enemy or {}).get("name")
+                            or state.get("boss_target")
+                            or "Enemy"
+                        )
                     add(
                         "move_attack",
                         f'SELECT unit="{selected}" MOVE to=[{tx},{ty}] ATTACK target="{tgt}"',

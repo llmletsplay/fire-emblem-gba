@@ -239,3 +239,25 @@ def test_ch1_tutorial_item_requests_vulnerary():
     )
     moves = build_legal_moves(state)
     assert moves[0]["command"] == "ITEM Vulnerary"
+
+
+def test_tutorial_attack_falls_back_to_adjacent_enemy_not_boss():
+    state = _map_state(
+        party=[{"name": "Sain", "x": 5, "y": 9, "hasMoved": False}],
+        unit_status={"Sain": "available"},
+        unit_is_selected=True,
+        selected_unit="Sain",
+        cursor_on_player="Sain",
+        movement_tiles=[[5, 9]],
+        attack_opportunities=[],
+        enemies=[{"name": "Brigand", "x": 6, "y": 9}],
+        tutorial_target=(5, 9),
+        tutorial_step_kind="attack",
+        tutorial_unit="Sain",
+        boss_target="Zugu",
+        tutorial_sequence=[
+            {"unit": "Sain", "step": "attack", "coords": [(5, 9)]}
+        ],
+    )
+    moves = build_legal_moves(state)
+    assert 'ATTACK target="Brigand"' in moves[0]["command"]

@@ -202,3 +202,21 @@ def test_ch1_tutorial_trade_executor_advances_one_ui_state_at_a_time():
     buttons, desc = execute_command_sequence(seq.commands, next_state)
     assert buttons == "A;"
     assert "choose Lyn" in desc
+
+
+def test_dialogue_executor_allows_explicit_b_dismissal():
+    from src.game.command_executor import execute_command_sequence
+    from src.game.command_parser import parse_command
+
+    buttons, desc = execute_command_sequence(
+        parse_command("B").commands,
+        {
+            "chapter": 1,
+            "phase": "player_phase",
+            "input_locked": True,
+            "in_dialogue": True,
+            "text_box_visible": True,
+        },
+    )
+    assert buttons == "B;"
+    assert "BUTTON B" in desc

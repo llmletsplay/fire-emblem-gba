@@ -422,7 +422,12 @@ def execute_command_sequence(
     in_dialogue = game_state.get("in_dialogue", False)
     input_locked = game_state.get("input_locked", False)
     
-    if (text_box_visible or in_dialogue) and input_locked:
+    explicit_dialogue_dismiss = bool(
+        commands
+        and commands[0].type == "BUTTON"
+        and str(commands[0].button or "").upper() == "B"
+    )
+    if (text_box_visible or in_dialogue) and input_locked and not explicit_dialogue_dismiss:
         # Dialogue is active - auto-inject A to advance, ignoring other commands
         log.info("Dialogue detected - auto-advancing with A")
         return "A;", "DIALOGUE_ADVANCE (auto-injected)"
