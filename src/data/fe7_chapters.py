@@ -33,13 +33,36 @@ FE7_CHAPTERS = {
         # Tutorial sequence - coordinates for each step (x, y) - 0-indexed
         # Each step: [coordinates], "description"
         "tutorial_sequence": [
-            # Verified 2026-09-21 on zephyrus (slot1 start Lyn@(13,7)):
-            #   step0 MOVE → (8,7) lands; (9,8)/(10,7)/(11,7)/(12,7) soft-reject.
-            # Mid-save Lyn@(7,7): MOVE → (5,4) lands (later step).
-            {"coords": [(8, 7)], "step": "move", "description": "Move Lyn to (8,7) — first Ch0 forced tile from start"},
-            {"coords": [(5, 4)], "step": "move", "description": "Move Lyn to (5,4) — verified mid-prologue forced tile"},
-            {"coords": [(2, 2), (4, 2), (3, 3)], "step": "attack", "description": "Attack Batta at (3,2) — any adjacent tile"},
-            {"coords": [(3, 2)], "step": "seize", "description": "Seize gate at (3,2) to complete Prologue"},
+            {
+                "coords": [(8, 7)],
+                "step": "move",
+                "description": "Move Lyn to (8,7) — first Ch0 forced tile from start @(13,7)",
+            },
+            {
+                "coords": [(8, 6)],
+                "step": "attack",
+                "description": "After WAIT/enemy phase: move adjacent to brigand@(7,6) at (8,6) then Attack",
+            },
+            {
+                "coords": [(5, 4)],
+                "step": "move",
+                "description": "Move Lyn to (5,4) — vulnerary flash (verified mid-prologue)",
+            },
+            {
+                "coords": [(5, 4)],
+                "step": "item",
+                "description": "Use Vulnerary from Item menu",
+            },
+            {
+                "coords": [(2, 2), (4, 2), (3, 3), (3, 1)],
+                "step": "attack",
+                "description": "Attack Batta at (3,2) — any adjacent tile",
+            },
+            {
+                "coords": [(3, 2)],
+                "step": "seize",
+                "description": "Seize gate at (3,2) to complete Prologue",
+            },
         ],
     },
     1: {
