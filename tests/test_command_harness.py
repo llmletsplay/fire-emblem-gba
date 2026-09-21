@@ -150,6 +150,7 @@ def test_select_uses_display_cursor_not_stale_playst():
     assert "already selected" in desc.lower()
     # Already selected with blue tiles — skip SELECT A, just path north
     assert buttons.upper().startswith("UP;UP;UP;UP;UP;A;")
+    assert "DOWN;DOWN" not in buttons.upper()
 
 
 def test_select_skipped_when_already_selected():
@@ -171,4 +172,5 @@ def test_select_skipped_when_already_selected():
     )
     assert "already selected" in desc.lower()
     assert not buttons.upper().startswith("A;LEFT")
-    assert buttons.upper().startswith("LEFT;LEFT;A;")
+    assert "LEFT;LEFT;A;" in buttons.upper()
+    assert "DOWN;DOWN" not in buttons.upper()

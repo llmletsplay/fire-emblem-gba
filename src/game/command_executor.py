@@ -411,6 +411,7 @@ def execute_command_sequence(
 
     button_sequence = []
     action_descriptions = []
+    moved_this_sequence = False
 
     def _party_unit_pos(name: str):
         for u in party:
@@ -500,6 +501,7 @@ def execute_command_sequence(
                 button_sequence.extend(path)
                 button_sequence.append("A")  # Confirm move
                 nav_cursor = (int(tx), int(ty))
+                moved_this_sequence = True
                 cursor = target  # Update cursor position
                 cmd_desc = f"MOVE to {target}"
                 log.info(f"MOVE path: {path} → {target}")
@@ -555,15 +557,22 @@ def execute_command_sequence(
                         cmd_desc = "ATTACK (no target specified)"
 
         elif cmd.type == "WAIT":
-            # Check if we're in a menu and navigate to Wait (index 3)
+            # Same-sequence MOVE+WAIT: defer Wait. The action menu is not open
+            # until the move confirms; DOWN;DOWN;A here often cancels the move.
+            if moved_this_sequence:
+                log.info("Deferring WAIT until next cycle (after MOVE confirm)")
+                cmd_desc = "WAIT (deferred)"
+                action_descriptions.append(cmd_desc)
+                continue
             current_menu_sel = game_state.get("menu_selection", -1)
             if current_menu_sel >= 0:
-                # Calculate navigation from current position to Wait (index 3)
-                nav_buttons = calculate_menu_navigation(current_menu_sel, UNIT_ACTION_MENU["wait"])
+                nav_buttons = calculate_menu_navigation(
+                    current_menu_sel, UNIT_ACTION_MENU["wait"]
+                )
                 button_sequence.extend(nav_buttons)
             else:
-                # Fallback: navigate to Wait (index 3 in Rescue/Item/Trade/Wait menu)
-                button_sequence.extend([BUTTONS["DOWN"], BUTTONS["DOWN"]])  # 0->1->2->3 = 3 downs from Rescue
+                # No attack range: Wait is often index 1 (Item/Wait). Prefer one DOWN.
+                button_sequence.append(BUTTONS["DOWN"])
             button_sequence.append("A")  # Confirm Wait
             cmd_desc = "WAIT"
 
