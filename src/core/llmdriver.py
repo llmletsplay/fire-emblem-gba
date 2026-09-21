@@ -111,6 +111,14 @@ def _auto_ui_advance_chord(state: dict):
     text_box = bool(state.get("text_box_visible"))
     in_dialogue = bool(state.get("in_dialogue"))
     input_locked = bool(state.get("input_locked"))
+    try:
+        tutorial_chapter = int(state.get("chapter", -1))
+    except (TypeError, ValueError):
+        tutorial_chapter = -1
+    # FE7's BmSt lock can remain active while the tutorial dialogue box is
+    # visually hidden or misclassified as battle UI. In Lyn Mode, an input
+    # lock during a map tutorial is still an A-to-advance prompt.
+    tutorial_locked = input_locked and 0 <= tutorial_chapter < 10
 
     want = None
     reason = None
@@ -118,8 +126,9 @@ def _auto_ui_advance_chord(state: dict):
         # Alternate Start and A — FE title/chapter splash accept either
         chord = "START;" if (_auto_ui_advance_streak % 2 == 0) else "A;"
         want, reason = chord, f"AUTO_START_SCREEN ({chord.strip(';')})"
-    elif HANDLE_DIALOGUE_SCREENS and (text_box or in_dialogue) and input_locked:
-        want, reason = "A;", "AUTO_DIALOGUE_ADVANCE"
+    elif HANDLE_DIALOGUE_SCREENS and input_locked and (text_box or in_dialogue or tutorial_locked):
+        reason = "AUTO_TUTORIAL_LOCK" if tutorial_locked and not (text_box or in_dialogue) else "AUTO_DIALOGUE_ADVANCE"
+        want = "A;"
 
     if not want:
         _auto_ui_advance_streak = 0

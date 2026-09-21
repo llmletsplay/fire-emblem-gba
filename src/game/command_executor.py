@@ -422,10 +422,16 @@ def execute_command_sequence(
     in_dialogue = game_state.get("in_dialogue", False)
     input_locked = game_state.get("input_locked", False)
     
-    if (text_box_visible or in_dialogue) and input_locked:
+    try:
+        tutorial_chapter = int(game_state.get("chapter", -1))
+    except (TypeError, ValueError):
+        tutorial_chapter = -1
+    tutorial_locked = input_locked and 0 <= tutorial_chapter < 10
+    if (text_box_visible or in_dialogue or tutorial_locked) and input_locked:
         # Dialogue is active - auto-inject A to advance, ignoring other commands
         log.info("Dialogue detected - auto-advancing with A")
-        return "A;", "DIALOGUE_ADVANCE (auto-injected)"
+        reason = "TUTORIAL_LOCK_ADVANCE" if tutorial_locked and not (text_box_visible or in_dialogue) else "DIALOGUE_ADVANCE"
+        return "A;", f"{reason} (auto-injected)"
 
     phase = (game_state.get("phase") or "unknown")
     phase_l = str(phase).lower()
