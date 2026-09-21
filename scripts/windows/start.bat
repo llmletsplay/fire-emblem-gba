@@ -41,7 +41,7 @@ if not defined ROM_FILE (
 
 if defined MODE (
     set VALID_MODE=
-    for %%m in (OPENAI ANTHROPIC GEMINI GROQ TOGETHER GROK OLLAMA LMSTUDIO CUSTOM ZAI) do (
+    for %%m in (OPENAI ANTHROPIC GEMINI GROQ TOGETHER GROK OLLAMA LMSTUDIO CUSTOM ZAI MINIMAX) do (
         if /I "!MODE!"=="%%m" set VALID_MODE=1
     )
     if not defined VALID_MODE (

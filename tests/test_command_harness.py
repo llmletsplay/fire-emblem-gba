@@ -1,5 +1,6 @@
-from src.game.command_parser import parse_command, parse_command_from_llm_output
+from src.game.command_parser import parse_command, parse_command_from_llm_output, parse_move_id_line
 from src.game.command_validator import validate_command_sequence
+from src.game.legal_moves import build_legal_moves, resolve_move_id
 
 
 def test_parse_semantic_command_sequence():
@@ -60,3 +61,29 @@ def test_validator_autocorrects_move_to_nearest_valid_tile():
     assert result.valid
     assert result.commands[0].coord == (3, 3)
     assert any("Auto-corrected" in correction for correction in result.corrections)
+
+
+
+def test_parse_move_id_and_resolve_to_command():
+    """MOVE: mN from model output maps through legal_moves to a semantic COMMAND."""
+    state = {
+        "text_box_visible": False,
+        "input_locked": False,
+        "in_dialogue": False,
+        "in_menu": False,
+        "party": [{"name": "Lyn", "x": 1, "y": 1, "hasMoved": False}],
+        "unit_status": {"Lyn": "available"},
+        "enemies": [],
+        "movement_tiles": [],
+        "attack_opportunities": [],
+        "unit_is_selected": False,
+    }
+    moves = build_legal_moves(state)
+    assert moves and moves[0]["id"] == "m0"
+    move_id = parse_move_id_line("Picking Lyn.\nMOVE: m0")
+    assert move_id == "m0"
+    chosen = resolve_move_id(move_id, moves)
+    assert chosen is not None
+    seq = parse_command(chosen["command"])
+    assert seq.commands
+    assert seq.commands[0].type in {"SELECT", "END_TURN", "BUTTON"}
