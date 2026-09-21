@@ -166,3 +166,47 @@ def test_build_legal_moves_start_screen_ui_only():
     assert seq.commands[0].type == "BUTTON"
     assert seq.commands[0].button == "START"
 
+
+def test_ghost_selection_offers_select_not_only_end_turn():
+    """Vision unit_is_selected without who/tiles must not collapse to End Turn/B only."""
+    state = {
+        "phase": "player_phase",
+        "text_box_visible": False,
+        "input_locked": False,
+        "in_dialogue": False,
+        "in_menu": False,
+        "party": [{"name": "Lyn", "x": 7, "y": 7, "hasMoved": False}],
+        "unit_status": {"Lyn": "available"},
+        "enemies": [{"name": "Batta", "x": 3, "y": 2}],
+        "movement_tiles": [[1, 8]],  # absurdly far ghost tile
+        "attack_opportunities": [],
+        "unit_is_selected": True,
+        "cursor_on_player": None,
+        "selected_unit": None,
+        "cursor": [7, 9],
+    }
+    moves = build_legal_moves(state)
+    kinds = [m["kind"] for m in moves]
+    assert "select" in kinds, moves
+    assert any(m["kind"] == "ui_b" for m in moves), moves
+    # Must not be ONLY end_turn + cancel
+    assert kinds[0] != "end_turn" or "select" in kinds
+
+
+def test_far_movement_tiles_filtered_when_unit_known():
+    state = {
+        "phase": "player_phase",
+        "party": [{"name": "Lyn", "x": 7, "y": 7, "hasMoved": False}],
+        "unit_status": {"Lyn": "available"},
+        "enemies": [],
+        "selected_unit": "Lyn",
+        "cursor_on_player": "Lyn",
+        "unit_is_selected": True,
+        "movement_tiles": [[1, 8], [7, 6], [6, 7]],
+        "attack_opportunities": [],
+        "in_menu": False,
+    }
+    moves = build_legal_moves(state)
+    # Should have move_wait options near Lyn, not only the far tile
+    summaries = " ".join(m["summary"] for m in moves)
+    assert "(7,6)" in summaries or "(6,7)" in summaries, moves

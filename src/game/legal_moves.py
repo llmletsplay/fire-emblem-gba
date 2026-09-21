@@ -118,16 +118,47 @@ def build_legal_moves(state: dict, max_moves: int = 28) -> List[Dict[str, Any]]:
 
     available = _available_units(state)
     selected = state.get("selected_unit") or state.get("cursor_on_player")
-    unit_selected = bool(
-        state.get("unit_is_selected")
-        or state.get("movement_tiles")
-        or (selected and state.get("cursor_on_player") and not state.get("cursor_on_player_moved"))
-    )
-    movement = [_tile(t) for t in (state.get("movement_tiles") or [])]
-    movement = [t for t in movement if t]
-    movement_set = set(movement)
     attack_opps = state.get("attack_opportunities") or []
     enemies = state.get("enemies") or []
+
+    movement = [_tile(t) for t in (state.get("movement_tiles") or [])]
+    movement = [t for t in movement if t]
+
+    # Drop vision/map tiles that are nowhere near the selected unit (common
+    # screen→map projection glitch: tiles like [1,8] while Lyn is at [7,7]).
+    if selected and movement:
+        unit_pos = None
+        for u in (state.get("party") or []):
+            if str(u.get("name") or "").lower() == str(selected).lower():
+                unit_pos = _tile([u.get("x"), u.get("y")])
+                break
+        if unit_pos:
+            near = [
+                t for t in movement
+                if abs(t[0] - unit_pos[0]) + abs(t[1] - unit_pos[1]) <= 12
+            ]
+            if near:
+                movement = near
+            else:
+                # All tiles absurdly far — treat as no movement data
+                movement = []
+
+    movement_set = set(movement)
+
+    # Only treat as "selected with actionable moves" when we know WHO is
+    # selected AND we have real move/attack options. Ghost unit_is_selected
+    # from bad vision otherwise collapses the catalog to End Turn / B.
+    actionable_selected = bool(selected) and (
+        bool(movement_set) or bool(attack_opps) or in_menu
+    )
+    ghost_selected = bool(state.get("unit_is_selected") or state.get("movement_tiles")) and not actionable_selected
+
+    unit_selected = actionable_selected or (
+        bool(selected)
+        and bool(state.get("cursor_on_player"))
+        and not state.get("cursor_on_player_moved")
+        and bool(movement_set or attack_opps)
+    )
 
     # --- Selected unit: attack + move options ---
     if unit_selected and selected:
@@ -179,8 +210,11 @@ def build_legal_moves(state: dict, max_moves: int = 28) -> List[Dict[str, Any]]:
                 f"{selected} → ({x},{y}) wait",
             )
 
-    # --- Not selected: select available units ---
-    if not unit_selected:
+    # --- Not selected (or ghost selection): select available units ---
+    if not unit_selected or ghost_selected:
+        if ghost_selected:
+            # Clear bogus selection first, then re-select
+            add("ui_b", "B", "Cancel bogus selection / deselect")
         for u in available[:12]:
             name = u.get("name")
             if not name:
@@ -193,11 +227,15 @@ def build_legal_moves(state: dict, max_moves: int = 28) -> List[Dict[str, Any]]:
 
     if not available:
         add("end_turn", "END_TURN", "End player phase — all units acted")
-    else:
+    elif unit_selected and not ghost_selected:
         # Escape hatch so the model can finish the turn deliberately
         add("end_turn", "END_TURN", "End player phase early")
+    else:
+        # Prefer acting with remaining units over ending the phase
+        add("end_turn", "END_TURN", "End player phase early")
 
-    add("ui_b", "B", "Cancel / deselect")
+    if not ghost_selected:
+        add("ui_b", "B", "Cancel / deselect")
     return moves[:max_moves]
 
 

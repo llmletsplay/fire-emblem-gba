@@ -1627,15 +1627,53 @@ async def run_auto_loop(sock, state: dict, broadcast_func, interval: float = 8.0
                         blue_map.append([mx, my])
                     # Cap at 20 tiles (sorted by distance from cursor) to limit token usage
                     blue_map.sort(key=lambda t: abs(t[0] - cursor[0]) + abs(t[1] - cursor[1]))
-                    llm_input_state["movement_tiles"] = blue_map[:20]
-                    # Also add to current_mGBA_state so capture_action_result() can see them
-                    current_mGBA_state["movement_tiles"] = blue_map[:20]
-                    current_mGBA_state["unit_is_selected"] = True
-                    llm_input_state["unit_is_selected"] = True  # Blue tiles = unit is selected
-                    # Add selected_unit if we know which unit is selected (from cursor)
+                    blue_map = blue_map[:20]
+
+                    # Prefer memory-calculated tiles when already present and vision
+                    # projects absurdly far from any available unit / cursor.
+                    mem_tiles = current_mGBA_state.get("movement_tiles") or []
                     unit_at_cursor = current_mGBA_state.get("cursor_on_player")
+                    anchor = None
                     if unit_at_cursor:
-                        llm_input_state["selected_unit"] = unit_at_cursor
+                        for u in (current_mGBA_state.get("party") or []):
+                            if str(u.get("name") or "").lower() == str(unit_at_cursor).lower():
+                                try:
+                                    anchor = (int(u["x"]), int(u["y"]))
+                                except (KeyError, TypeError, ValueError):
+                                    anchor = None
+                                break
+                    if anchor is None and cursor:
+                        try:
+                            anchor = (int(cursor[0]), int(cursor[1]))
+                        except (TypeError, ValueError):
+                            anchor = None
+
+                    vision_ok = True
+                    if anchor and blue_map:
+                        near = [
+                            t for t in blue_map
+                            if abs(int(t[0]) - anchor[0]) + abs(int(t[1]) - anchor[1]) <= 12
+                        ]
+                        if not near:
+                            vision_ok = False
+                            log.warning(
+                                f"Ignoring vision movement_tiles (all far from {anchor}): "
+                                f"{blue_map[:5]}..."
+                            )
+
+                    if vision_ok:
+                        llm_input_state["movement_tiles"] = blue_map
+                        current_mGBA_state["movement_tiles"] = blue_map
+                        # Only mark selected when cursor is on a player unit
+                        if unit_at_cursor:
+                            current_mGBA_state["unit_is_selected"] = True
+                            llm_input_state["unit_is_selected"] = True
+                            llm_input_state["selected_unit"] = unit_at_cursor
+                    elif mem_tiles:
+                        llm_input_state["movement_tiles"] = mem_tiles
+                        if unit_at_cursor:
+                            llm_input_state["unit_is_selected"] = True
+                            llm_input_state["selected_unit"] = unit_at_cursor
 
                 # Also store red tiles (blocked tiles) in current_mGBA_state
                 if movement_tiles["red_tiles"]:
