@@ -258,26 +258,21 @@ $harnessLog = Join-Path $root "logs\harness.log"
 Write-Info "Harness log (append): $harnessLog"
 
 Write-Info "Starting harness: python src\core\run.py --auto"
+# Use cmd redirection — PowerShell *>> turns native stderr into terminating
+# ErrorRecords when $ErrorActionPreference=Stop (breaks Watch-FeHarness).
+$cmdLine = '"' + $python + '" "' + ($argList -join '" "') + '" >> "' + $harnessLog + '" 2>&1'
 if ($Foreground) {
-    # Append both stdout and stderr so babysitting can tail LLM cycles.
-    & $python @argList *>> $harnessLog
-    exit $LASTEXITCODE
+    $prevEap = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        cmd.exe /c $cmdLine
+        exit $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $prevEap
+    }
 }
 
-# Background: wrap so both streams append to the same harness.log
-$pyEsc = $python.Replace("'", "''")
-$logEsc = $harnessLog.Replace("'", "''")
-$rootEsc = $root.Replace("'", "''")
-$argsEsc = ($argList | ForEach-Object { "'" + ($_ -replace "'", "''") + "'" }) -join ", "
-$psCommand = @"
-Set-Location -LiteralPath '$rootEsc'
-& '$pyEsc' @($argsEsc) *>> '$logEsc'
-"@
-$proc = Start-Process -FilePath "powershell.exe" -ArgumentList @(
-    "-NoProfile",
-    "-ExecutionPolicy", "Bypass",
-    "-Command", $psCommand
-) -WorkingDirectory $root -PassThru -WindowStyle Hidden
+$proc = Start-Process -FilePath "cmd.exe" -ArgumentList @("/c", $cmdLine) -WorkingDirectory $root -PassThru -WindowStyle Hidden
 Write-Info "Harness PID=$($proc.Id) (logging to logs\harness.log)"
 [pscustomobject]@{
     Id           = $proc.Id
