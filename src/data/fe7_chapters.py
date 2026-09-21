@@ -58,16 +58,14 @@ FE7_CHAPTERS = {
         "turn_limit": None,
         "defeat_conditions": ["Lyn is defeated"],
         "notes": "Kent and Sain join. Teaches weapon triangle basics. Seize gate at (8,4) to complete chapter. "
-                 "LIVE-PARTIAL 2026-09-21: tutorial milestones through Sain's trade, heal, Move Again, and Wait are verified on Zephyrus; "
-                 "tutorial_sequence remains empty until the harness has an explicit Ch1 trade-step path.",
+                 "LIVE-PARTIAL 2026-09-21: tutorial_sequence is verified through Sain's trade, heal, Move Again, and Wait on Zephyrus; "
+                 "full chapter completion and later enemy turns still need verification.",
         "new_units": ["Kent", "Sain"],
         "needs_verification": True,
-        # Tutorial sequence - ALL COORDINATES ARE 0-INDEXED.
-        # This chapter has an extensive scripted trade tutorial. Keep the
-        # generic sequence empty until command_executor/legal_moves support a
-        # deterministic trade-item step; see verified_milestones below.
-        "tutorial_sequence": [],  # UNVERIFIED placeholder
-        "verified_milestones": [
+        "tutorial_verified": True,
+        # Tutorial sequence - ALL COORDINATES ARE 0-INDEXED. The final three
+        # steps use completion conditions because they share Sain's (5,5) tile.
+        "tutorial_sequence": [
             {"unit": "Sain", "step": "move", "coords": [(4, 5)],
              "description": "First forced move beside brigand@(4,6); live-verified."},
             {"unit": "Sain", "step": "attack", "coords": [(4, 5)],
@@ -90,11 +88,14 @@ FE7_CHAPTERS = {
              "description": "Iron Sword woods attack; brigand HP 20→12."},
             {"unit": "Lyn", "step": "move", "coords": [(5, 4)],
              "description": "Lyn takes the highlighted forest tile; enemy phase advances to turn 3."},
-            {"unit": "Sain", "step": "trade", "coords": [(5, 5)],
+            {"unit": "Sain", "step": "trade", "coords": [(5, 5)], "partner": "Lyn",
+             "completion": {"condition": "has_item", "item": "Vulnerary"},
              "description": "Sain moves next to Lyn, trades Lyn's Vulnerary, and receives it."},
             {"unit": "Sain", "step": "item", "coords": [(5, 5)],
+             "completion": {"condition": "full_hp"},
              "description": "Sain uses the traded Vulnerary; HP 13→19."},
             {"unit": "Sain", "step": "move_again", "coords": [(6, 5)],
+             "completion": {"condition": "has_moved"},
              "description": "Mounted-unit Move Again to (6,5), then confirms Wait."},
         ],
     },

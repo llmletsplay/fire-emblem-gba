@@ -14,8 +14,10 @@ Progress heuristic:
   - move:  acting unit stands on any step tile
   - wait:  acting unit on tile AND hasMoved (WAIT confirmed), OR implied
            complete (see below)
-  - attack / item / seize: unit on tile AND hasMoved (action finished)
+  - attack / seize / move_again: unit on tile AND hasMoved (action finished)
     Mere overlap with an approach tile does NOT complete these steps.
+  - trade: unit on tile AND the step's traded item is in the unit inventory
+  - item: unit on tile AND the step's completion condition is met
 
   Earlier steps are also implied complete when the unit already stands on a
   *later* step's tile (mid-chapter resume), or — for WAIT — when an enemy is
@@ -33,7 +35,7 @@ Coord = Tuple[int, int]
 
 # Steps that require the unit to have acted (hasMoved) before counting complete,
 # even when already standing on a destination / approach tile.
-_ACTION_KINDS = frozenset({"wait", "attack", "item", "seize"})
+_ACTION_KINDS = frozenset({"wait", "attack", "item", "trade", "move_again", "seize"})
 
 
 def _as_coord(value: Any) -> Optional[Coord]:
@@ -76,14 +78,14 @@ def resolve_acting_unit(
     preferred_name: Optional[str] = None,
 ) -> Optional[dict]:
     """Pick the unit the current tutorial step refers to."""
-    if preferred_name:
-        for u in party:
-            if u.get("name") == preferred_name:
-                return u
     if step and step.get("unit"):
         name = step["unit"]
         for u in party:
             if u.get("name") == name:
+                return u
+    if preferred_name:
+        for u in party:
+            if u.get("name") == preferred_name:
                 return u
     # Default: first available (not hasMoved) party member, else first
     for u in party:
@@ -92,12 +94,39 @@ def resolve_acting_unit(
     return party[0] if party else None
 
 
-def _step_complete(kind: str, unit: Optional[dict], coords: Sequence[Coord]) -> bool:
+def _unit_has_item(unit: Optional[dict], item_name: str) -> bool:
+    if not unit or not item_name:
+        return False
+    wanted = item_name.strip().casefold()
+    for item in unit.get("items") or []:
+        if isinstance(item, dict) and str(item.get("name") or "").strip().casefold() == wanted:
+            return True
+    return False
+
+
+def _step_complete(
+    kind: str,
+    unit: Optional[dict],
+    coords: Sequence[Coord],
+    step: Optional[dict] = None,
+) -> bool:
     """Return True when this tutorial step should be advanced past (local rules)."""
     unit_xy = _unit_xy(unit)
     if unit_xy is None or unit_xy not in coords:
         return False
     kind_l = (kind or "").lower()
+    completion = (step or {}).get("completion")
+    if isinstance(completion, dict):
+        condition = str(completion.get("condition") or "").lower()
+        if condition == "has_item":
+            return _unit_has_item(unit, str(completion.get("item") or ""))
+        if condition == "full_hp":
+            hp = unit.get("hp") if unit else None
+            max_hp = unit.get("maxHp", unit.get("max_hp")) if unit else None
+            return hp is not None and max_hp is not None and int(hp) >= int(max_hp)
+        if condition == "has_moved":
+            return bool(unit and unit.get("hasMoved"))
+
     if kind_l in _ACTION_KINDS:
         # Occupancy alone is not enough — must have finished the action.
         return bool(unit and unit.get("hasMoved"))
@@ -114,14 +143,16 @@ def _implied_complete(
     """Earlier steps are done if unit already occupies a later milestone tile,
     or WAIT is done because an enemy sits adjacent to the next attack tile
     (Ch0: brigand advanced to (7,6) after WAIT)."""
-    if unit_xy is not None:
+    step = sequence[idx] if 0 <= idx < len(sequence) else None
+    # Completion-conditioned steps may intentionally share a tile with a
+    # later step (Ch1 trade → item at (5,5)); occupancy must not skip them.
+    if unit_xy is not None and not (isinstance(step, dict) and step.get("completion")):
         for later in sequence[idx + 1 :]:
             if not isinstance(later, dict):
                 continue
             if unit_xy in _coords_list(later):
                 return True
 
-    step = sequence[idx] if 0 <= idx < len(sequence) else None
     if not isinstance(step, dict):
         return False
     kind = (step.get("step") or "").lower()
@@ -191,13 +222,16 @@ def infer_active_tutorial_step(
         if not coords:
             # Non-tile steps (e.g. coords="defeat_all") are skipped
             continue
-        # Actionable map destinations (include wait + item for Ch0)
-        if kind and kind not in ("move", "attack", "seize", "wait", "item"):
+        # Actionable map destinations (include Ch0 item/wait and Ch1 trade/
+        # Move Again steps).
+        if kind and kind not in (
+            "move", "attack", "seize", "wait", "item", "trade", "move_again"
+        ):
             continue
 
         unit = resolve_acting_unit(party, step, hint_name)
         unit_xy = _unit_xy(unit)
-        if _step_complete(kind, unit, coords) or _implied_complete(
+        if _step_complete(kind, unit, coords, step) or _implied_complete(
             sequence, idx, unit_xy, enemies
         ):
             continue

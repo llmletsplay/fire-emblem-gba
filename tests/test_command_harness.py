@@ -174,3 +174,31 @@ def test_select_skipped_when_already_selected():
     assert not buttons.upper().startswith("A;LEFT")
     assert "LEFT;LEFT;A;" in buttons.upper()
     assert "DOWN;DOWN" not in buttons.upper()
+
+
+def test_ch1_tutorial_trade_executor_advances_one_ui_state_at_a_time():
+    from src.game.command_executor import execute_command_sequence
+    from src.game.command_parser import parse_command
+
+    seq = parse_command('TRADE target="Lyn"')
+    base = {
+        "phase": "player_phase",
+        "chapter": 1,
+        "tutorial_step_kind": "trade",
+        "party": [
+            {"name": "Sain", "x": 5, "y": 5, "hasMoved": True},
+            {"name": "Lyn", "x": 5, "y": 4, "hasMoved": False},
+        ],
+        "cursor": (5, 5),
+        "in_menu": True,
+        "menu_type": "unit",
+        "menu_selection": 2,
+    }
+    buttons, desc = execute_command_sequence(seq.commands, base)
+    assert buttons == "A;"
+    assert "open Trade" in desc
+
+    next_state = dict(base, menu_type="trade", menu_selection=0)
+    buttons, desc = execute_command_sequence(seq.commands, next_state)
+    assert buttons == "A;"
+    assert "choose Lyn" in desc

@@ -192,3 +192,50 @@ def test_build_legal_moves_hard_prefers_tutorial_target():
     wait_moves = [m for m in moves if m["kind"] == "move_wait"]
     assert len(wait_moves) == 1
     assert wait_moves[0]["command"].endswith("MOVE to=[8,7] WAIT")
+
+
+def test_ch1_tutorial_trade_is_a_second_cycle_after_move():
+    state = _map_state(
+        party=[{"name": "Sain", "x": 4, "y": 9, "hasMoved": False}],
+        unit_status={"Sain": "available"},
+        unit_is_selected=True,
+        selected_unit="Sain",
+        cursor_on_player="Sain",
+        movement_tiles=[[5, 5], [4, 9]],
+        tutorial_target=(5, 5),
+        tutorial_step_index=11,
+        tutorial_step_kind="trade",
+        tutorial_sequence=[
+            {"unit": "Sain", "step": "trade", "coords": [(5, 5)], "partner": "Lyn"}
+        ],
+    )
+    moves = build_legal_moves(state)
+    assert moves[0]["kind"] == "move_trade"
+    assert moves[0]["command"] == 'SELECT unit="Sain" MOVE to=[5,5]'
+
+
+def test_ch1_tutorial_trade_exposes_partner_from_action_menu():
+    state = _map_state(
+        in_menu=True,
+        menu_type="unit",
+        menu_selection=2,
+        tutorial_step_index=11,
+        tutorial_step_kind="trade",
+        tutorial_sequence=[
+            {"unit": "Sain", "step": "trade", "coords": [(5, 5)], "partner": "Lyn"}
+        ],
+    )
+    moves = build_legal_moves(state)
+    assert moves[0]["kind"] == "trade"
+    assert moves[0]["command"] == 'TRADE target="Lyn"'
+
+
+def test_ch1_tutorial_item_requests_vulnerary():
+    state = _map_state(
+        in_menu=True,
+        menu_type="unit",
+        menu_selection=1,
+        tutorial_step_kind="item",
+    )
+    moves = build_legal_moves(state)
+    assert moves[0]["command"] == "ITEM Vulnerary"

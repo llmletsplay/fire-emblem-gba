@@ -53,6 +53,63 @@ ATTACK_MENU = {
     "wait": 1,
 }
 
+# FE7 Ch1's scripted trade tutorial opens several different UI states, with a
+# dialogue lock between them. Keep the semantic TRADE command stable while
+# advancing one accepted input at a time; dialogue cycles are handled by the
+# existing auto-A path above. This is deliberately module-local so a normal
+# TRADE command is unaffected.
+_FE7_CH1_TRADE_STAGE = 0
+
+
+def _fe7_ch1_tutorial_trade_buttons(game_state: Dict[str, Any]) -> Optional[Tuple[List[str], str]]:
+    """Return the next button pulse for the Ch1 Lyn/Sain trade tutorial."""
+    global _FE7_CH1_TRADE_STAGE
+
+    if (game_state.get("tutorial_step_kind") or "").lower() != "trade":
+        return None
+    if game_state.get("chapter") not in (1, "1"):
+        return None
+
+    menu_type = str(game_state.get("menu_type") or "").lower()
+    current_selection = game_state.get("menu_selection", -1)
+
+    # A fresh action menu is the only reliable reset marker after a user or
+    # probe reloads slot 41 while this Python process is still alive.
+    if game_state.get("in_menu") and menu_type in ("unit", "action"):
+        _FE7_CH1_TRADE_STAGE = 0
+
+    stage = _FE7_CH1_TRADE_STAGE
+    if stage == 0:
+        if isinstance(current_selection, int) and current_selection >= 0:
+            buttons = calculate_menu_navigation(current_selection, UNIT_ACTION_MENU["trade"])
+        else:
+            buttons = [BUTTONS["DOWN"], BUTTONS["DOWN"]]
+        buttons.append("A")
+        desc = "TUTORIAL Ch1 TRADE: open Trade"
+    elif stage == 1:
+        buttons = ["A"]
+        desc = "TUTORIAL Ch1 TRADE: choose Lyn"
+    elif stage == 2:
+        buttons = [BUTTONS["RIGHT"]]
+        desc = "TUTORIAL Ch1 TRADE: move to Lyn inventory"
+    elif stage == 3:
+        buttons = [BUTTONS["DOWN"]]
+        desc = "TUTORIAL Ch1 TRADE: highlight Vulnerary"
+    elif stage == 4:
+        buttons = ["A"]
+        desc = "TUTORIAL Ch1 TRADE: select Vulnerary"
+    elif stage == 5:
+        buttons = ["A"]
+        desc = "TUTORIAL Ch1 TRADE: confirm transfer"
+    elif stage == 6:
+        buttons = ["B"]
+        desc = "TUTORIAL Ch1 TRADE: exit trade"
+    else:
+        return [], "TUTORIAL Ch1 TRADE: sequence complete"
+
+    _FE7_CH1_TRADE_STAGE = stage + 1
+    return buttons, desc
+
 
 def calculate_menu_navigation(current_selection: int, target_index: int) -> List[str]:
     """Calculate D-pad presses needed to navigate from current selection to target.
@@ -645,6 +702,13 @@ def execute_command_sequence(
             cmd_desc = "VISIT"
 
         elif cmd.type == "TRADE":
+            tutorial_trade = _fe7_ch1_tutorial_trade_buttons(game_state)
+            if tutorial_trade is not None:
+                trade_buttons, trade_desc = tutorial_trade
+                button_sequence.extend(trade_buttons)
+                cmd_desc = trade_desc
+                action_descriptions.append(cmd_desc)
+                continue
             # Navigate to Trade (index 2) in action menu
             current_menu_sel = game_state.get("menu_selection", -1)
             if current_menu_sel >= 0:
@@ -711,7 +775,24 @@ def execute_command_sequence(
                 button_sequence.append("A")  # open Item
                 # If a menu_option was requested (e.g. Vulnerary), nudge to 2nd entry + Use
                 if cmd.menu_option:
-                    button_sequence.append(BUTTONS["DOWN"])
+                    selected_name = (
+                        game_state.get("selected_unit")
+                        or game_state.get("cursor_on_player")
+                        or game_state.get("tutorial_unit")
+                    )
+                    item_index = None
+                    for unit in party:
+                        if selected_name and str(unit.get("name") or "").lower() == str(selected_name).lower():
+                            for idx, item in enumerate(unit.get("items") or []):
+                                if isinstance(item, dict) and str(item.get("name") or "").strip().lower() == cmd.menu_option.strip().lower():
+                                    item_index = idx
+                                    break
+                            break
+                    # FE7's item list is ordered like the unit inventory;
+                    # retain the old one-DOWN fallback when memory omits items.
+                    if item_index is None:
+                        item_index = 1
+                    button_sequence.extend([BUTTONS["DOWN"]] * item_index)
                     button_sequence.append("A")
                     button_sequence.append("A")
                 cmd_desc = f"ITEM {cmd.menu_option if cmd.menu_option else ''}"

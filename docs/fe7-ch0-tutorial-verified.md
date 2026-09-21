@@ -61,10 +61,11 @@ Do **not** treat `game_state_bits==0` as “dialogue done” — bits can alread
 
 ## Ch1 live-probe update (partial)
 
-The Ch1 generic `tutorial_sequence` is intentionally still empty because the
-current harness does not yet have a deterministic trade-item command. The
-following route is nevertheless live-verified on Zephyrus (mGBA, 2026-09-21)
-and is recorded as `FE7_CHAPTERS[1]["verified_milestones"]`:
+The following route is live-verified on Zephyrus (mGBA, 2026-09-21) and is now
+the authoritative `FE7_CHAPTERS[1]["tutorial_sequence"]`. The harness advances
+the scripted trade one accepted UI input at a time, auto-advancing its dialogue
+locks between pulses. Full chapter completion and later enemy turns remain
+unverified:
 
 | # | Unit | Tile / action | Result |
 |---|------|---------------|--------|
@@ -79,9 +80,8 @@ and is recorded as `FE7_CHAPTERS[1]["verified_milestones"]`:
 | 9 | Sain | MOVE AGAIN (6,5) → WAIT | Mounted-unit tutorial completes |
 
 Remote savestate **21** is the clean Ch1 battle start; **47** is the post-
-Move Again tutorial checkpoint. The next implementation step is wiring the
-trade sequence into the semantic command executor, then replacing the
-milestones with the authoritative `tutorial_sequence`.
+Move Again tutorial checkpoint. The Ch1 sequence is intentionally marked
+`needs_verification=True` until the rest of the chapter is live-probed.
 
 ## External refs
 - Serenes Prologue script

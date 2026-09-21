@@ -45,6 +45,19 @@ def _available_units(state: dict) -> List[Dict[str, Any]]:
     return out
 
 
+def _tutorial_partner(state: dict, default: str = "Lyn") -> str:
+    """Return the adjacent unit named by the active tutorial trade step."""
+    idx = state.get("tutorial_step_index")
+    sequence = state.get("tutorial_sequence") or []
+    if isinstance(idx, int) and 0 <= idx < len(sequence):
+        step = sequence[idx]
+        if isinstance(step, dict):
+            partner = step.get("partner") or step.get("target_unit")
+            if partner:
+                return str(partner)
+    return default
+
+
 def build_legal_moves(state: dict, max_moves: int = 28) -> List[Dict[str, Any]]:
     """Build prioritized legal high-level moves from current LLM game_state."""
     moves: List[Dict[str, Any]] = []
@@ -118,7 +131,18 @@ def build_legal_moves(state: dict, max_moves: int = 28) -> List[Dict[str, Any]]:
             add("ui_b", "B", "Cancel / leave menu")
             return moves[:max_moves]
         if tutorial_step_kind_menu == "item":
-            add("item", "ITEM", f"TUTORIAL{step_label_menu}: Use Vulnerary (dialogue-mash path)")
+            add("item", "ITEM Vulnerary", f"TUTORIAL{step_label_menu}: Use Vulnerary (dialogue-mash path)")
+            add("ui_a", "A", "Confirm highlighted menu option")
+            add("ui_b", "B", "Cancel / leave menu")
+            return moves[:max_moves]
+        if tutorial_step_kind_menu == "trade":
+            partner = _tutorial_partner(state)
+            add("trade", f'TRADE target="{partner}"', f"TUTORIAL{step_label_menu}: Trade with {partner}")
+            add("ui_a", "A", "Confirm highlighted trade option")
+            add("ui_b", "B", "Cancel / leave menu")
+            return moves[:max_moves]
+        if tutorial_step_kind_menu == "move_again":
+            add("wait", "WAIT", f"TUTORIAL{step_label_menu}: Confirm Wait after Move Again")
             add("ui_a", "A", "Confirm highlighted menu option")
             add("ui_b", "B", "Cancel / leave menu")
             return moves[:max_moves]
@@ -140,6 +164,16 @@ def build_legal_moves(state: dict, max_moves: int = 28) -> List[Dict[str, Any]]:
         return moves[:max_moves]
 
     available = _available_units(state)
+    # The sequence names the acting unit explicitly. Put that unit first so a
+    # fresh tutorial turn cannot drift onto another available character before
+    # the model sees the destination.
+    tutorial_unit_name = state.get("tutorial_unit")
+    if tutorial_unit_name:
+        available.sort(
+            key=lambda u: 0
+            if str(u.get("name") or "").lower() == str(tutorial_unit_name).lower()
+            else 1
+        )
     selected = state.get("selected_unit") or state.get("cursor_on_player")
     attack_opps = state.get("attack_opportunities") or []
     enemies = state.get("enemies") or []
@@ -209,7 +243,16 @@ def build_legal_moves(state: dict, max_moves: int = 28) -> List[Dict[str, Any]]:
                 add("end_turn", "END_TURN", "End player phase early")
                 return moves[:max_moves]
             if tutorial_step_kind == "item":
-                add("item", "ITEM", f"TUTORIAL{step_label}: Use Vulnerary")
+                add("item", "ITEM Vulnerary", f"TUTORIAL{step_label}: Use Vulnerary")
+                add("ui_b", "B", "Cancel / deselect")
+                return moves[:max_moves]
+            if tutorial_step_kind == "trade":
+                partner = _tutorial_partner(state)
+                add("trade", f'TRADE target="{partner}"', f"TUTORIAL{step_label}: Trade with {partner}")
+                add("ui_b", "B", "Cancel / deselect")
+                return moves[:max_moves]
+            if tutorial_step_kind == "move_again":
+                add("wait", "WAIT", f"TUTORIAL{step_label}: Confirm Wait after Move Again")
                 add("ui_b", "B", "Cancel / deselect")
                 return moves[:max_moves]
             if tutorial_step_kind == "seize":
@@ -255,6 +298,15 @@ def build_legal_moves(state: dict, max_moves: int = 28) -> List[Dict[str, Any]]:
                         f'SELECT unit="{selected}" MOVE to=[{tx},{ty}]',
                         f"TUTORIAL{step_label}: {selected} → ({tx},{ty}) then ITEM",
                     )
+                elif tutorial_step_kind == "trade":
+                    # Trade is intentionally a second-cycle action. The
+                    # action menu/tutorial dialogue appears only after MOVE
+                    # confirms, so do not append TRADE to this MOVE.
+                    add(
+                        "move_trade",
+                        f'SELECT unit="{selected}" MOVE to=[{tx},{ty}]',
+                        f"TUTORIAL{step_label}: {selected} → ({tx},{ty}) then TRADE",
+                    )
                 elif tutorial_step_kind == "wait":
                     add(
                         "move_wait",
@@ -267,6 +319,12 @@ def build_legal_moves(state: dict, max_moves: int = 28) -> List[Dict[str, Any]]:
                         f'SELECT unit="{selected}" MOVE to=[{tx},{ty}] SEIZE',
                         f"TUTORIAL{step_label}: {selected} → ({tx},{ty}) SEIZE",
                     )
+                elif tutorial_step_kind == "move_again":
+                    add(
+                        "move_wait",
+                        f'SELECT unit="{selected}" MOVE to=[{tx},{ty}] WAIT',
+                        f"TUTORIAL{step_label}: {selected} → ({tx},{ty}) then confirm Wait",
+                    )
                 else:
                     # Default move step: MOVE then WAIT (Ch0 first step)
                     add(
@@ -275,7 +333,9 @@ def build_legal_moves(state: dict, max_moves: int = 28) -> List[Dict[str, Any]]:
                         f"TUTORIAL{step_label}: {selected} → ({tx},{ty})",
                     )
                 # Hard-prefer: when dest is reachable, do not flood with random blues
-                if dest in movement_set or tutorial_step_kind in ("wait", "item", "seize", "attack", "move"):
+                if dest in movement_set or tutorial_step_kind in (
+                    "wait", "item", "trade", "seize", "attack", "move", "move_again"
+                ):
                     for opp in attack_opps[:10]:
                         odest = _tile(opp.get("move_to") or opp.get("tile"))
                         target = opp.get("target") or "Enemy"

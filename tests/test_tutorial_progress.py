@@ -13,10 +13,22 @@ from src.game.tutorial_progress import (
 
 
 CH0_SEQ = FE7_CHAPTERS[0]["tutorial_sequence"]
+CH1_SEQ = FE7_CHAPTERS[1]["tutorial_sequence"]
 
 
 def _lyn(x, y, has_moved=False, hp=20):
     return [{"name": "Lyn", "x": x, "y": y, "hasMoved": has_moved, "hp": hp}]
+
+
+def _ch1_party(sain=(0, 5), sain_moved=False, sain_hp=19, sain_items=None):
+    return [
+        {"name": "Lyn", "x": 5, "y": 4, "hasMoved": True, "hp": 17, "maxHp": 17},
+        {
+            "name": "Sain", "x": sain[0], "y": sain[1], "hasMoved": sain_moved,
+            "hp": sain_hp, "maxHp": 19, "items": sain_items or [],
+        },
+        {"name": "Kent", "x": 6, "y": 8, "hasMoved": True, "hp": 20, "maxHp": 20},
+    ]
 
 
 def test_ch0_sequence_matches_verified_table():
@@ -119,8 +131,54 @@ def test_infer_seize_complete_when_acted_on_gate():
     assert info["target"] is None
 
 
-def test_ch1_through_10_are_unverified_empty():
-    for ch in range(1, 11):
+def test_ch1_sequence_is_live_wired_through_move_again():
+    assert FE7_CHAPTERS[1]["tutorial_verified"] is True
+    assert [step["step"] for step in CH1_SEQ] == [
+        "move", "attack", "move", "attack", "move", "attack",
+        "move", "attack", "move", "attack", "move", "trade", "item", "move_again",
+    ]
+    assert [step["unit"] for step in CH1_SEQ[8:11]] == ["Kent", "Kent", "Lyn"]
+    assert [step["unit"] for step in CH1_SEQ[11:]] == ["Sain", "Sain", "Sain"]
+    assert CH1_SEQ[11]["completion"] == {"condition": "has_item", "item": "Vulnerary"}
+    assert CH1_SEQ[12]["completion"] == {"condition": "full_hp"}
+
+
+def test_ch1_trade_does_not_complete_from_occupancy_alone():
+    info = infer_active_tutorial_step(
+        CH1_SEQ,
+        _ch1_party(sain=(5, 5), sain_moved=True, sain_hp=13),
+    )
+    assert info["index"] == 11
+    assert info["kind"] == "trade"
+    assert info["acting_unit"] == "Sain"
+
+
+def test_ch1_item_and_move_again_completion_conditions():
+    trade_done = _ch1_party(
+        sain=(5, 5), sain_moved=True, sain_hp=13,
+        sain_items=[{"name": "Iron Lance", "uses": 40}, {"name": "Vulnerary", "uses": 3}],
+    )
+    info = infer_active_tutorial_step(CH1_SEQ, trade_done)
+    assert info["index"] == 12
+    assert info["kind"] == "item"
+
+    healed = _ch1_party(
+        sain=(5, 5), sain_moved=True, sain_hp=19,
+        sain_items=[{"name": "Iron Lance", "uses": 40}, {"name": "Vulnerary", "uses": 2}],
+    )
+    info = infer_active_tutorial_step(CH1_SEQ, healed)
+    assert info["index"] == 13
+    assert info["kind"] == "move_again"
+
+    finished = _ch1_party(
+        sain=(6, 5), sain_moved=True, sain_hp=19,
+        sain_items=[{"name": "Iron Lance", "uses": 40}, {"name": "Vulnerary", "uses": 2}],
+    )
+    assert infer_active_tutorial_step(CH1_SEQ, finished)["index"] == -1
+
+
+def test_ch2_through_10_are_unverified_empty():
+    for ch in range(2, 11):
         data = FE7_CHAPTERS[ch]
         assert data.get("needs_verification", True) is True or data.get("verified") is not True
         assert data.get("tutorial_sequence") == []
