@@ -123,7 +123,7 @@ Verified end-to-end path (see [`docs/fe7-ch0-tutorial-verified.md`](docs/fe7-ch0
 4. MOVE (5,4) → ITEM vulnerary (HP 6→16; mash A through dialogue, do **not** trust `game_state_bits==0`)
 5. MOVE+ATTACK (4,2) vs Batta@(3,2) → SEIZE (3,2)
 
-Ch1–10 `tutorial_sequence` entries are **UNVERIFIED placeholders** (empty until live-probed). Keep `FE_TUTORIAL=true` for Lyn Mode; set `FE_TUTORIAL=false` for Eliwood Mode Ch11+.
+Ch1 has a **partial live verification** record in `FE7_CHAPTERS[1]["verified_milestones"]`, including the movement/combat route and Sain’s trade/heal/Move Again tutorial. Its generic `tutorial_sequence` remains empty until the harness has a deterministic trade-step path. Ch2–10 `tutorial_sequence` entries remain **UNVERIFIED placeholders**. Keep `FE_TUTORIAL=true` for Lyn Mode; set `FE_TUTORIAL=false` for Eliwood Mode Ch11+.
 
 ## Useful Commands
 

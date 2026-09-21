@@ -57,13 +57,46 @@ FE7_CHAPTERS = {
         "seize_position": (8, 4),
         "turn_limit": None,
         "defeat_conditions": ["Lyn is defeated"],
-        "notes": "Kent and Sain join. Teaches weapon triangle basics. Seize gate at (8,4) to complete chapter.",
+        "notes": "Kent and Sain join. Teaches weapon triangle basics. Seize gate at (8,4) to complete chapter. "
+                 "LIVE-PARTIAL 2026-09-21: tutorial milestones through Sain's trade, heal, Move Again, and Wait are verified on Zephyrus; "
+                 "tutorial_sequence remains empty until the harness has an explicit Ch1 trade-step path.",
         "new_units": ["Kent", "Sain"],
         "needs_verification": True,
-        # Tutorial sequence - ALL COORDINATES ARE 0-INDEXED
-        # This chapter has extensive tutorial prompts
-        # UNVERIFIED — Ch1 tutorial tiles not live-probed; do not invent.
+        # Tutorial sequence - ALL COORDINATES ARE 0-INDEXED.
+        # This chapter has an extensive scripted trade tutorial. Keep the
+        # generic sequence empty until command_executor/legal_moves support a
+        # deterministic trade-item step; see verified_milestones below.
         "tutorial_sequence": [],  # UNVERIFIED placeholder
+        "verified_milestones": [
+            {"unit": "Sain", "step": "move", "coords": [(4, 5)],
+             "description": "First forced move beside brigand@(4,6); live-verified."},
+            {"unit": "Sain", "step": "attack", "coords": [(4, 5)],
+             "description": "First lance attack; scripted miss/counter leaves Sain HP 19→13 and brigand HP 20."},
+            {"unit": "Kent", "step": "move", "coords": [(4, 7)],
+             "description": "First forced Kent move beside brigand@(4,6); live-verified."},
+            {"unit": "Kent", "step": "attack", "coords": [(4, 7)],
+             "description": "Iron Sword attack; brigand HP 20→11."},
+            {"unit": "Lyn", "step": "move", "coords": [(3, 6)],
+             "description": "Lyn moves beside the wounded first brigand; live-verified."},
+            {"unit": "Lyn", "step": "attack", "coords": [(3, 6)],
+             "description": "Lyn finishes the first brigand; HP 11→0."},
+            {"unit": "Sain", "step": "move", "coords": [(5, 9)],
+             "description": "Second-turn forced move to the woods brigand@(6,9)."},
+            {"unit": "Sain", "step": "attack", "coords": [(5, 9)],
+             "description": "Woods attack; scripted miss leaves brigand HP 20."},
+            {"unit": "Kent", "step": "move", "coords": [(6, 8)],
+             "description": "Kent moves beside the woods brigand@(6,9)."},
+            {"unit": "Kent", "step": "attack", "coords": [(6, 8)],
+             "description": "Iron Sword woods attack; brigand HP 20→12."},
+            {"unit": "Lyn", "step": "move", "coords": [(5, 4)],
+             "description": "Lyn takes the highlighted forest tile; enemy phase advances to turn 3."},
+            {"unit": "Sain", "step": "trade", "coords": [(5, 5)],
+             "description": "Sain moves next to Lyn, trades Lyn's Vulnerary, and receives it."},
+            {"unit": "Sain", "step": "item", "coords": [(5, 5)],
+             "description": "Sain uses the traded Vulnerary; HP 13→19."},
+            {"unit": "Sain", "step": "move_again", "coords": [(6, 5)],
+             "description": "Mounted-unit Move Again to (6,5), then confirms Wait."},
+        ],
     },
     2: {
         "name": "Chapter 2: Sword of Spirits",

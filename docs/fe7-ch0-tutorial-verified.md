@@ -59,14 +59,29 @@ Do **not** treat `game_state_bits==0` as “dialogue done” — bits can alread
 5. WAIT after first MOVE before expecting second MOVE.
 6. In-repo at `docs/fe7-ch0-tutorial-verified.md`; cross-linked from README Tutorial mode / Ch0 section.
 
-## Ch1 research (not yet live-verified)
-Serenes / walkthrough outline only — replace with probed tiles later:
-1. Sain adjacent + attack nearest brigand (scripted miss)
-2. Sain gets Kent’s Iron Sword
-3. Kent adjacent + attack
-4. Lyn finishes brigand
-5. Next turn: Sain woods brigand (miss); Kent attacks; Lyn to highlighted forest
-6. Sain next to Lyn, trade Vulnerary, use; demonstrate Move Again
+## Ch1 live-probe update (partial)
+
+The Ch1 generic `tutorial_sequence` is intentionally still empty because the
+current harness does not yet have a deterministic trade-item command. The
+following route is nevertheless live-verified on Zephyrus (mGBA, 2026-09-21)
+and is recorded as `FE7_CHAPTERS[1]["verified_milestones"]`:
+
+| # | Unit | Tile / action | Result |
+|---|------|---------------|--------|
+| 1 | Sain | MOVE (4,5) → ATTACK | Scripted miss; Sain HP 19→13 |
+| 2 | Kent | MOVE (4,7) → ATTACK | Iron Sword; brigand HP 20→11 |
+| 3 | Lyn | MOVE (3,6) → ATTACK | Finishes first brigand |
+| 4 | Sain | MOVE (5,9) → ATTACK | Woods miss; brigand stays HP 20 |
+| 5 | Kent | MOVE (6,8) → ATTACK | Iron Sword; woods brigand HP 20→12 |
+| 6 | Lyn | MOVE (5,4) | Highlighted forest; enemy phase reaches turn 3 |
+| 7 | Sain | MOVE (5,5) → TRADE | Receives Lyn’s Vulnerary |
+| 8 | Sain | ITEM → Vulnerary → Use | HP 13→19 |
+| 9 | Sain | MOVE AGAIN (6,5) → WAIT | Mounted-unit tutorial completes |
+
+Remote savestate **21** is the clean Ch1 battle start; **47** is the post-
+Move Again tutorial checkpoint. The next implementation step is wiring the
+trade sequence into the semantic command executor, then replacing the
+milestones with the authoritative `tutorial_sequence`.
 
 ## External refs
 - Serenes Prologue script
