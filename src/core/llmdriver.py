@@ -52,7 +52,8 @@ from src.game.feature_config import (
     USE_VISION_MODEL, TRUST_VISION_DESCRIPTIONS, VISION_OVERRIDE_MAIN_MODEL,
     PATHFINDING_ENABLED, LOG_VISION_DESCRIPTIONS, LOG_LLM_RAW_OUTPUT,
     SAVE_SCREENSHOTS, VISION_MAX_TOKENS, USE_INTERNAL_MAPPING,
-    MINIMAP_ENABLED as FEATURE_MINIMAP_ENABLED
+    MINIMAP_ENABLED as FEATURE_MINIMAP_ENABLED,
+    HANDLE_DIALOGUE_SCREENS, DETECT_TITLE_SCREENS, AUTO_UI_ADVANCE_MAX_STREAK,
 )
 
 from src.game.command_parser import parse_command_from_llm_output, extract_command_text
@@ -91,6 +92,50 @@ def _clean_model_text(text: str) -> str:
     text = _THINK_TAG_RE_ALT.sub('', text)
     text = _MODEL_TOKEN_RE.sub('', text)
     return text.strip()
+
+
+_auto_ui_advance_streak = 0  # consecutive start_screen/dialogue auto presses
+
+
+def _auto_ui_advance_chord(state: dict):
+    """Return (button_chord, reason) to skip the LLM on title/dialogue screens.
+
+    Returns (None, None) when the model should decide. Caps streak so a stuck
+    detection cannot mash forever without a fallback LLM turn.
+    """
+    global _auto_ui_advance_streak
+    if not state:
+        return None, None
+
+    phase = str(state.get("phase") or "").lower()
+    text_box = bool(state.get("text_box_visible"))
+    in_dialogue = bool(state.get("in_dialogue"))
+    input_locked = bool(state.get("input_locked"))
+
+    want = None
+    reason = None
+    if DETECT_TITLE_SCREENS and phase == "start_screen":
+        # Alternate Start and A — FE title/chapter splash accept either
+        chord = "START;" if (_auto_ui_advance_streak % 2 == 0) else "A;"
+        want, reason = chord, f"AUTO_START_SCREEN ({chord.strip(';')})"
+    elif HANDLE_DIALOGUE_SCREENS and (text_box or in_dialogue) and input_locked:
+        want, reason = "A;", "AUTO_DIALOGUE_ADVANCE"
+
+    if not want:
+        _auto_ui_advance_streak = 0
+        return None, None
+
+    if _auto_ui_advance_streak >= AUTO_UI_ADVANCE_MAX_STREAK:
+        log.warning(
+            f"Auto UI advance streak hit {AUTO_UI_ADVANCE_MAX_STREAK}; "
+            "falling back to LLM for one cycle"
+        )
+        _auto_ui_advance_streak = 0
+        return None, None
+
+    _auto_ui_advance_streak += 1
+    return want, reason
+
 
 IS_LOCAL = DEFAULT_MODE == "LMSTUDIO" or DEFAULT_MODE == "OLLAMA"
 
@@ -1262,7 +1307,7 @@ def llm_stream_action(state_data: dict, timeout: float = STREAM_TIMEOUT, benchma
 
 async def run_auto_loop(sock, state: dict, broadcast_func, interval: float = 8.0, max_loops = math.inf, benchmark: Benchmark = None):
     """Main async loop: Get state, call LLM, send action, update/broadcast state."""
-    global action_count, tokens_used_session, start_time, chat_history, SCREENSHOT_PATH, MINIMAP_PATH, SAVED_SCREENSHOT_PATH, SAVED_MINIMAP_PATH, _last_action_sent, _last_game_state, _failed_tiles, _current_cycle_num, _dialogue_buffer, _unit_attempt_tracker, _pending_command_parse_error
+    global action_count, tokens_used_session, start_time, chat_history, SCREENSHOT_PATH, MINIMAP_PATH, SAVED_SCREENSHOT_PATH, SAVED_MINIMAP_PATH, _last_action_sent, _last_game_state, _failed_tiles, _current_cycle_num, _dialogue_buffer, _unit_attempt_tracker, _pending_command_parse_error, _current_legal_moves
 
     b64_mm = None
 
@@ -1947,28 +1992,40 @@ async def run_auto_loop(sock, state: dict, broadcast_func, interval: float = 8.0
             else:
                 llm_input_state.pop("memory_thumbnails", None)
 
-        # Call LLM for decision
-        
-        # Deterministic move catalog: model picks MOVE: mN; harness executes buttons.
-        global _current_legal_moves
-        try:
-            _current_legal_moves = build_legal_moves(llm_input_state)
-            llm_input_state["legal_moves"] = legal_moves_for_prompt(_current_legal_moves)
-            # Keep a private full map for resolution (not needed in prompt beyond id/summary)
-            llm_input_state["_legal_move_commands"] = {
-                m["id"]: m["command"] for m in _current_legal_moves
-            }
-            log.info(
-                f"legal_moves ({len(_current_legal_moves)}): "
-                + ", ".join(f'{m["id"]}={m["summary"]}' for m in _current_legal_moves[:8])
-                + ("..." if len(_current_legal_moves) > 8 else "")
-            )
-        except Exception as e:
-            log.warning(f"legal_moves build failed: {e}")
+        # Skip LLM on title/start + locked dialogue — mash UI buttons deterministically.
+        auto_chord, auto_reason = _auto_ui_advance_chord(llm_input_state)
+        if auto_chord:
+            log.info(f"Skipping LLM — {auto_reason} (streak={_auto_ui_advance_streak})")
+            action = auto_chord
+            game_analysis = auto_reason
+            needs_summary = False
+            semantic_action = None
             _current_legal_moves = []
-            llm_input_state["legal_moves"] = []
+            await broadcast_func({
+                "type": "ai_processing",
+                "payload": {"status": "auto_ui", "model": "harness-auto", "detail": auto_reason},
+            })
 
-        action, game_analysis, needs_summary, semantic_action = await call_llm_with_timeout(llm_input_state, benchmark=benchmark)
+        if not auto_chord:
+            # Deterministic move catalog: model picks MOVE: mN; harness executes buttons.
+            try:
+                _current_legal_moves = build_legal_moves(llm_input_state)
+                llm_input_state["legal_moves"] = legal_moves_for_prompt(_current_legal_moves)
+                # Keep a private full map for resolution (not needed in prompt beyond id/summary)
+                llm_input_state["_legal_move_commands"] = {
+                    m["id"]: m["command"] for m in _current_legal_moves
+                }
+                log.info(
+                    f"legal_moves ({len(_current_legal_moves)}): "
+                    + ", ".join(f'{m["id"]}={m["summary"]}' for m in _current_legal_moves[:8])
+                    + ("..." if len(_current_legal_moves) > 8 else "")
+                )
+            except Exception as e:
+                log.warning(f"legal_moves build failed: {e}")
+                _current_legal_moves = []
+                llm_input_state["legal_moves"] = []
+
+            action, game_analysis, needs_summary, semantic_action = await call_llm_with_timeout(llm_input_state, benchmark=benchmark)
 
         # NEW: Try semantic command execution first
         action_to_send = None

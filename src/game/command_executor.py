@@ -369,9 +369,15 @@ def execute_command_sequence(
         # Dialogue is active - auto-inject A to advance, ignoring other commands
         log.info("Dialogue detected - auto-advancing with A")
         return "A;", "DIALOGUE_ADVANCE (auto-injected)"
+
+    phase = (game_state.get("phase") or "unknown")
+    phase_l = str(phase).lower()
+    if phase_l == "start_screen":
+        # Title / chapter splash — Start then A are the usual clears
+        log.info("start_screen detected - auto-advancing with START;A")
+        return "START;A;", "START_SCREEN_ADVANCE (auto-injected)"
     
     # Phase validation - check if commands are valid for current phase
-    phase = game_state.get("phase", "unknown")
     player_actions = {"SELECT", "MOVE", "ATTACK", "WAIT", "SEIZE", "VISIT", "TALK", "TRADE", "RESCUE", "ITEM", "DISMISS", "END_TURN"}
     
     if phase in ("enemy_phase", "npc_phase"):

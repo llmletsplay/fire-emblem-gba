@@ -48,8 +48,10 @@ AUTO_REFRESH_SCREENSHOTS = True  # Auto-refresh screenshots in the UI
 
 # Game-Specific Features
 # -----------------------------------------------------------------------------
-HANDLE_DIALOGUE_SCREENS = True  # Automatically handle dialogue/menu screens
-DETECT_TITLE_SCREENS = True  # Detect and handle title/menu screens
+HANDLE_DIALOGUE_SCREENS = True  # Skip LLM; mash A through locked dialogue/cutscenes
+DETECT_TITLE_SCREENS = True  # Skip LLM; auto Start/A through title/start screens
+# Max consecutive auto-advance presses before falling back to LLM (safety)
+AUTO_UI_ADVANCE_MAX_STREAK = int(os.getenv("FE_AUTO_UI_ADVANCE_MAX_STREAK", "40"))
 
 # =============================================================================
 # CONFIGURATION VALUES - Adjust these based on your needs
