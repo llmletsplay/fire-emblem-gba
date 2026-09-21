@@ -2150,14 +2150,25 @@ async def run_auto_loop(sock, state: dict, broadcast_func, interval: float = 8.0
                 _last_action_sent = action_to_send
                 _last_game_state = copy.deepcopy(current_mGBA_state)
 
-                # Let mGBA finish movement/combat anims before next CAP/state read.
+                # Let mGBA finish the Lua input queue + movement/combat anims
+                # before the next CAP/state read. QUEUE_SPACING is 30 frames
+                # (~0.5s at 60fps) per button; short settles overwrite the
+                # in-progress queue with the next action and cursor never moves.
                 settle = float(os.environ.get("FE_ACTION_SETTLE_SEC", "2.5"))
+                n_buttons = max(
+                    1,
+                    len([b for b in action_to_send.replace(",", ";").split(";") if b.strip()]),
+                )
+                queue_sec = n_buttons * float(os.environ.get("FE_BUTTON_QUEUE_SEC", "0.55"))
+                settle = max(settle, queue_sec + 1.0)
                 desc_l = (action_description or "").lower()
                 # Only stretch settle for real attacks — MOVE+WAIT button A spam is not combat.
                 if "attack" in desc_l:
                     settle = max(settle, float(os.environ.get("FE_ATTACK_SETTLE_SEC", "6.0")))
                 if settle > 0:
-                    log.info(f"Settling {settle:.1f}s for mGBA animations...")
+                    log.info(
+                        f"Settling {settle:.1f}s for mGBA queue ({n_buttons} buttons) + anims..."
+                    )
                     await asyncio.sleep(settle)
                 # Combat/anim often wedges the Lua TCP socket even after settle.
                 # Always reconnect before the next CAP/memory cycle.
