@@ -8,8 +8,10 @@ Progress heuristic (intentionally simple):
   Walk the sequence in order. Skip steps whose ``coords`` are not a list of
   (x, y) tiles (e.g. string placeholders like ``"defeat_all"``).
 
-  A step is **met** when the acting unit already stands on any of that step's
-  coordinate tiles. The first unmet move/attack/seize step is active.
+  A **move/seize/wait** step is **met** when the acting unit stands on any of
+  its coords. An **attack** step is only met by occupancy if the unit has
+  already moved/acted (hasMoved); otherwise approach tiles that overlap the
+  start square do not skip the step.
 
   Primary destination = the first (x, y) in that step's coords list. Callers
   (legal_moves / validator) may further prefer a tile inside movement range.
@@ -124,9 +126,16 @@ def infer_active_tutorial_step(
 
         unit = resolve_acting_unit(party, step, hint_name)
         unit_xy = _unit_xy(unit)
+        # Attack approach tiles often include the unit's starting square (Ch0
+        # listed (7,7) while Lyn still had to MOVE to (5,4)). Only MOVE/SEIZE/
+        # WAIT occupancy marks a step complete; attack needs hasMoved if known.
         if unit_xy is not None and unit_xy in coords:
-            # Acting unit already on a step tile → treat as completed; advance
-            continue
+            if kind in ("move", "seize", "wait", ""):
+                continue
+            if kind == "attack":
+                if bool(unit.get("hasMoved") or unit.get("moved")):
+                    continue
+                # else: still the active attack approach — fall through
 
         return {
             "index": idx,

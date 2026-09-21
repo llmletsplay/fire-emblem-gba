@@ -27,16 +27,17 @@ FE7_CHAPTERS = {
         "notes": "Tutorial chapter — the game gives step-by-step instructions via dialogue. "
                  "READ the dialogue text and LOOK at visual indicators (flashing tiles, blue squares) "
                  "on the screenshot. The game shows you exactly where to move. Follow its guidance. "
-                 "Lyn starts at (13,7). Two enemies: one brigand near (2,6) and boss Batta at (3,2).",
+                 "Live mid-prologue save: Lyn often at (7,7); forced first MOVE is (5,4) toward Batta at (3,2).",
         "new_units": ["Lyn"],
         "needs_verification": True,
         # Tutorial sequence - coordinates for each step (x, y) - 0-indexed
         # Each step: [coordinates], "description"
         "tutorial_sequence": [
-            {"coords": [(9, 8)], "step": "move", "description": "Move Lyn to (9,8) - advance toward enemy"},
-            {"coords": [(7, 5), (6, 6), (8, 6), (7, 7)], "step": "attack", "description": "Attack range around brigand at (2,6) - choose any adjacent tile"},
-            {"coords": [(5, 4)], "step": "move", "description": "Move Lyn closer to use vulnerary"},
-            {"coords": [(2, 2), (4, 2), (3, 3)], "step": "attack", "description": "Attack Batta at (3,2) - choose any adjacent tile"},
+            # Verified 2026-09-21 on zephyrus: confirm-A soft-rejects other tiles;
+            # MOVE to (5,4) from Lyn@(7,7) lands (hasMoved may stay false until WAIT).
+            # Prior (9,8) first-step was wrong for this prologue save.
+            {"coords": [(5, 4)], "step": "move", "description": "Move Lyn to (5,4) — Ch0 forced tutorial tile"},
+            {"coords": [(2, 2), (4, 2), (3, 3)], "step": "attack", "description": "Attack Batta at (3,2) — any adjacent tile"},
             {"coords": [(3, 2)], "step": "seize", "description": "Seize gate at (3,2) to complete Prologue"},
         ],
     },
