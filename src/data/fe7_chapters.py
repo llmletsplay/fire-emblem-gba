@@ -51,12 +51,15 @@ FE7_CHAPTERS = {
             {
                 "coords": [(5, 4)],
                 "step": "item",
-                "description": "Use Vulnerary from Item menu",
+                "description": (
+                    "After MOVE(5,4): mash A through tutorial dialogue, reselect Lyn, "
+                    "Item → DOWN to Vulnerary → Use (HP 6→16 verified)"
+                ),
             },
             {
-                "coords": [(2, 2), (4, 2), (3, 3), (3, 1)],
+                "coords": [(4, 2), (3, 3), (2, 2), (3, 1)],
                 "step": "attack",
-                "description": "Attack Batta at (3,2) — any adjacent tile",
+                "description": "Attack Batta@(3,2) from (4,2) — verified post-vulnerary",
             },
             {
                 "coords": [(3, 2)],
