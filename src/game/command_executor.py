@@ -514,7 +514,23 @@ def execute_command_sequence(
                     dist = abs(nav_cursor[0] - unit_pos[0]) + abs(nav_cursor[1] - unit_pos[1])
                     if dist <= 12:
                         use_map = True
-                if use_map:
+                tutorial_actor = game_state.get("tutorial_unit")
+                use_tutorial_cycle = bool(
+                    tutorial_actor
+                    and str(tutorial_actor).lower() == str(unit_name).lower()
+                    and cursor_on_player
+                    and str(cursor_on_player).lower() != str(unit_name).lower()
+                )
+                if use_tutorial_cycle:
+                    seq = calculate_l_button_cycling_buttons(
+                        unit_name, party, cursor_on_player, game_state
+                    )
+                    button_sequence.extend(seq)
+                    cmd_desc = f"SELECT {unit_name} (tutorial L-cycle)"
+                    log.info(f"SELECT tutorial L-cycle {cursor_on_player}→{unit_name}: {seq}")
+                    if unit_pos:
+                        nav_cursor = unit_pos
+                elif use_map:
                     seq = calculate_map_to_unit_buttons(unit_name, party, nav_cursor)
                     button_sequence.extend(seq)
                     cmd_desc = f"SELECT {unit_name} (via map path)"

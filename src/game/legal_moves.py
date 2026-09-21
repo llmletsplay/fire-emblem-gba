@@ -228,6 +228,15 @@ def build_legal_moves(state: dict, max_moves: int = 28) -> List[Dict[str, Any]]:
         and bool(movement_set or attack_opps)
     )
 
+    # Never let a stale/failed selection drift the tutorial onto another
+    # unit. Clear it first; the next observation will re-expose the named
+    # tutorial actor at the front of the catalog.
+    tutorial_unit = state.get("tutorial_unit")
+    if unit_selected and selected and tutorial_unit:
+        if str(selected).lower() != str(tutorial_unit).lower():
+            add("ui_b", "B", f"Clear wrong selection ({selected}); tutorial needs {tutorial_unit}")
+            return moves[:max_moves]
+
     # --- Selected unit: attack + move options ---
     if unit_selected and selected:
         # Unit already standing on tutorial dest for WAIT / ITEM / SEIZE
