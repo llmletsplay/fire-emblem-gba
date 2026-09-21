@@ -121,6 +121,16 @@ def build_legal_moves(state: dict, max_moves: int = 28) -> List[Dict[str, Any]]:
     attack_opps = state.get("attack_opportunities") or []
     enemies = state.get("enemies") or []
 
+    # Tutorial hard-prefer metadata (dest forced later when selected+reachable)
+    tutorial_target = _tile(state.get("tutorial_target"))
+    tutorial_step_index = state.get("tutorial_step_index")
+    tutorial_step = state.get("tutorial_step") or state.get("tutorial_step_kind")
+    step_label = ""
+    if tutorial_step_index is not None:
+        step_label = f" step[{tutorial_step_index}]"
+    if tutorial_step:
+        step_label = (step_label + f" {tutorial_step}").strip()
+
     movement = [_tile(t) for t in (state.get("movement_tiles") or [])]
     movement = [t for t in movement if t]
 
@@ -162,6 +172,61 @@ def build_legal_moves(state: dict, max_moves: int = 28) -> List[Dict[str, Any]]:
 
     # --- Selected unit: attack + move options ---
     if unit_selected and selected:
+        # 1) Tutorial destination first (MOVE confirm soft-rejects wrong tiles in FE7 Ch0+)
+        if tutorial_target:
+            from src.game.tutorial_progress import prefer_tutorial_tile
+
+            step_coords = None
+            seq = state.get("tutorial_sequence") or []
+            if isinstance(tutorial_step_index, int) and 0 <= tutorial_step_index < len(seq):
+                raw = seq[tutorial_step_index].get("coords") if isinstance(seq[tutorial_step_index], dict) else None
+                if isinstance(raw, (list, tuple)):
+                    step_coords = [c for c in (_tile(t) for t in raw) if c]
+
+            dest = prefer_tutorial_tile(tutorial_target, movement, step_coords)
+            if dest:
+                tx, ty = dest
+                matching_opp = next(
+                    (
+                        o
+                        for o in attack_opps
+                        if _tile(o.get("move_to") or o.get("tile")) == dest
+                    ),
+                    None,
+                )
+                if matching_opp:
+                    tgt = matching_opp.get("target") or "Enemy"
+                    add(
+                        "move_attack",
+                        f'SELECT unit="{selected}" MOVE to=[{tx},{ty}] ATTACK target="{tgt}"',
+                        f"TUTORIAL{step_label}: {selected} → ({tx},{ty}) attack {tgt}",
+                    )
+                else:
+                    add(
+                        "move_wait",
+                        f'SELECT unit="{selected}" MOVE to=[{tx},{ty}] WAIT',
+                        f"TUTORIAL{step_label}: {selected} → ({tx},{ty})",
+                    )
+                # Hard-prefer: when dest is reachable, do not flood with random blues
+                if dest in movement_set:
+                    for opp in attack_opps[:10]:
+                        odest = _tile(opp.get("move_to") or opp.get("tile"))
+                        target = opp.get("target") or "Enemy"
+                        if not odest or odest == dest:
+                            continue
+                        x, y = odest
+                        add(
+                            "move_attack",
+                            f'SELECT unit="{selected}" MOVE to=[{x},{y}] ATTACK target="{target}"',
+                            f"{selected} → ({x},{y}) attack {target}",
+                        )
+                    add("ui_b", "B", "Cancel / deselect")
+                    if not available:
+                        add("end_turn", "END_TURN", "End player phase — all units acted")
+                    else:
+                        add("end_turn", "END_TURN", "End player phase early")
+                    return moves[:max_moves]
+
         for opp in attack_opps[:10]:
             dest = _tile(opp.get("move_to") or opp.get("tile"))
             target = opp.get("target") or "Enemy"
@@ -182,6 +247,9 @@ def build_legal_moves(state: dict, max_moves: int = 28) -> List[Dict[str, Any]]:
                 enemy_tiles.append(p)
 
         def nearness(tile: Tuple[int, int]) -> Tuple[int, int, int]:
+            # Tutorial target sorts first when present but not reachable (nav toward it)
+            if tutorial_target and tile == tutorial_target:
+                return (-1, tile[0], tile[1])
             if enemy_tiles:
                 d = min(abs(tile[0] - ex) + abs(tile[1] - ey) for ex, ey in enemy_tiles)
             else:

@@ -637,13 +637,9 @@ class GBAMemoryReader:
                 if screen_target:
                     tut_x, tut_y = screen_target
 
-        # Final fallback: hardcoded chapter-based tutorial targets (only if tutorial mode)
-        if tut_x == -1 and config.TUTORIAL_MODE:
-            chapter_target = self._get_chapter_tutorial_sequence(chapter)
-            if chapter_target and len(chapter_target) > 0:
-                first_step = chapter_target[0]
-                if first_step.get("coords") and len(first_step["coords"]) > 0:
-                    tut_x, tut_y = first_step["coords"][0]
+        # Sequence fallback lives in fe_state.prep_fe_llm (infers active step from
+        # unit positions). Do NOT pin tut_x to sequence[0] here — that freezes the
+        # harness on the first tutorial tile after the unit has already moved on.
 
         return GBAGameState(
             phase=phase,

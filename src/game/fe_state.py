@@ -106,7 +106,10 @@ def prep_fe_llm(sock) -> Dict[str, Any]:
     if game_state.display_cursor_x >= 0:
         context["display_cursor"] = (game_state.display_cursor_x, game_state.display_cursor_y)
 
-    # Tutorial target from event slots (IWRAM) - only if tutorial mode enabled
+    # Tutorial target from event slots (IWRAM) - only if tutorial mode enabled.
+    # NOTE: FE7 does not reliably store tutorial destinations in RAM; event-slot
+    # and screenshot detection are best-effort. Sequence derivation below is the
+    # authoritative fallback (see docs/FE7_MEMORY_MAP.md).
     if config.TUTORIAL_MODE and game_state.tutorial_target_x >= 0:
         context["tutorial_target"] = (game_state.tutorial_target_x, game_state.tutorial_target_y)
 
@@ -347,6 +350,36 @@ def prep_fe_llm(sock) -> Dict[str, Any]:
         ally_list.append(entry)
     if ally_list:
         context["allies"] = ally_list
+
+
+    # Derive tutorial_target from hardcoded sequence when memory/screenshot did not
+    # provide one. Infers the first unmet step from party positions.
+    if (
+        config.TUTORIAL_MODE
+        and "tutorial_target" not in context
+        and context.get("tutorial_sequence")
+    ):
+        from src.game.tutorial_progress import infer_active_tutorial_step
+
+        acting = context.get("cursor_on_player")
+        info = infer_active_tutorial_step(
+            context["tutorial_sequence"],
+            context.get("party") or [],
+            acting_unit_name=acting,
+        )
+        if info.get("target"):
+            context["tutorial_target"] = info["target"]
+            context["tutorial_step_index"] = info["index"]
+            if info.get("kind"):
+                context["tutorial_step_kind"] = info["kind"]
+            if info.get("description"):
+                context["tutorial_step"] = info["description"]
+            if info.get("acting_unit"):
+                context["tutorial_unit"] = info["acting_unit"]
+            log.info(
+                f"Derived tutorial_target={info['target']} step[{info['index']}] "
+                f"kind={info.get('kind')} unit={info.get('acting_unit')}"
+            )
 
     return context
 

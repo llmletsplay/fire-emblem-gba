@@ -145,40 +145,8 @@ class MgbaClient:
         _write_png(out_path, w, h, bytes(raw))
         print(f"[probe6] CAP -> {out_path} ({w}x{h})")
 
-    def wait_queue_complete(self, timeout: float = 8.0) -> bool:
-        assert self.sock is not None
-        deadline = time.monotonic() + timeout
-        buf = bytearray()
-        old = self.sock.gettimeout()
-        try:
-            while time.monotonic() < deadline:
-                self.sock.settimeout(min(1.0, max(0.05, deadline - time.monotonic())))
-                try:
-                    chunk = self.sock.recv(4096)
-                except socket.timeout:
-                    continue
-                if not chunk:
-                    return False
-                buf.extend(chunk)
-                if b"QUEUE_COMPLETE" in buf:
-                    return True
-            return False
-        finally:
-            try:
-                self.sock.settimeout(old)
-            except OSError:
-                pass
-
-    def loadstate(self, slot: int = 0) -> str:
-        return self.send_line(f"LOADSTATE {slot}", expect_text=True)
-
     def press(self, key: str, wait: float = 0.35) -> None:
-        # Trailing semicolon puts the key on the lua input queue (QUEUE_COMPLETE).
-        token = key if key.endswith(";") else f"{key};"
-        self.send_line(token)
-        ok = self.wait_queue_complete(timeout=max(4.0, wait + 3.0))
-        if not ok:
-            print(f"[probe6] WARN: no QUEUE_COMPLETE after {token!r}")
+        self.send_line(key)
         time.sleep(wait)
 
 
@@ -237,31 +205,62 @@ def dump_state(client: MgbaClient, label: str) -> dict:
     return info
 
 
+def path_cursor_to(client: MgbaClient, dest_x: int, dest_y: int, max_steps: int = 32) -> tuple[int, int]:
+    """Press D-pad until BmSt cursor reaches dest (or max_steps). Returns final BmSt xy."""
+    for step in range(max_steps):
+        bm = client.readrange(BMST_CURSOR_X, 4)
+        cx, cy = s16(bm, 0), s16(bm, 2)
+        if (cx, cy) == (dest_x, dest_y):
+            print(f"[probe6] cursor at dest ({cx},{cy}) after {step} dpad steps")
+            return cx, cy
+        dx, dy = dest_x - cx, dest_y - cy
+        if abs(dx) >= abs(dy) and dx != 0:
+            key = "RIGHT" if dx > 0 else "LEFT"
+        elif dy != 0:
+            key = "DOWN" if dy > 0 else "UP"
+        else:
+            break
+        print(f"[probe6] path {key} toward ({dest_x},{dest_y}) from ({cx},{cy})")
+        client.press(key, 0.4)
+        time.sleep(0.15)
+    bm = client.readrange(BMST_CURSOR_X, 4)
+    return s16(bm, 0), s16(bm, 2)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--host", default=os.environ.get("FE_MGBA_HOST", "127.0.0.1"))
     ap.add_argument("--port", type=int, default=int(os.environ.get("FE_MGBA_PORT", "8888")))
-    ap.add_argument("--sync-playst", action="store_true", help="WRITE8 PlaySt to BmSt after LEFT")
-    ap.add_argument("--left-count", type=int, default=1, help="How many LEFT presses before confirm")
-    ap.add_argument("--loadstate", type=int, default=0, help="LOADSTATE slot after connect (-1 to skip)")
+    ap.add_argument("--sync-playst", action="store_true", help="WRITE8 PlaySt to BmSt after LEFT/path")
+    ap.add_argument("--left-count", type=int, default=1, help="How many LEFT presses before confirm (ignored if --dest)")
+    ap.add_argument("--dest", default=None, help="Path to dest tile X,Y then confirm A (e.g. 9,8)")
+    ap.add_argument("--loadstate", type=int, default=None, help="LOADSTATE slot before probe")
     args = ap.parse_args()
+
+    dest_xy = None
+    if args.dest:
+        parts = args.dest.replace(" ", "").split(",")
+        if len(parts) != 2:
+            raise SystemExit(f"--dest must be X,Y got {args.dest!r}")
+        dest_xy = (int(parts[0]), int(parts[1]))
 
     LOG_DIR.mkdir(parents=True, exist_ok=True)
     ts = time.strftime("%Y%m%d-%H%M%S")
-    mode = "sync" if args.sync_playst else "plain"
+    if dest_xy:
+        mode = f"dest{dest_xy[0]}_{dest_xy[1]}"
+    else:
+        mode = "sync" if args.sync_playst else "plain"
     log_path = LOG_DIR / f"probe6_{mode}_{ts}.txt"
     dumps: list[dict] = []
 
     client = MgbaClient(args.host, args.port)
     try:
         client.connect()
-        if args.loadstate >= 0:
+        if args.loadstate is not None:
             print(f"[probe6] LOADSTATE {args.loadstate}")
-            try:
-                print(" ", client.loadstate(args.loadstate))
-            except Exception as e:
-                print(f"[probe6] LOADSTATE failed: {e}")
-            time.sleep(1.5)
+            print(" ", client.send_line(f"LOADSTATE {args.loadstate}", expect_text=True))
+            time.sleep(1.0)
+
         print("[probe6] settle 1.0s")
         time.sleep(1.0)
 
@@ -274,13 +273,21 @@ def main() -> int:
         time.sleep(1.0)
         dumps.append(dump_state(client, "after_select"))
 
-        for i in range(args.left_count):
-            print(f"[probe6] LEFT ({i + 1}/{args.left_count})")
-            client.press("LEFT", 0.45)
-        print("[probe6] wait 1.5s after LEFT for cursor/path settle")
-        time.sleep(1.5)
-        dumps.append(dump_state(client, "after_LEFT"))
-        client.cap_png(LOG_DIR / f"probe6_{mode}_afterLEFT_{ts}.png")
+        if dest_xy:
+            print(f"[probe6] path to dest {dest_xy}")
+            final = path_cursor_to(client, dest_xy[0], dest_xy[1])
+            print(f"[probe6] wait 1.5s after path for cursor/path settle (at {final})")
+            time.sleep(1.5)
+            dumps.append(dump_state(client, "after_path"))
+            client.cap_png(LOG_DIR / f"probe6_{mode}_afterPATH_{ts}.png")
+        else:
+            for i in range(args.left_count):
+                print(f"[probe6] LEFT ({i + 1}/{args.left_count})")
+                client.press("LEFT", 0.45)
+            print("[probe6] wait 1.5s after LEFT for cursor/path settle")
+            time.sleep(1.5)
+            dumps.append(dump_state(client, "after_LEFT"))
+            client.cap_png(LOG_DIR / f"probe6_{mode}_afterLEFT_{ts}.png")
 
         if args.sync_playst:
             bx, by = dumps[-1]["bmst"]
@@ -316,7 +323,10 @@ def main() -> int:
 
     # Success heuristic for parent agent
     if len(dumps) >= 2:
-        before = next(d for d in dumps if d["label"] == "after_LEFT")
+        before = next(
+            (d for d in dumps if d["label"] in ("after_LEFT", "after_path")),
+            dumps[0],
+        )
         after = dumps[-1]
         moved = after["lyn_xy"] != before["lyn_xy"] or after["lyn_hasMoved"]
         print(f"[probe6] lyn_moved_or_hasMoved={moved}")
