@@ -42,7 +42,7 @@ end
 --------------------------------------------------------------------------
 local LISTEN_PORT   = 8888   -- TCP port for Python client
 local HOLD_FRAMES   = 6      -- frames to keep any pressed key down
-local QUEUE_SPACING = 30     -- frames between queued inputs
+local QUEUE_SPACING = 18     -- frames between queued inputs
 local MAX_QUEUE_SIZE = 30    -- safety net: max buttons per action queue
 
 --------------------------------------------------------------------------

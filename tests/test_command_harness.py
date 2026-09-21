@@ -129,8 +129,8 @@ def test_select_prefers_map_path_when_nearby():
     assert buttons.upper().endswith("A;") or buttons.upper().endswith("A")
 
 
-def test_select_paths_from_playst_when_display_lies():
-    """PlaySt at (7,9) while display/cursor_on claim Lyn at (7,7)."""
+def test_select_uses_display_cursor_not_stale_playst():
+    """Display on Lyn at (7,7); stale PlaySt at (7,9) must not force UP;UP."""
     from src.game.command_executor import execute_command_sequence
     from src.game.command_parser import parse_command
     seq = parse_command('SELECT unit="Lyn" MOVE to=[7,2] WAIT')
@@ -147,7 +147,6 @@ def test_select_paths_from_playst_when_display_lies():
             "movement_tiles": [[7, 7], [7, 6], [7, 5], [7, 4], [7, 3], [7, 2]],
         },
     )
-    assert "map path" in desc.lower()
-    # UP UP to Lyn, A select, then UP*5 to (7,2), A confirm
-    assert buttons.upper().startswith("UP;UP;A;")
-    assert "UP;UP;UP;UP;UP;A;" in buttons.upper()
+    assert "map path" not in desc.lower()
+    # Already on Lyn via display — bare A, then path north
+    assert buttons.upper().startswith("A;UP;UP;UP;UP;UP;A;")

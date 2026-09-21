@@ -389,15 +389,21 @@ def execute_command_sequence(
             log.warning(f"Phase is {phase}, ignoring player actions: {non_player_actions}. Auto-waiting.")
             return "", f"BLOCKED: Cannot execute {non_player_actions} during {phase} - auto-waiting"
 
-    # Pathing must use the real hardware cursor (PlaySt). BmSt display_cursor
-    # often sticks on a unit while PlaySt sits elsewhere — trusting display
-    # alone makes SELECT press A off-unit and MOVE path from the wrong tile.
+    # Live FE7 on mGBA: PlaySt cursor often freezes while BmSt display_cursor
+    # tracks the real on-screen cursor (opposite of the old tutorial comment).
+    # Prefer display / overridden context cursor for pathing; keep PlaySt only
+    # as a fallback when display is missing.
     display_cursor = game_state.get("display_cursor")
-    playst_cursor = game_state.get("cursor_memory") or game_state.get("cursor")
-    cursor = playst_cursor or display_cursor or (0, 0)
+    context_cursor = game_state.get("cursor")
+    playst_cursor = game_state.get("cursor_memory")
+    cursor = display_cursor or context_cursor or playst_cursor or (0, 0)
     if isinstance(cursor, list):
         cursor = tuple(cursor)
     nav_cursor = (int(cursor[0]), int(cursor[1]))
+    log.info(
+        f"Nav cursor={nav_cursor} (display={display_cursor}, "
+        f"context={context_cursor}, playst={playst_cursor})"
+    )
     cursor_on_player = game_state.get("cursor_on_player")
     party = game_state.get("party", [])
     enemies = game_state.get("enemies", [])

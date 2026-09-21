@@ -278,9 +278,15 @@ def prep_fe_llm(sock) -> Dict[str, Any]:
                     )
                     
                     if reachable:
-                        context["movement_tiles"] = [list(t) for t in reachable]
-                        context["unit_is_selected"] = True
-                        log.info(f"Movement tiles calculated for {context['cursor_on_player']}: {len(reachable)} tiles, movement={movement}")
+                        # Preview only — do NOT set movement_tiles / unit_is_selected.
+                        # Those flags mean "blue squares are up in-game." Faking them
+                        # makes legal_moves offer MOVE before SELECT lands.
+                        context["reachable_tiles"] = [list(t) for t in reachable]
+                        log.info(
+                            f"Reachable preview for {context['cursor_on_player']}: "
+                            f"{len(reachable)} tiles, movement={movement} "
+                            f"(not marking selected)"
+                        )
                 except Exception as e:
                     log.warning(f"Failed to calculate movement tiles: {e}")
         else:
