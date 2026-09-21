@@ -219,7 +219,7 @@ def detect_flash_regions(
     grid_size: int = 16,
     diff_threshold: int = 40,
     min_tile_ratio: float = 0.15,
-    exclude_bottom_fraction: float = 0.25,
+    exclude_bottom_fraction: float = 0.15,
     exclude_top_rows: int = 2,
 ) -> List[Dict[str, Any]]:
     """
@@ -401,7 +401,16 @@ def detect_movement_tiles(
                 avg_b = b_sum / count
 
                 key = (tc, tr)
-                if avg_b - max(avg_r, avg_g) > blue_threshold:
+                # Pure blue (old metric) OR translucent cyan overlay on grass.
+                # FE GBA movement tint is cyan blended over green terrain, so
+                # avg_b - max(r,g) stays ~5–20 and misses the diamond entirely.
+                pure_blue = avg_b - max(avg_r, avg_g) > blue_threshold
+                cyan_overlay = (
+                    avg_b - avg_r > 35
+                    and avg_b > 150
+                    and avg_g > 120
+                )
+                if pure_blue or cyan_overlay:
                     tile_blue_frames[key] = tile_blue_frames.get(key, 0) + 1
                 elif avg_r - max(avg_g, avg_b) > red_threshold:
                     tile_red_frames[key] = tile_red_frames.get(key, 0) + 1

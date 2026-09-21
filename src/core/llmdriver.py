@@ -419,11 +419,24 @@ def _infer_screen_context(current_state: dict, last_action: str, last_state: dic
                     # All units have moved — end turn
                     hints.append("ALL units have already acted this turn. End your turn: Select;")
         elif a_press_effective:
-            # We just pressed A with cursor on this unit AND input was NOT locked — unit is now SELECTED
-            context_parts.append(f"UNIT SELECTED: {cursor_on_player}. Blue movement squares should be visible.")
-            hints.append(f"*** STOP *** You just pressed A on {cursor_on_player}. "
-                         f"The unit is NOW SELECTED. Blue squares should be visible. "
-                         f"DO NOT press A again! Use D-pad to navigate to a blue tile, then press A to CONFIRM the move.")
+            # A on this unit — may be selected. Don't assert blue tiles exist (detector/timing lag).
+            has_blue = bool(current_state.get("movement_tiles"))
+            if has_blue:
+                context_parts.append(
+                    f"UNIT SELECTED: {cursor_on_player}. Blue movement squares visible."
+                )
+                hints.append(
+                    f"*** STOP *** {cursor_on_player} is SELECTED with blue tiles. "
+                    f"DO NOT press A again to select — D-pad to a blue tile, then A to CONFIRM."
+                )
+            else:
+                context_parts.append(
+                    f"Pressed A on {cursor_on_player}. If blue tiles are not visible yet, "
+                    f"retry SELECT; if they are, navigate with D-pad then A to confirm."
+                )
+                hints.append(
+                    f"After selecting {cursor_on_player}, wait for blue movement squares before confirming a move."
+                )
             enemies = current_state.get("enemies", [])
             cursor = current_state.get("cursor")
             if enemies:
