@@ -42,6 +42,24 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
+# Only one Watch-FeHarness should run. Older babysitters left in backoff will
+# otherwise fight over mGBA and cause WinError 10053 / exit-code-1 flaps.
+try {
+    $myPid = $PID
+    Get-CimInstance Win32_Process -Filter "name='powershell.exe'" -ErrorAction SilentlyContinue |
+        Where-Object {
+            $_.ProcessId -ne $myPid -and
+            $_.CommandLine -and
+            ($_.CommandLine -like '*Watch-FeHarness*')
+        } |
+        ForEach-Object {
+            Write-Host "[watch] Stopping sibling Watch-FeHarness PID $($_.ProcessId)"
+            Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
+        }
+} catch {
+    Write-Host "[watch] Sibling cleanup skipped: $_"
+}
+
 function Write-Log([string]$Message) {
     $ts = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
     $line = "[$ts] $Message"

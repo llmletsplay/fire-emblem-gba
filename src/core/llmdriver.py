@@ -2172,7 +2172,7 @@ async def run_auto_loop(sock, state: dict, broadcast_func, interval: float = 8.0
                     1,
                     len([b for b in action_to_send.replace(",", ";").split(";") if b.strip()]),
                 )
-                queue_sec = n_buttons * float(os.environ.get("FE_BUTTON_QUEUE_SEC", "0.35"))
+                queue_sec = n_buttons * float(os.environ.get("FE_BUTTON_QUEUE_SEC", "0.45"))
                 settle = max(settle, queue_sec + 1.0)
                 desc_l = (action_description or "").lower()
                 # Only stretch settle for real attacks — MOVE+WAIT button A spam is not combat.
