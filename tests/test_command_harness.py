@@ -87,3 +87,24 @@ def test_parse_move_id_and_resolve_to_command():
     seq = parse_command(chosen["command"])
     assert seq.commands
     assert seq.commands[0].type in {"SELECT", "END_TURN", "BUTTON"}
+
+
+def test_validator_allows_ui_on_start_screen():
+    seq = parse_command("START")
+    result = validate_command_sequence(
+        seq.commands,
+        {"phase": "start_screen", "cursor": (0, 0), "party": [], "enemies": []},
+    )
+    assert result.valid, result.errors
+    assert not any("Cannot execute" in e for e in result.errors)
+
+
+def test_validator_rejects_end_turn_on_start_screen():
+    seq = parse_command("END_TURN")
+    result = validate_command_sequence(
+        seq.commands,
+        {"phase": "start_screen", "cursor": (0, 0), "party": [], "enemies": []},
+    )
+    assert not result.valid
+    assert any("END_TURN" in e and "start_screen" in e for e in result.errors)
+

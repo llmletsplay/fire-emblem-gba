@@ -27,6 +27,7 @@ COMMAND_KEYWORDS = [
     "ITEM",                                         # item management
     "DISMISS",                                      # dialogue
     "PRESS",                                        # raw fallback
+    "START",                                        # title / pause (BUTTON)
     "A", "B",                                       # single button commands
 ]
 
@@ -175,7 +176,7 @@ def _parse_single_command(keyword: str, args: str) -> Optional[Command]:
     elif keyword == "DISMISS":
         return Command(type="DISMISS")
     
-    elif keyword in ("A", "B"):
+    elif keyword in ("A", "B", "START"):
         # Single button commands - generate raw button sequence
         return Command(type="BUTTON", button=keyword)
 

@@ -133,3 +133,36 @@ def test_resolve_attack_target_tile_adjacent_fallback():
     assert tile == (5, 3)
     assert source == "adjacent_to_cursor"
     assert enemy["name"] == "Batta"
+
+
+def test_build_legal_moves_start_screen_ui_only():
+    """Title screen offers START/A/B only — never END_TURN / SELECT."""
+    state = {
+        "phase": "start_screen",
+        "text_box_visible": False,
+        "input_locked": False,
+        "in_dialogue": False,
+        "in_menu": False,
+        "screen_context": "title",
+        "party": [],
+        "unit_status": {},
+        "enemies": [],
+        "movement_tiles": [],
+        "attack_opportunities": [],
+        "unit_is_selected": False,
+        "selected_unit": None,
+    }
+    moves = build_legal_moves(state)
+    assert moves, "expected START/A/B on start_screen"
+    kinds = {m["kind"] for m in moves}
+    cmds = {m["command"] for m in moves}
+    assert kinds == {"ui_start", "ui_a", "ui_b"}
+    assert cmds == {"START", "A", "B"}
+    assert "end_turn" not in kinds
+    assert not any("END_TURN" in m["command"] for m in moves)
+    # START must parse as BUTTON so validator/executor accept it
+    seq = parse_command("START")
+    assert len(seq.commands) == 1
+    assert seq.commands[0].type == "BUTTON"
+    assert seq.commands[0].button == "START"
+

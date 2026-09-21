@@ -252,6 +252,7 @@ class GBAMemoryReader:
         Returns:
             Raw bytes from memory
         """
+        reconnected = False
         for attempt in range(retries + 1):
             try:
                 cmd = f"READRANGE {hex(address)} {length}\n"
@@ -274,7 +275,23 @@ class GBAMemoryReader:
 
                 return data
 
-            except (ConnectionError, TimeoutError, socket.timeout) as e:
+            except (ConnectionError, TimeoutError, socket.timeout, OSError) as e:
+                # WinError 10038 / EBADF: operation on a closed / non-socket fd.
+                # One reconnect + retry recovers mid-cycle after END_TURN / Lua death.
+                winerr = getattr(e, "winerror", None)
+                errn = getattr(e, "errno", None)
+                dead_sock = winerr == 10038 or errn in (9, 10038) or "10038" in str(e)
+                if dead_sock and not reconnected:
+                    try:
+                        from src.utils.socket_utils import reconnect_socket
+                        logger.warning(
+                            f"Memory socket dead at 0x{address:X} ({e}); reconnecting once"
+                        )
+                        self.socket = reconnect_socket(self.socket)
+                        reconnected = True
+                        continue
+                    except Exception as re:
+                        logger.error(f"Memory reader reconnect failed: {re}")
                 if attempt < retries:
                     logger.warning(f"Memory read retry {attempt+1} at 0x{address:X}: {e}")
                     time.sleep(0.05)
@@ -1151,8 +1168,15 @@ def get_memory_reader(socket_client=None) -> Optional[GBAMemoryReader]:
 
     Uses FE_GAME/ROM_FILE when configured, otherwise reads the ROM header
     through the mGBA Lua socket to select the correct memory addresses.
+
+    When socket_client is provided and a reader already exists, refresh the
+    reader's socket so post-action reconnects in llmdriver are not ignored.
     """
     global _memory_reader
+    if _memory_reader is not None and socket_client is not None:
+        if _memory_reader.socket is not socket_client:
+            logger.debug("Refreshing memory reader socket after reconnect")
+            _memory_reader.socket = socket_client
     if _memory_reader is None and socket_client:
         # Use FE_GAME env var or infer from ROM_FILE
         from src.core import config

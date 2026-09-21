@@ -1338,6 +1338,11 @@ async def run_auto_loop(sock, state: dict, broadcast_func, interval: float = 8.0
                         try:
                             from src.utils.socket_utils import reconnect_socket
                             sock = reconnect_socket(sock)
+                            try:
+                                from src.utils.memory_reader import get_memory_reader as _sync_reader
+                                _sync_reader(sock)
+                            except Exception:
+                                pass
                             capture(sock, screenshot_name)
                             log.info("CAP succeeded after mid-cycle reconnect.")
                         except Exception:
@@ -1459,6 +1464,11 @@ async def run_auto_loop(sock, state: dict, broadcast_func, interval: float = 8.0
              try:
                  from src.utils.socket_utils import reconnect_socket
                  sock = reconnect_socket(sock)
+                 try:
+                     from src.utils.memory_reader import get_memory_reader as _sync_reader
+                     _sync_reader(sock)
+                 except Exception:
+                     pass
              except Exception as re:
                  log.error(f"Reconnect failed: {re}")
              await asyncio.sleep(2)
@@ -2059,6 +2069,12 @@ async def run_auto_loop(sock, state: dict, broadcast_func, interval: float = 8.0
                 try:
                     from src.utils.socket_utils import reconnect_socket
                     sock = reconnect_socket(sock)
+                    # Keep global memory reader on the live socket (avoids WinError 10038).
+                    try:
+                        from src.utils.memory_reader import get_memory_reader as _sync_reader
+                        _sync_reader(sock)
+                    except Exception:
+                        pass
                     log.info("Post-action socket reconnect OK.")
                 except Exception as re:
                     log.warning(f"Post-action reconnect failed (will retry next CAP): {re}")

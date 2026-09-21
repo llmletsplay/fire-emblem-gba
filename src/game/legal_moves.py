@@ -96,6 +96,14 @@ def build_legal_moves(state: dict, max_moves: int = 28) -> List[Dict[str, Any]]:
         add("ui_b", "B", "Press B / cancel")
         return moves[:max_moves]
 
+    # Title / start screen: only UI buttons; no END_TURN / map tactics.
+    phase = (state.get("phase") or "").lower()
+    if phase == "start_screen":
+        add("ui_start", "START", "Press Start to begin / advance title")
+        add("ui_a", "A", "Press A to confirm / advance")
+        add("ui_b", "B", "Press B / cancel")
+        return moves[:max_moves]
+
     # Action / map menus
     if in_menu:
         for opp in (state.get("attack_opportunities") or [])[:6]:

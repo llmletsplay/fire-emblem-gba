@@ -254,15 +254,31 @@ if (-not $skipFrontend) {
 
 $runPy = Join-Path $root "src\core\run.py"
 $argList = @($runPy, "--auto")
+$harnessLog = Join-Path $root "logs\harness.log"
+Write-Info "Harness log (append): $harnessLog"
 
 Write-Info "Starting harness: python src\core\run.py --auto"
 if ($Foreground) {
-    & $python @argList
+    # Append both stdout and stderr so babysitting can tail LLM cycles.
+    & $python @argList *>> $harnessLog
     exit $LASTEXITCODE
 }
 
-$proc = Start-Process -FilePath $python -ArgumentList $argList -WorkingDirectory $root -PassThru -WindowStyle Hidden
-Write-Info "Harness PID=$($proc.Id)"
+# Background: wrap so both streams append to the same harness.log
+$pyEsc = $python.Replace("'", "''")
+$logEsc = $harnessLog.Replace("'", "''")
+$rootEsc = $root.Replace("'", "''")
+$argsEsc = ($argList | ForEach-Object { "'" + ($_ -replace "'", "''") + "'" }) -join ", "
+$psCommand = @"
+Set-Location -LiteralPath '$rootEsc'
+& '$pyEsc' @($argsEsc) *>> '$logEsc'
+"@
+$proc = Start-Process -FilePath "powershell.exe" -ArgumentList @(
+    "-NoProfile",
+    "-ExecutionPolicy", "Bypass",
+    "-Command", $psCommand
+) -WorkingDirectory $root -PassThru -WindowStyle Hidden
+Write-Info "Harness PID=$($proc.Id) (logging to logs\harness.log)"
 [pscustomobject]@{
     Id           = $proc.Id
     ProcessName  = $proc.ProcessName
@@ -270,4 +286,5 @@ Write-Info "Harness PID=$($proc.Id)"
     LLM_PROVIDER = $provider
     ROM_FILE     = $romFile
     RepoRoot     = $root
+    LogFile      = $harnessLog
 }
