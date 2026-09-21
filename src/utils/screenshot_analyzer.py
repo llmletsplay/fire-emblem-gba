@@ -177,6 +177,27 @@ def detect_text_box(img_path: str, bottom_rows_px: int = 48,
 
         detected = is_dark_bottom and has_text_contrast and is_not_black_screen
 
+        # FE7 Lyn Mode's guided/tutorial prompts are centered yellow/white
+        # panels rather than the normal bottom dialogue box. They are easy to
+        # miss with the bottom-band heuristic, while ordinary map sprites do
+        # not produce this much light area in the bounded panel region.
+        if not detected and width >= 120 and height >= 100:
+            panel_rgb = Image.open(img_path).convert('RGB').crop(
+                (40, 45, min(205, width), min(105, height))
+            )
+            bright = 0
+            yellow = 0
+            for r, g, b in panel_rgb.getdata():
+                if min(r, g, b) >= 190 and max(r, g, b) - min(r, g, b) <= 25:
+                    bright += 1
+                if abs(r - 231) < 18 and abs(g - 239) < 18 and abs(b - 132) < 24:
+                    yellow += 1
+            detected = bright >= 1500 or yellow >= 1000
+            if detected:
+                log.info(
+                    f"Tutorial dialogue panel detected: bright={bright}, yellow={yellow}"
+                )
+
         if detected:
             log.info(f"Text box detected: bottom_mean={bottom_mean:.1f}, "
                      f"bottom_stddev={bottom_stddev:.1f}, top_mean={top_mean:.1f}")

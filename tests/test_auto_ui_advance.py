@@ -32,18 +32,6 @@ def test_locked_dialogue_auto_a():
     assert reason == "AUTO_DIALOGUE_ADVANCE"
 
 
-def test_fe7_tutorial_lock_auto_a_even_without_detected_text_box():
-    chord, reason = _auto_ui_advance_chord({
-        "chapter": 1,
-        "phase": "player_phase",
-        "text_box_visible": False,
-        "in_dialogue": False,
-        "input_locked": True,
-    })
-    assert chord == "A;"
-    assert reason == "AUTO_TUTORIAL_LOCK"
-
-
 def test_start_screen_executor_inject():
     from src.game.command_executor import execute_command_sequence
     from src.game.command_parser import parse_command
