@@ -3,6 +3,7 @@
 -- Start / Sel: S (START)  s (SELECT)
 -- Extra      : CAP  ➜ send ARGB raster (length header + pixels)
 --           : READRANGE <address> <length>  ➜ send memory bytes (length header + data)
+--           : WRITE8 <address> <value> ➜ write one byte (debug / cursor sync probes)
 --           : LOADSTATE <slot> [flags] ➜ load save state (flags default to 29)
 --           : INPUT_DISPLAY_ON ➜ control input display visibility
 -- Copy to …/mGBA.app/Contents/Resources/scripts/   Run with:
@@ -41,8 +42,8 @@ end
 --  CONFIG -----------------------------------------------------------------
 --------------------------------------------------------------------------
 local LISTEN_PORT   = 8888   -- TCP port for Python client
-local HOLD_FRAMES   = 12      -- frames to keep any pressed key down
-local QUEUE_SPACING = 24     -- frames between queued inputs
+local HOLD_FRAMES   = 12     -- frames to keep any pressed key down (was 6; A confirm needs longer)
+local QUEUE_SPACING = 24     -- frames between queued inputs (was 30)
 local MAX_QUEUE_SIZE = 30    -- safety net: max buttons per action queue
 
 --------------------------------------------------------------------------
@@ -339,6 +340,27 @@ local inputQueue = nil
 --  4-FRAME AUTO-RELEASE + QUEUE PROCESSING -------------------------------
 --------------------------------------------------------------------------
 local hold = {}
+
+-- Build a bitmask of every key currently in the hold table.
+local function heldMask()
+   local m = 0
+   for k,_ in pairs(hold) do
+      local bit = KEY_MASK[k]
+      if bit then m = m | bit end
+   end
+   return m
+end
+
+-- Re-assert held keys every frame. Some mGBA builds drop scripted keys unless
+-- setKeys is called again on the frame callback; a one-shot addKeys can make
+-- D-pad pathing "work" (1 frame is enough) while confirm-A silently fails.
+local function applyHeldKeys()
+   local m = heldMask()
+   if m ~= 0 then
+      emu:setKeys(m)
+   end
+end
+
 local function stepAutoRelease()
    if next(hold) then
       local rel = 0
@@ -356,6 +378,8 @@ local function stepAutoRelease()
          console:log("[DEBUG] stepAutoRelease: Releasing keys with mask: " .. rel .. ". New hold: " .. table_to_string(hold))
          emu:clearKeys(rel)
       end
+      -- Keep remaining held keys asserted for this frame
+      applyHeldKeys()
    end
 
    if inputQueue then
@@ -366,21 +390,22 @@ local function stepAutoRelease()
          if i <= #inputQueue.tokens then
             local key = inputQueue.tokens[i]
             console:log("[DEBUG] stepAutoRelease: Queue executing index " .. i .. ", token: '" .. key .. "' (Mask: " .. KEY_MASK[key] .. ")")
-            emu:addKeys(KEY_MASK[key])
             hold[key] = HOLD_FRAMES
+            applyHeldKeys()
             console:log("[DEBUG] stepAutoRelease: Added key '" .. key .. "' to hold for " .. HOLD_FRAMES .. " frames. New hold: " .. table_to_string(hold))
             inputQueue.idx = i + 1
             inputQueue.framesUntilNext = QUEUE_SPACING
             console:log("[DEBUG] stepAutoRelease: Queue index advanced to " .. inputQueue.idx .. ". Next input in " .. inputQueue.framesUntilNext .. " frames.")
          else
             console:log("[DEBUG] stepAutoRelease: Input queue finished processing all tokens.")
-            -- Auto-save to slot 0 after every completed action queue
-            local save_ok = emu:saveStateSlot(0, 29)
-            if save_ok then
-               console:log("[INFO ] stepAutoRelease: Auto-saved state to slot 0.")
-            else
-               console:log("[WARN ] stepAutoRelease: Auto-save to slot 0 failed.")
-            end
+            -- Autosave after every queue was racing path confirm / reload probes.
+            -- Disabled; harness / Watch can SAVESTATE explicitly when needed.
+            -- local save_ok = emu:saveStateSlot(0, 29)
+            -- if save_ok then
+            --    console:log("[INFO ] stepAutoRelease: Auto-saved state to slot 0.")
+            -- else
+            --    console:log("[WARN ] stepAutoRelease: Auto-save to slot 0 failed.")
+            -- end
             local sock = inputQueue.sock
             if sock and clients[inputQueue.sockId] then
                sock:send("QUEUE_COMPLETE\n")
@@ -542,6 +567,22 @@ local function parse(line, sock, sockId)
       sendReadRange(sock, sockId, a, l)
       return
    end
+
+   -- WRITE8 <addr> <value> — one-byte poke (used by move probes to sync PlaySt cursor)
+   local wa, wv = line:match("^WRITE8%s+(%S+)%s+(%S+)$")
+   if wa and wv then
+      local addr = tonumber(wa) or tonumber(wa, 16)
+      local val = tonumber(wv) or tonumber(wv, 16)
+      if addr == nil or val == nil then
+         err(sockId, "Bad WRITE8 args"); sock:send("ERR Bad WRITE8 args\n"); return
+      end
+      val = val & 0xFF
+      console:log(string.format("[DEBUG] parse: WRITE8 0x%08X = 0x%02X", addr, val))
+      emu:write8(addr, val)
+      sock:send(string.format("OK WRITE8 0x%08X 0x%02X\n", addr, val))
+      return
+   end
+
    if line_upper == "CAP" then
       console:log("[DEBUG] parse: CAP command received.")
       sendCapture(sock, sockId)
@@ -669,13 +710,13 @@ local function parse(line, sock, sockId)
       end
    end
 
-   if add ~= 0 then
-      console:log("[DEBUG] parse: Applying add mask: " .. add)
-      emu:addKeys(add)
-   end
    if clr ~= 0 then
       console:log("[DEBUG] parse: Applying clear mask: " .. clr)
       emu:clearKeys(clr)
+   end
+   if add ~= 0 then
+      console:log("[DEBUG] parse: Applying add mask via setKeys hold: " .. add)
+      applyHeldKeys()
    end
    console:log("[DEBUG] parse: Finished processing keys. Current hold: " .. table_to_string(hold))
    return

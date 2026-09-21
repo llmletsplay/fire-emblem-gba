@@ -2163,10 +2163,23 @@ async def run_auto_loop(sock, state: dict, broadcast_func, interval: float = 8.0
                 _last_action_sent = action_to_send
                 _last_game_state = copy.deepcopy(current_mGBA_state)
 
+                # Wait for lua input queue to finish before settle/CAP.
+                # Without this, confirm-A can be observed as a cancel because we
+                # reconnect/read state mid-queue.
+                if ";" in action_to_send:
+                    try:
+                        from src.utils.socket_utils import wait_queue_complete
+                        # Estimate: N buttons * QUEUE_SPACING(~24) / 60fps + cushion
+                        n_btn = max(1, action_to_send.count(";"))
+                        q_timeout = float(os.environ.get("FE_QUEUE_COMPLETE_TIMEOUT", str(max(8.0, n_btn * 0.55 + 3.0))))
+                        wait_queue_complete(sock, timeout=q_timeout)
+                    except Exception as qe:
+                        log.warning(f"QUEUE_COMPLETE wait failed: {qe}")
+
                 # Let mGBA finish the Lua input queue + movement/combat anims
-                # before the next CAP/state read. QUEUE_SPACING is 30 frames
-                # (~0.5s at 60fps) per button; short settles overwrite the
-                # in-progress queue with the next action and cursor never moves.
+                # before the next CAP/state read. QUEUE_SPACING is ~24 frames
+                # per button; short settles overwrite the in-progress queue with
+                # the next action and cursor never moves.
                 settle = float(os.environ.get("FE_ACTION_SETTLE_SEC", "2.5"))
                 n_buttons = max(
                     1,

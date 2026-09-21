@@ -109,6 +109,47 @@ def send_command(sock, cmd: str) -> str:
         return data.decode('utf-8').rstrip("\n")
 
 
+
+def wait_queue_complete(sock, timeout: float = 20.0) -> bool:
+    """Block until lua sends QUEUE_COMPLETE (or timeout).
+
+    Input queues are drained on the mGBA frame callback; settling only with
+    wall-clock sleep can race confirm-A before the last D-pad is applied.
+    """
+    import time as _time
+    deadline = _time.monotonic() + timeout
+    buf = bytearray()
+    old_timeout = sock.gettimeout()
+    try:
+        while _time.monotonic() < deadline:
+            remaining = max(0.05, deadline - _time.monotonic())
+            sock.settimeout(min(1.0, remaining))
+            try:
+                chunk = sock.recv(4096)
+            except socket_module.timeout:
+                continue
+            except OSError as e:
+                log.warning(f"[QUEUE_COMPLETE] recv error: {e}")
+                return False
+            if not chunk:
+                log.warning("[QUEUE_COMPLETE] socket closed while waiting")
+                return False
+            buf.extend(chunk)
+            if b"QUEUE_COMPLETE" in buf:
+                log.info("[QUEUE_COMPLETE] received")
+                return True
+            # Drain other line responses without treating them as failure
+            if b"\n" in buf and b"QUEUE_COMPLETE" not in buf:
+                # keep tail after last newline
+                buf[:] = buf.split(b"\n")[-1]
+        log.warning(f"[QUEUE_COMPLETE] timeout after {timeout:.1f}s (buf={bytes(buf)[:80]!r})")
+        return False
+    finally:
+        try:
+            sock.settimeout(old_timeout)
+        except OSError:
+            pass
+
 def reconnect_socket(old_sock=None, host="localhost", port=None, timeout=10):
     """Close old socket (if any) and open a fresh connection to mGBA Lua.
 
