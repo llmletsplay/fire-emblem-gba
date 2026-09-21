@@ -147,6 +147,28 @@ def test_select_uses_display_cursor_not_stale_playst():
             "movement_tiles": [[7, 7], [7, 6], [7, 5], [7, 4], [7, 3], [7, 2]],
         },
     )
-    assert "map path" not in desc.lower()
-    # Already on Lyn via display — bare A, then path north
-    assert buttons.upper().startswith("A;UP;UP;UP;UP;UP;A;")
+    assert "already selected" in desc.lower()
+    # Already selected with blue tiles — skip SELECT A, just path north
+    assert buttons.upper().startswith("UP;UP;UP;UP;UP;A;")
+
+
+def test_select_skipped_when_already_selected():
+    from src.game.command_executor import execute_command_sequence
+    from src.game.command_parser import parse_command
+    seq = parse_command('SELECT unit="Lyn" MOVE to=[5,7] WAIT')
+    buttons, desc = execute_command_sequence(
+        seq.commands,
+        {
+            "phase": "player_phase",
+            "cursor": (7, 7),
+            "display_cursor": (7, 7),
+            "cursor_on_player": "Lyn",
+            "unit_is_selected": True,
+            "party": [{"name": "Lyn", "x": 7, "y": 7, "hasMoved": False}],
+            "enemies": [],
+            "movement_tiles": [[7, 7], [6, 7], [5, 7], [5, 6]],
+        },
+    )
+    assert "already selected" in desc.lower()
+    assert not buttons.upper().startswith("A;LEFT")
+    assert buttons.upper().startswith("LEFT;LEFT;A;")

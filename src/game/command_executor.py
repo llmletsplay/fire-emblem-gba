@@ -430,6 +430,17 @@ def execute_command_sequence(
                 log.warning("SELECT command with no unit name, skipping")
                 continue
             unit_pos = _party_unit_pos(unit_name)
+            # Already in movement mode (blue tiles) — another A confirms stand-still.
+            if movement_tiles or game_state.get("unit_is_selected"):
+                log.info(
+                    f"Already selected (movement_tiles={len(movement_tiles or [])}); "
+                    f"skipping SELECT {unit_name}"
+                )
+                cmd_desc = f"SELECT {unit_name} (already selected, skipped)"
+                action_descriptions.append(cmd_desc)
+                if unit_pos:
+                    nav_cursor = unit_pos
+                continue
             # Only bare-A when the PATHING cursor is actually on the unit.
             # cursor_on_player can be true from a stale display_cursor override.
             on_unit = bool(unit_pos and nav_cursor == unit_pos)
