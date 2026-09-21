@@ -678,16 +678,43 @@ def execute_command_sequence(
             cmd_desc = f"DROP at {cmd.coord if cmd.coord else 'current position'}"
 
         elif cmd.type == "ITEM":
-            # Navigate to Item (index 1) in action menu
-            current_menu_sel = game_state.get("menu_selection", -1)
-            if current_menu_sel >= 0:
-                nav_buttons = calculate_menu_navigation(current_menu_sel, UNIT_ACTION_MENU["item"])
-                button_sequence.extend(nav_buttons)
+            # After MOVE(5,4) the action menu may show only Item but dialogue is
+            # still mid-flash. Ch0 ITEM step: mash A through tutorial lock, then
+            # Item → DOWN (Vulnerary) → Use. Limited to tutorial_step_kind=item.
+            # Do NOT trust game_state_bits==0 as dialogue-done.
+            tutorial_kind = (game_state.get("tutorial_step_kind") or "").lower()
+            chapter = game_state.get("chapter")
+            use_ch0_item_path = (chapter == 0 and tutorial_kind == "item")
+            if use_ch0_item_path:
+                mash = 40
+                button_sequence.extend(["A"] * mash)
+                button_sequence.append("B")  # clear / close leftover menu
+                button_sequence.append("A")  # reselect Lyn
+                button_sequence.append("A")  # Item (tutorial-only / top option)
+                button_sequence.append(BUTTONS["DOWN"])  # Vulnerary is 2nd (Iron Sword first)
+                button_sequence.append("A")  # select Vulnerary
+                button_sequence.append("A")  # Use
+                cmd_desc = "ITEM vulnerary (Ch0 dialogue-mash → Item → DOWN → Use)"
+                log.info(
+                    "ITEM Ch0 tutorial path: mash A x%d, B, A reselect, A Item, DOWN, A, A Use "
+                    "(ignoring game_state_bits==0 as dialogue-done)",
+                    mash,
+                )
             else:
-                button_sequence.append(BUTTONS["DOWN"])  # 0->1 = 1 down from Rescue
-            if cmd.menu_option:
-                button_sequence.append("A")
-            cmd_desc = f"ITEM {cmd.menu_option if cmd.menu_option else ''}"
+                # Navigate to Item (index 1) in standard unit action menu
+                current_menu_sel = game_state.get("menu_selection", -1)
+                if current_menu_sel >= 0:
+                    nav_buttons = calculate_menu_navigation(current_menu_sel, UNIT_ACTION_MENU["item"])
+                    button_sequence.extend(nav_buttons)
+                else:
+                    button_sequence.append(BUTTONS["DOWN"])  # 0->1 = 1 down from Rescue
+                button_sequence.append("A")  # open Item
+                # If a menu_option was requested (e.g. Vulnerary), nudge to 2nd entry + Use
+                if cmd.menu_option:
+                    button_sequence.append(BUTTONS["DOWN"])
+                    button_sequence.append("A")
+                    button_sequence.append("A")
+                cmd_desc = f"ITEM {cmd.menu_option if cmd.menu_option else ''}"
 
         elif cmd.type == "PRESS":
             if cmd.raw:

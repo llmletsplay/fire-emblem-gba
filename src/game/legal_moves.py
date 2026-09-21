@@ -106,6 +106,27 @@ def build_legal_moves(state: dict, max_moves: int = 28) -> List[Dict[str, Any]]:
 
     # Action / map menus
     if in_menu:
+        tutorial_step_kind_menu = (state.get("tutorial_step_kind") or "").lower()
+        tutorial_step_index_menu = state.get("tutorial_step_index")
+        step_label_menu = ""
+        if tutorial_step_index_menu is not None:
+            step_label_menu = f" step[{tutorial_step_index_menu}]"
+        # Tutorial hard-prefer inside menus (Ch0 WAIT after MOVE; ITEM vulnerary; SEIZE)
+        if tutorial_step_kind_menu == "wait":
+            add("wait", "WAIT", f"TUTORIAL{step_label_menu}: WAIT after MOVE")
+            add("ui_a", "A", "Confirm highlighted menu option")
+            add("ui_b", "B", "Cancel / leave menu")
+            return moves[:max_moves]
+        if tutorial_step_kind_menu == "item":
+            add("item", "ITEM", f"TUTORIAL{step_label_menu}: Use Vulnerary (dialogue-mash path)")
+            add("ui_a", "A", "Confirm highlighted menu option")
+            add("ui_b", "B", "Cancel / leave menu")
+            return moves[:max_moves]
+        if tutorial_step_kind_menu == "seize":
+            add("seize", "SEIZE", f"TUTORIAL{step_label_menu}: Seize objective")
+            add("ui_a", "A", "Confirm highlighted menu option")
+            add("ui_b", "B", "Cancel / leave menu")
+            return moves[:max_moves]
         for opp in (state.get("attack_opportunities") or [])[:6]:
             target = opp.get("target") or "Enemy"
             add("attack", f'ATTACK target="{target}"', f"Attack {target}")
@@ -114,6 +135,8 @@ def build_legal_moves(state: dict, max_moves: int = 28) -> List[Dict[str, Any]]:
         add("ui_b", "B", "Cancel / leave menu")
         if "seize" in screen_l:
             add("seize", "SEIZE", "Seize objective")
+        # Tutorial-only Item menu may be the sole option — always expose ITEM
+        add("item", "ITEM", "Open Item menu / use item")
         return moves[:max_moves]
 
     available = _available_units(state)
@@ -124,7 +147,8 @@ def build_legal_moves(state: dict, max_moves: int = 28) -> List[Dict[str, Any]]:
     # Tutorial hard-prefer metadata (dest forced later when selected+reachable)
     tutorial_target = _tile(state.get("tutorial_target"))
     tutorial_step_index = state.get("tutorial_step_index")
-    tutorial_step = state.get("tutorial_step") or state.get("tutorial_step_kind")
+    tutorial_step_kind = (state.get("tutorial_step_kind") or "").lower()
+    tutorial_step = state.get("tutorial_step") or tutorial_step_kind
     step_label = ""
     if tutorial_step_index is not None:
         step_label = f" step[{tutorial_step_index}]"
@@ -172,6 +196,27 @@ def build_legal_moves(state: dict, max_moves: int = 28) -> List[Dict[str, Any]]:
 
     # --- Selected unit: attack + move options ---
     if unit_selected and selected:
+        # Unit already standing on tutorial dest for WAIT / ITEM / SEIZE
+        selected_xy = None
+        for u in (state.get("party") or []):
+            if str(u.get("name") or "").lower() == str(selected).lower():
+                selected_xy = _tile([u.get("x"), u.get("y")])
+                break
+        if tutorial_target and selected_xy == tutorial_target:
+            if tutorial_step_kind == "wait":
+                add("wait", "WAIT", f"TUTORIAL{step_label}: WAIT at ({tutorial_target[0]},{tutorial_target[1]})")
+                add("ui_b", "B", "Cancel / deselect")
+                add("end_turn", "END_TURN", "End player phase early")
+                return moves[:max_moves]
+            if tutorial_step_kind == "item":
+                add("item", "ITEM", f"TUTORIAL{step_label}: Use Vulnerary")
+                add("ui_b", "B", "Cancel / deselect")
+                return moves[:max_moves]
+            if tutorial_step_kind == "seize":
+                add("seize", "SEIZE", f"TUTORIAL{step_label}: Seize at ({tutorial_target[0]},{tutorial_target[1]})")
+                add("ui_b", "B", "Cancel / deselect")
+                return moves[:max_moves]
+
         # 1) Tutorial destination first (MOVE confirm soft-rejects wrong tiles in FE7 Ch0+)
         if tutorial_target:
             from src.game.tutorial_progress import prefer_tutorial_tile
@@ -194,21 +239,43 @@ def build_legal_moves(state: dict, max_moves: int = 28) -> List[Dict[str, Any]]:
                     ),
                     None,
                 )
-                if matching_opp:
-                    tgt = matching_opp.get("target") or "Enemy"
+                if matching_opp or tutorial_step_kind == "attack":
+                    if matching_opp:
+                        tgt = matching_opp.get("target") or "Enemy"
+                    else:
+                        tgt = (state.get("boss_target") or "Enemy")
                     add(
                         "move_attack",
                         f'SELECT unit="{selected}" MOVE to=[{tx},{ty}] ATTACK target="{tgt}"',
                         f"TUTORIAL{step_label}: {selected} → ({tx},{ty}) attack {tgt}",
                     )
+                elif tutorial_step_kind == "item":
+                    add(
+                        "move_item",
+                        f'SELECT unit="{selected}" MOVE to=[{tx},{ty}]',
+                        f"TUTORIAL{step_label}: {selected} → ({tx},{ty}) then ITEM",
+                    )
+                elif tutorial_step_kind == "wait":
+                    add(
+                        "move_wait",
+                        f'SELECT unit="{selected}" MOVE to=[{tx},{ty}] WAIT',
+                        f"TUTORIAL{step_label}: {selected} → ({tx},{ty}) WAIT",
+                    )
+                elif tutorial_step_kind == "seize":
+                    add(
+                        "move_seize",
+                        f'SELECT unit="{selected}" MOVE to=[{tx},{ty}] SEIZE',
+                        f"TUTORIAL{step_label}: {selected} → ({tx},{ty}) SEIZE",
+                    )
                 else:
+                    # Default move step: MOVE then WAIT (Ch0 first step)
                     add(
                         "move_wait",
                         f'SELECT unit="{selected}" MOVE to=[{tx},{ty}] WAIT',
                         f"TUTORIAL{step_label}: {selected} → ({tx},{ty})",
                     )
                 # Hard-prefer: when dest is reachable, do not flood with random blues
-                if dest in movement_set:
+                if dest in movement_set or tutorial_step_kind in ("wait", "item", "seize", "attack", "move"):
                     for opp in attack_opps[:10]:
                         odest = _tile(opp.get("move_to") or opp.get("tile"))
                         target = opp.get("target") or "Enemy"

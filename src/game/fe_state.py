@@ -352,22 +352,22 @@ def prep_fe_llm(sock) -> Dict[str, Any]:
         context["allies"] = ally_list
 
 
-    # Derive tutorial_target from hardcoded sequence when memory/screenshot did not
-    # provide one. Infers the first unmet step from party positions.
-    if (
-        config.TUTORIAL_MODE
-        and "tutorial_target" not in context
-        and context.get("tutorial_sequence")
-    ):
+    # Derive tutorial_target from chapter tutorial_sequence. Sequence is
+    # authoritative for FE7 Ch0 (live-verified); do not let stale RAM event-slot
+    # coords override hard-prefer destinations. Infers first unmet step from
+    # party positions (WAIT after MOVE; do not skip attack on occupancy alone).
+    if config.TUTORIAL_MODE and context.get("tutorial_sequence"):
         from src.game.tutorial_progress import infer_active_tutorial_step
 
-        acting = context.get("cursor_on_player")
+        acting = context.get("cursor_on_player") or context.get("tutorial_unit")
         info = infer_active_tutorial_step(
             context["tutorial_sequence"],
             context.get("party") or [],
             acting_unit_name=acting,
+            enemies=context.get("enemies") or [],
         )
         if info.get("target"):
+            ram_target = context.get("tutorial_target")
             context["tutorial_target"] = info["target"]
             context["tutorial_step_index"] = info["index"]
             if info.get("kind"):
@@ -376,6 +376,10 @@ def prep_fe_llm(sock) -> Dict[str, Any]:
                 context["tutorial_step"] = info["description"]
             if info.get("acting_unit"):
                 context["tutorial_unit"] = info["acting_unit"]
+            if ram_target and ram_target != info["target"]:
+                log.info(
+                    f"Tutorial sequence overrides RAM target {ram_target} → {info['target']}"
+                )
             log.info(
                 f"Derived tutorial_target={info['target']} step[{info['index']}] "
                 f"kind={info.get('kind')} unit={info.get('acting_unit')}"

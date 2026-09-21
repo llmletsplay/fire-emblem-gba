@@ -174,21 +174,21 @@ def test_build_legal_moves_hard_prefers_tutorial_target():
         unit_is_selected=True,
         selected_unit="Lyn",
         cursor_on_player="Lyn",
-        movement_tiles=[[4, 3], [5, 3], [9, 8], [3, 3]],
+        movement_tiles=[[4, 3], [5, 3], [8, 7], [3, 3]],
         attack_opportunities=[],
-        tutorial_target=(9, 8),
+        tutorial_target=(8, 7),
         tutorial_step_index=0,
-        tutorial_step="Move Lyn to (9,8) - advance toward enemy",
+        tutorial_step="Move Lyn to (8,7) - advance toward enemy",
         tutorial_sequence=[
-            {"coords": [(9, 8)], "step": "move", "description": "Move Lyn to (9,8)"},
+            {"coords": [(8, 7)], "step": "move", "description": "Move Lyn to (8,7)"},
         ],
     )
     moves = build_legal_moves(state)
     assert moves, "expected tutorial move"
     assert moves[0]["id"] == "m0"
     assert "TUTORIAL" in moves[0]["summary"]
-    assert "to=[9,8]" in moves[0]["command"]
+    assert "to=[8,7]" in moves[0]["command"]
     # Hard-prefer: no flood of other move_wait destinations
     wait_moves = [m for m in moves if m["kind"] == "move_wait"]
     assert len(wait_moves) == 1
-    assert wait_moves[0]["command"].endswith("MOVE to=[9,8] WAIT")
+    assert wait_moves[0]["command"].endswith("MOVE to=[8,7] WAIT")

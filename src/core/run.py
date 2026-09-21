@@ -63,11 +63,12 @@ def _try_connect_mgba(port, retries=8, delay=1.5):
             # LOADSTATE on attach wedges the Lua handler on Darwin; only when opted in.
             if getattr(config, "LOAD_SAVESTATE", False):
                 try:
-                    log.info("Loading save state slot 0 (FE_LOAD_SAVESTATE=true)...")
-                    resp = send_command(sock, "LOADSTATE 0")
+                    slot = int(getattr(config, "SAVESTATE_SLOT", 1) or 1)
+                    log.info(f"Loading save state slot {slot} (FE_LOAD_SAVESTATE=true, FE_SAVESTATE_SLOT)...")
+                    resp = send_command(sock, f"LOADSTATE {slot}")
                     log.info(f"Save state load result: {resp}")
                 except Exception as e:
-                    log.warning(f"Failed to load save state 0 (may not exist yet): {e}")
+                    log.warning(f"Failed to load save state (may not exist yet): {e}")
             else:
                 log.info("Skipping LOADSTATE on attach (set FE_LOAD_SAVESTATE=true to enable)")
             return sock
@@ -159,7 +160,16 @@ def start_mgba_with_scripting(rom_path=None, port=config.PORT):
             log.info(f"Connected to mGBA scripting server on port {port}")
             # Give mGBA a moment to fully initialize
             time.sleep(0.5)
-            log.info("Skipping LOADSTATE on connect (avoids wedging Lua socket)")
+            if getattr(config, "LOAD_SAVESTATE", False):
+                try:
+                    slot = int(getattr(config, "SAVESTATE_SLOT", 1) or 1)
+                    log.info(f"Loading save state slot {slot} on connect (FE_LOAD_SAVESTATE=true)...")
+                    resp = send_command(sock, f"LOADSTATE {slot}")
+                    log.info(f"Save state load result: {resp}")
+                except Exception as e:
+                    log.warning(f"Failed to load save state on connect: {e}")
+            else:
+                log.info("Skipping LOADSTATE on connect (set FE_LOAD_SAVESTATE=true + FE_SAVESTATE_SLOT=1 for clean Ch0)")
             return proc, sock # Success
         except ConnectionRefusedError:
             log.warning(f"Connection to mGBA refused (attempt {attempt+1}/{retries}). Is mGBA running and script loaded?")
@@ -346,7 +356,7 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description="Run the pyAIAgent.")
     parser.add_argument('--auto', action='store_true', help='Enable auto mode, starting the LLM driver.')
-    parser.add_argument('--load_savestate', action='store_true', help='(Deprecated: save state 0 is always loaded on start.)')
+    parser.add_argument('--load_savestate', action='store_true', help='Load FE_SAVESTATE_SLOT (default 1, clean Ch0) on start/attach.')
     parser.add_argument('--benchmark', type=str, metavar='PATH', help='Path to a benchmark file to run.')
     parser.add_argument('--max_loops', type=max_loops_type, metavar='N', help='Maximum number of loops for the LLM driver to run.')
 
@@ -355,6 +365,8 @@ if __name__ == '__main__':
     # Set global config based on parsed arguments
     if args.benchmark:
         config.benchmark_path = args.benchmark
+    if getattr(args, "load_savestate", False):
+        config.LOAD_SAVESTATE = True
 
     if args.auto:
         try:

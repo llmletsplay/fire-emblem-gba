@@ -108,6 +108,23 @@ ROM_FILE=FE8.gba
 `FE_GAME` can be omitted when the ROM filename is clear, but setting it is
 recommended. The runtime also reads the ROM header to verify the active game.
 
+
+## Tutorial mode / Ch0
+
+FE7 Lyn Mode Prologue (Ch0) is **live-verified**. The autonomous harness hard-prefers
+`tutorial_sequence` destinations from `src/data/fe7_chapters.py` and will soft-reject
+wrong MOVE tiles the same way the game does.
+
+Verified end-to-end path (see [`docs/fe7-ch0-tutorial-verified.md`](docs/fe7-ch0-tutorial-verified.md)):
+
+1. Load **savestate slot 1** (clean start, Lyn@(13,7)) — `FE_LOAD_SAVESTATE=true`, `FE_SAVESTATE_SLOT=1`
+2. MOVE (8,7) → WAIT (brigand → (7,6))
+3. MOVE+ATTACK (8,6)
+4. MOVE (5,4) → ITEM vulnerary (HP 6→16; mash A through dialogue, do **not** trust `game_state_bits==0`)
+5. MOVE+ATTACK (4,2) vs Batta@(3,2) → SEIZE (3,2)
+
+Ch1–10 `tutorial_sequence` entries are **UNVERIFIED placeholders** (empty until live-probed). Keep `FE_TUTORIAL=true` for Lyn Mode; set `FE_TUTORIAL=false` for Eliwood Mode Ch11+.
+
 ## Useful Commands
 
 ```bash

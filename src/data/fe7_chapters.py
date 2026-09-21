@@ -17,55 +17,35 @@ FE7_CHAPTERS = {
     # Prologue / Ch1-10 use Lyn Mode IDs (tentative mapping)
     0: {
         "name": "Prologue: A Girl from the Plains",
-        "objective_type": "defeat_boss",
-        "objective": "Defeat boss Batta",
+        "objective_type": "seize",
+        "objective": "Defeat Batta, then seize the gate",
         "boss_char_id": 0x87,
         "boss_name": "Batta",
-        "seize_position": None,
+        "seize_position": (3, 2),
         "turn_limit": None,
         "defeat_conditions": ["Lyn is defeated"],
-        "notes": "Tutorial chapter — the game gives step-by-step instructions via dialogue. "
-                 "READ the dialogue text and LOOK at visual indicators (flashing tiles, blue squares) "
-                 "on the screenshot. The game shows you exactly where to move. Follow its guidance. "
-                 "Start Lyn@(13,7) → forced MOVE (8,7). Later mid-prologue Lyn@(7,7) → (5,4). Boss Batta at (3,2).",
+        "notes": "Tutorial chapter — LIVE-VERIFIED 2026-09-21 (see docs/fe7-ch0-tutorial-verified.md). "
+                 "Clean start = mGBA savestate slot 1, Lyn@(13,7). Soft-rejects wrong MOVE tiles. "
+                 "After MOVE(5,4) Item dialogue: mash A until lock 2→1 (do NOT trust game_state_bits==0).",
         "new_units": ["Lyn"],
-        "needs_verification": True,
-        # Tutorial sequence - coordinates for each step (x, y) - 0-indexed
-        # Each step: [coordinates], "description"
+        "needs_verification": False,
+        "verified": True,
+        # Live-verified tutorial sequence (engine x,y). Do not invent alternate tiles.
         "tutorial_sequence": [
-            {
-                "coords": [(8, 7)],
-                "step": "move",
-                "description": "Move Lyn to (8,7) — first Ch0 forced tile from start @(13,7)",
-            },
-            {
-                "coords": [(8, 6)],
-                "step": "attack",
-                "description": "After WAIT/enemy phase: move adjacent to brigand@(7,6) at (8,6) then Attack",
-            },
-            {
-                "coords": [(5, 4)],
-                "step": "move",
-                "description": "Move Lyn to (5,4) — vulnerary flash (verified mid-prologue)",
-            },
-            {
-                "coords": [(5, 4)],
-                "step": "item",
-                "description": (
-                    "After MOVE(5,4): mash A through tutorial dialogue, reselect Lyn, "
-                    "Item → DOWN to Vulnerary → Use (HP 6→16 verified)"
-                ),
-            },
-            {
-                "coords": [(4, 2), (3, 3), (2, 2), (3, 1)],
-                "step": "attack",
-                "description": "Attack Batta@(3,2) from (4,2) — verified post-vulnerary",
-            },
-            {
-                "coords": [(3, 2)],
-                "step": "seize",
-                "description": "Seize gate at (3,2) to complete Prologue",
-            },
+            {"coords": [(8, 7)], "step": "move", "unit": "Lyn",
+             "description": "MOVE Lyn to (8,7) — first flashing cursor / 5 spaces left"},
+            {"coords": [(8, 7)], "step": "wait", "unit": "Lyn",
+             "description": "WAIT after first MOVE — enemy phase: brigand advances to (7,6)"},
+            {"coords": [(8, 6)], "step": "attack", "unit": "Lyn",
+             "description": "MOVE+ATTACK from (8,6) vs brigand@(7,6)"},
+            {"coords": [(5, 4)], "step": "move", "unit": "Lyn",
+             "description": "MOVE Lyn to (5,4) — vulnerary flashing cursor"},
+            {"coords": [(5, 4)], "step": "item", "unit": "Lyn",
+             "description": "ITEM Use Vulnerary (HP 6→16) — dialogue-mash then Item→DOWN→Use"},
+            {"coords": [(4, 2)], "step": "attack", "unit": "Lyn",
+             "description": "MOVE+ATTACK from (4,2) vs Batta@(3,2)"},
+            {"coords": [(3, 2)], "step": "seize", "unit": "Lyn",
+             "description": "SEIZE gate at (3,2)"},
         ],
     },
     1: {
@@ -82,27 +62,8 @@ FE7_CHAPTERS = {
         "needs_verification": True,
         # Tutorial sequence - ALL COORDINATES ARE 0-INDEXED
         # This chapter has extensive tutorial prompts
-        "tutorial_sequence": [
-            # Turn 1
-            {"coords": [(5, 4)], "step": "move", "unit": "Sain", "description": "Move Sain to (5,4) - 'Direct my arm!'"},
-            {"coords": [(5, 6)], "step": "move", "unit": "Kent", "description": "Move Kent to (5,6) - after Sain conversation"},
-            {"coords": [(4, 5)], "step": "move", "unit": "Lyn", "description": "Move Lyn to (4,5) - finish off enemy"},
-            # Turn 1 (continued)
-            {"coords": [(5, 9)], "step": "move", "unit": "Sain", "description": "Move Sain to (5,9) - attack (misses)"},
-            {"coords": [(6, 8)], "step": "move", "unit": "Kent", "description": "Move Kent to (6,8)"},
-            # Turn 2 - Lyn in woods
-            {"coords": [(5, 4)], "step": "move", "unit": "Lyn", "description": "Move Lyn to Woods tile at (5,4) - terrain bonus"},
-            # Trade tutorial
-            {"coords": [(4, 4), (5, 5)], "step": "move", "unit": "Sain", "description": "Move Sain next to Lyn for trade (4,4) or (5,5)"},
-            # Trade UI: Select Sain → A → cursor on Lyn → right → up/down to Vulnerary → A
-            # Use item UI: A on Vulnerary → up/down to Vulnerary → A
-            # Cavalry movement after turn end
-            {"coords": "adjacent_to_sain", "step": "move", "unit": "cavalry", "description": "After turn endsKent, cavalry (/Sain) can move again - move adjacent to where they ended"},
-            # Free flow - defeat remaining enemies
-            {"coords": "defeat_all", "step": "battle", "description": "Defeat all remaining enemies"},
-            # Seize gate to complete
-            {"coords": [(8, 4)], "step": "seize", "description": "Seize gate at (8,4) to complete chapter"},
-        ],
+        # UNVERIFIED — Ch1 tutorial tiles not live-probed; do not invent.
+        "tutorial_sequence": [],  # UNVERIFIED placeholder
     },
     2: {
         "name": "Chapter 2: Sword of Spirits",
@@ -117,15 +78,8 @@ FE7_CHAPTERS = {
         "new_units": [],
         "needs_verification": True,
         # Tutorial sequence - ALL COORDINATES ARE 0-INDEXED
-        "tutorial_sequence": [
-            {"coords": [(0, 7)], "step": "visit", "unit": "Lyn", "description": "Visit house at (0,7) - start of chapter"},
-            {"coords": [(1, 7)], "step": "visit", "unit": "Sain", "description": "Visit house at (1,7) - then move 1 tile adjacent, not (0,7) where Lyn is"},
-            {"coords": "adjacent_not_0_7", "step": "move", "unit": "Sain", "description": "Move Sain 1 tile adjacent to (1,7), avoiding (0,7)"},
-            {"coords": [(0, 9)], "step": "visit", "unit": "Kent", "description": "Visit last house at (0,9)"},
-            {"coords": [(3, 8)], "step": "break", "unit": "any", "description": "Break wall at (3,8) to access Glass and throne room"},
-            {"coords": "attack_glass", "step": "attack", "unit": "any", "description": "Defeat Glass (boss)"},
-            {"coords": [(1, 11)], "step": "seize", "description": "Seize throne at (1,11) to complete chapter"},
-        ],
+        # UNVERIFIED — Ch2 tutorial tiles not live-probed; do not invent.
+        "tutorial_sequence": [],  # UNVERIFIED placeholder
     },
     3: {
         "name": "Chapter 3: Band of Mercenaries",
@@ -140,16 +94,8 @@ FE7_CHAPTERS = {
         "new_units": ["Florina", "Wil"],
         "needs_verification": True,
         # Tutorial sequence - ALL COORDINATES ARE 0-INDEXED
-        "tutorial_sequence": [
-            {"coords": [(3, 6)], "step": "visit", "unit": "Lyn", "description": "Visit village at (3,6) to recruit Wil"},
-            {"coords": [(3, 7)], "step": "select", "unit": "Wil", "description": "Select Wil at (3,7)"},
-            {"coords": [(5, 6)], "step": "move", "unit": "Wil", "description": "Move Wil to (5,6)"},
-            {"coords": "adjacent_5_4", "step": "attack", "unit": "Wil", "description": "Attack bandit at (5,4) - any adjacent tile"},
-            {"coords": [(2, 7)], "step": "select", "unit": "Florina", "description": "Select Florina at (2,7)"},
-            {"coords": [(4, 4)], "step": "move", "unit": "Florina", "description": "Move Florina to (4,4)"},
-            {"coords": "adjacent_5_4", "step": "attack", "unit": "Florina", "description": "Attack bandit at (5,4) - any adjacent tile"},
-            {"coords": "defeat_all", "step": "battle", "description": "Defeat all remaining enemies"},
-        ],
+        # UNVERIFIED — Ch3 tutorial tiles not live-probed; do not invent.
+        "tutorial_sequence": [],  # UNVERIFIED placeholder
     },
     4: {
         "name": "Chapter 4: In Occupation's Shadow",
@@ -165,16 +111,8 @@ FE7_CHAPTERS = {
         "needs_verification": True,
         # Tutorial sequence - ALL COORDINATES ARE 0-INDEXED (world grid, not viewport)
         # This chapter has a large scrolling map
-        "tutorial_sequence": [
-            {"coords": [(9, 5)], "step": "move", "unit": "Lyn", "description": "Move Lyn from (7,5) to (9,5) - initial advance"},
-            {"coords": "inside_building", "step": "position", "unit": "allies", "description": "Position other units inside the building"},
-            {"coords": [(10, 5)], "step": "move", "unit": "Lyn", "description": "Move Lyn to (10,5) - approach Dorcas"},
-            {"coords": [(11, 5)], "step": "talk", "unit": "Lyn", "description": "Talk to Dorcas at (11,5) to recruit him"},
-            {"coords": [(11, 5)], "step": "select", "unit": "Dorcas", "description": "Select Dorcas at (11,5)"},
-            {"coords": "adjacent_11_2", "step": "move", "unit": "Dorcas", "description": "Move Dorcas adjacent to (11,2) - within hand axe range of bandit"},
-            {"coords": "attack_11_2", "step": "attack", "unit": "Dorcas", "description": "Attack bandit at (11,2)"},
-            {"coords": "defeat_all", "step": "battle", "description": "Defeat all remaining enemies"},
-        ],
+        # UNVERIFIED — Ch4 tutorial tiles not live-probed; do not invent.
+        "tutorial_sequence": [],  # UNVERIFIED placeholder
     },
     5: {
         "name": "Chapter 5: Beyond the Borders",
@@ -189,17 +127,8 @@ FE7_CHAPTERS = {
         "new_units": ["Serra", "Erk"],
         "needs_verification": True,
         # Tutorial sequence - ALL COORDINATES ARE 0-INDEXED
-        "tutorial_sequence": [
-            {"coords": [(5, 6)], "step": "move", "unit": "Lyn", "description": "Move Lyn from (3,6) to (5,6) - approach Serra"},
-            {"coords": [(6, 6)], "step": "talk", "unit": "Lyn", "description": "Talk to Serra at (6,6) to recruit Serra and Erk"},
-            {"coords": [(6, 6)], "step": "select", "unit": "Serra", "description": "Select Serra at (6,6)"},
-            {"coords": "heal", "step": "action", "unit": "Serra", "description": "Select Heal ability"},
-            {"coords": [(7, 6)], "step": "target", "unit": "Serra", "description": "Target Erk at (7,6) to heal"},
-            {"coords": [(7, 6)], "step": "select", "unit": "Erk", "description": "Select Erk at (7,6)"},
-            {"coords": [(7, 5), (8, 5), (6, 5), (6, 4)], "step": "move", "unit": "Erk", "description": "Move Erk to attack archer at (7,4) - any adjacent tile"},
-            {"coords": "attack_7_4", "step": "attack", "unit": "Erk", "description": "Attack archer with fire at (7,4)"},
-            {"coords": "defeat_all", "step": "battle", "description": "Defeat all remaining enemies"},
-        ],
+        # UNVERIFIED — Ch5 tutorial tiles not live-probed; do not invent.
+        "tutorial_sequence": [],  # UNVERIFIED placeholder
     },
     6: {
         "name": "Chapter 6: Blood of Pride",
@@ -214,19 +143,8 @@ FE7_CHAPTERS = {
         "new_units": ["Rath", "Matthew"],
         "needs_verification": True,
         # Tutorial sequence - ALL COORDINATES ARE 0-INDEXED
-        "tutorial_sequence": [
-            # Turn 1
-            {"coords": [(4, 2)], "step": "visit", "unit": "Lyn", "description": "Move Lyn from (4,7) to house at (4,2) to recruit Matthew"},
-            {"coords": [(4, 3)], "step": "select", "unit": "Matthew", "description": "Select Matthew at (4,3)"},
-            {"coords": [(8, 4)], "step": "move", "unit": "Matthew", "description": "Move Matthew to (8,4) - open door with lockpick"},
-            {"coords": "open_door", "step": "action", "unit": "Matthew", "description": "Open door at (8,4)"},
-            {"coords": [(6, 6)], "step": "select", "unit": "Rath", "description": "Select Rath at (6,6)"},
-            {"coords": [(8, 1)], "step": "move", "unit": "Rath", "description": "Move Rath to trigger tile at (8,1) - unlock new area"},
-            # Turn 2
-            {"coords": [(12, 6)], "step": "move", "unit": "Matthew", "description": "Move Matthew to (12,6) - open treasure chest"},
-            {"coords": "open_chest", "step": "action", "unit": "Matthew", "description": "Open chest at (12,6)"},
-            {"coords": "defeat_all", "step": "battle", "description": "Defeat all remaining enemies"},
-        ],
+        # UNVERIFIED — Ch6 tutorial tiles not live-probed; do not invent.
+        "tutorial_sequence": [],  # UNVERIFIED placeholder
     },
     7: {
         "name": "Chapter 7: Siblings Abroad",
@@ -241,16 +159,8 @@ FE7_CHAPTERS = {
         "new_units": ["Nils", "Lucius"],
         "needs_verification": True,
         # Tutorial sequence - ALL COORDINATES ARE 0-INDEXED
-        "tutorial_sequence": [
-            {"coords": "start", "step": "menu", "description": "Press Start to exit prep screen and begin"},
-            {"coords": [(2, 5)], "step": "select", "unit": "Lucius", "description": "Select Lucius at (2,5) - just joined"},
-            {"coords": [(3, 5)], "step": "move", "unit": "Lucius", "description": "Move Lucius 1 tile right to (3,5)"},
-            {"coords": "attack", "step": "attack", "unit": "Lucius", "description": "Attack Black Fang member"},
-            {"coords": [(1, 4)], "step": "select", "unit": "Nils", "description": "Select Nils at (1,4)"},
-            {"coords": [(2, 5)], "step": "move", "unit": "Nils", "description": "Move Nils to (2,5) - next to Lucius"},
-            {"coords": "play_music", "step": "action", "unit": "Nils", "description": "Play music to let Lucius act again"},
-            {"coords": "defeat_all", "step": "battle", "description": "Defeat all remaining enemies"},
-        ],
+        # UNVERIFIED — Ch7 tutorial tiles not live-probed; do not invent.
+        "tutorial_sequence": [],  # UNVERIFIED placeholder
     },
     # Chapter 7x: Night of Farewells (intermission - no tutorial targets)
     "7x": {
@@ -265,7 +175,8 @@ FE7_CHAPTERS = {
         "notes": "Intermission chapter. No tutorial targets.",
         "new_units": [],
         "needs_verification": True,
-        "tutorial_sequence": [],  # No tutorial targets
+        # UNVERIFIED — Ch7x tutorial tiles not live-probed; do not invent.
+        "tutorial_sequence": [],  # UNVERIFIED placeholder
     },
     8: {
         "name": "Chapter 8: Vortex of Strategy",
@@ -279,7 +190,8 @@ FE7_CHAPTERS = {
         "notes": "Wallace joins if Lyn's level is below 4, or can be skipped. Fog of war chapter.",
         "new_units": ["Wallace"],
         "needs_verification": True,
-        "tutorial_sequence": [],  # No tutorial targets
+        # UNVERIFIED — Ch8 tutorial tiles not live-probed; do not invent.
+        "tutorial_sequence": [],  # UNVERIFIED placeholder
     },
     9: {
         "name": "Chapter 9: A Grim Reunion",
@@ -294,12 +206,8 @@ FE7_CHAPTERS = {
         "new_units": [],
         "needs_verification": True,
         # Tutorial sequence - ALL COORDINATES ARE 0-INDEXED
-        "tutorial_sequence": [
-            {"coords": [(2, 8)], "step": "select", "unit": "Wallace", "description": "Select Wallace at (2,8)"},
-            {"coords": "down_3", "step": "move", "unit": "Wallace", "description": "Move Wallace 3 spaces down onto Knight's Crest item"},
-            {"coords": "use_item", "step": "action", "unit": "Wallace", "description": "Use Knight's Crest on Wallace - promotes to Great Lord"},
-            {"coords": "defeat_all", "step": "battle", "description": "Defeat all remaining enemies"},
-        ],
+        # UNVERIFIED — Ch9 tutorial tiles not live-probed; do not invent.
+        "tutorial_sequence": [],  # UNVERIFIED placeholder
     },
     10: {
         "name": "Chapter 10: The Distant Plains",
@@ -313,6 +221,8 @@ FE7_CHAPTERS = {
         "notes": "Final Lyn Mode chapter. Lundgren is a General with very high defense. Use Mani Katti.",
         "new_units": [],
         "needs_verification": True,
+        # UNVERIFIED — Ch10 tutorial tiles not live-probed; do not invent.
+        "tutorial_sequence": [],  # UNVERIFIED placeholder
     },
 
     # ==================== ELIWOOD'S TALE (Chapters 11-Final) ====================
