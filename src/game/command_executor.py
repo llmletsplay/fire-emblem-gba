@@ -389,10 +389,15 @@ def execute_command_sequence(
             log.warning(f"Phase is {phase}, ignoring player actions: {non_player_actions}. Auto-waiting.")
             return "", f"BLOCKED: Cannot execute {non_player_actions} during {phase} - auto-waiting"
 
-    # Use display_cursor if available (more accurate during tutorials/movement)
-    # Otherwise fall back to memory cursor
+    # Pathing must use the real hardware cursor (PlaySt). BmSt display_cursor
+    # often sticks on a unit while PlaySt sits elsewhere — trusting display
+    # alone makes SELECT press A off-unit and MOVE path from the wrong tile.
     display_cursor = game_state.get("display_cursor")
-    cursor = display_cursor if display_cursor else game_state.get("cursor", (0, 0))
+    playst_cursor = game_state.get("cursor_memory") or game_state.get("cursor")
+    cursor = playst_cursor or display_cursor or (0, 0)
+    if isinstance(cursor, list):
+        cursor = tuple(cursor)
+    nav_cursor = (int(cursor[0]), int(cursor[1]))
     cursor_on_player = game_state.get("cursor_on_player")
     party = game_state.get("party", [])
     enemies = game_state.get("enemies", [])
@@ -400,6 +405,15 @@ def execute_command_sequence(
 
     button_sequence = []
     action_descriptions = []
+
+    def _party_unit_pos(name: str):
+        for u in party:
+            if str(u.get("name") or "").lower() == name.lower():
+                try:
+                    return (int(u["x"]), int(u["y"]))
+                except (KeyError, TypeError, ValueError):
+                    return None
+        return None
 
     for cmd in commands:
         cmd_desc = ""
@@ -409,32 +423,30 @@ def execute_command_sequence(
             if not unit_name:
                 log.warning("SELECT command with no unit name, skipping")
                 continue
-            # Check if cursor is already on this unit - if so, just press A once
-            if cursor_on_player and cursor_on_player.lower() == unit_name.lower():
-                log.info(f"Cursor already on {unit_name}, pressing A once to select")
+            unit_pos = _party_unit_pos(unit_name)
+            # Only bare-A when the PATHING cursor is actually on the unit.
+            # cursor_on_player can be true from a stale display_cursor override.
+            on_unit = bool(unit_pos and nav_cursor == unit_pos)
+            if on_unit:
+                log.info(
+                    f"Pathing cursor already on {unit_name} at {nav_cursor}, pressing A once"
+                )
                 button_sequence.append("A")
                 cmd_desc = f"SELECT {unit_name}"
             else:
-                # Prefer D-pad path to the unit when we know map coords (L-shoulder
-                # cycling often fails on Windows mGBA / when cursor_on is None).
-                unit_pos = None
-                for u in party:
-                    if str(u.get("name") or "").lower() == unit_name.lower():
-                        try:
-                            unit_pos = (int(u["x"]), int(u["y"]))
-                        except (KeyError, TypeError, ValueError):
-                            unit_pos = None
-                        break
                 use_map = False
-                if unit_pos and cursor:
-                    dist = abs(cursor[0] - unit_pos[0]) + abs(cursor[1] - unit_pos[1])
+                if unit_pos and nav_cursor:
+                    dist = abs(nav_cursor[0] - unit_pos[0]) + abs(nav_cursor[1] - unit_pos[1])
                     if dist <= 12:
                         use_map = True
                 if use_map:
-                    seq = calculate_map_to_unit_buttons(unit_name, party, cursor)
+                    seq = calculate_map_to_unit_buttons(unit_name, party, nav_cursor)
                     button_sequence.extend(seq)
                     cmd_desc = f"SELECT {unit_name} (via map path)"
-                    log.info(f"SELECT map path to {unit_name}: {seq}")
+                    log.info(
+                        f"SELECT map path {nav_cursor}→{unit_pos} {unit_name}: {seq}"
+                    )
+                    nav_cursor = unit_pos
                 else:
                     seq = calculate_l_button_cycling_buttons(
                         unit_name, party, cursor_on_player, game_state
@@ -442,6 +454,8 @@ def execute_command_sequence(
                     button_sequence.extend(seq)
                     cmd_desc = f"SELECT {unit_name} (via L-button)"
                     log.info(f"SELECT L-cycle sequence: {seq}")
+                    if unit_pos:
+                        nav_cursor = unit_pos
 
         elif cmd.type == "MOVE":
             target = cmd.coord
@@ -465,9 +479,10 @@ def execute_command_sequence(
                             tx, ty = nearest
                             target = nearest
 
-                path = calculate_path(cursor, target)
+                path = calculate_path(nav_cursor, target)
                 button_sequence.extend(path)
                 button_sequence.append("A")  # Confirm move
+                nav_cursor = (int(tx), int(ty))
                 cursor = target  # Update cursor position
                 cmd_desc = f"MOVE to {target}"
                 log.info(f"MOVE path: {path} → {target}")

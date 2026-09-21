@@ -127,3 +127,27 @@ def test_select_prefers_map_path_when_nearby():
     assert "map path" in desc.lower()
     assert "UP" in buttons.upper()
     assert buttons.upper().endswith("A;") or buttons.upper().endswith("A")
+
+
+def test_select_paths_from_playst_when_display_lies():
+    """PlaySt at (7,9) while display/cursor_on claim Lyn at (7,7)."""
+    from src.game.command_executor import execute_command_sequence
+    from src.game.command_parser import parse_command
+    seq = parse_command('SELECT unit="Lyn" MOVE to=[7,2] WAIT')
+    buttons, desc = execute_command_sequence(
+        seq.commands,
+        {
+            "phase": "player_phase",
+            "cursor": (7, 7),
+            "cursor_memory": (7, 9),
+            "display_cursor": (7, 7),
+            "cursor_on_player": "Lyn",
+            "party": [{"name": "Lyn", "x": 7, "y": 7, "hasMoved": False}],
+            "enemies": [],
+            "movement_tiles": [[7, 7], [7, 6], [7, 5], [7, 4], [7, 3], [7, 2]],
+        },
+    )
+    assert "map path" in desc.lower()
+    # UP UP to Lyn, A select, then UP*5 to (7,2), A confirm
+    assert buttons.upper().startswith("UP;UP;A;")
+    assert "UP;UP;UP;UP;UP;A;" in buttons.upper()
