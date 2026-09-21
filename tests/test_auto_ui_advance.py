@@ -32,6 +32,20 @@ def test_locked_dialogue_auto_a():
     assert reason == "AUTO_DIALOGUE_ADVANCE"
 
 
+def test_ch1_centered_tutorial_panel_dismisses_with_b_after_advances():
+    state = {
+        "chapter": 1,
+        "input_locked": True,
+        "text_box_visible": False,
+        "in_dialogue": False,
+        "tutorial_panel_visible": True,
+    }
+    assert _auto_ui_advance_chord(state) == ("A;", "AUTO_DIALOGUE_ADVANCE")
+    assert _auto_ui_advance_chord(state) == ("A;", "AUTO_DIALOGUE_ADVANCE")
+    assert _auto_ui_advance_chord(state) == ("A;", "AUTO_DIALOGUE_ADVANCE")
+    assert _auto_ui_advance_chord(state) == ("B;", "AUTO_TUTORIAL_PANEL_DISMISS")
+
+
 def test_start_screen_executor_inject():
     from src.game.command_executor import execute_command_sequence
     from src.game.command_parser import parse_command

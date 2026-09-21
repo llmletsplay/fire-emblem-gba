@@ -111,6 +111,11 @@ def _auto_ui_advance_chord(state: dict):
     text_box = bool(state.get("text_box_visible"))
     in_dialogue = bool(state.get("in_dialogue"))
     input_locked = bool(state.get("input_locked"))
+    tutorial_panel = bool(state.get("tutorial_panel_visible"))
+    try:
+        chapter = int(state.get("chapter", -1))
+    except (TypeError, ValueError):
+        chapter = -1
 
     want = None
     reason = None
@@ -118,8 +123,13 @@ def _auto_ui_advance_chord(state: dict):
         # Alternate Start and A — FE title/chapter splash accept either
         chord = "START;" if (_auto_ui_advance_streak % 2 == 0) else "A;"
         want, reason = chord, f"AUTO_START_SCREEN ({chord.strip(';')})"
-    elif HANDLE_DIALOGUE_SCREENS and (text_box or in_dialogue) and input_locked:
-        want, reason = "A;", "AUTO_DIALOGUE_ADVANCE"
+    elif HANDLE_DIALOGUE_SCREENS and input_locked and (text_box or in_dialogue or tutorial_panel):
+        # The Ch1 guided panel requires a few A advances followed by B to
+        # dismiss the final instruction overlay.
+        if chapter == 1 and tutorial_panel and _auto_ui_advance_streak >= 3:
+            want, reason = "B;", "AUTO_TUTORIAL_PANEL_DISMISS"
+        else:
+            want, reason = "A;", "AUTO_DIALOGUE_ADVANCE"
 
     if not want:
         _auto_ui_advance_streak = 0
@@ -1430,8 +1440,9 @@ async def run_auto_loop(sock, state: dict, broadcast_func, interval: float = 8.0
 
             # Detect text box (dialogue) at bottom of screenshot
             text_box_visible = False
+            tutorial_panel_visible = False
             if config.TEXT_BOX_DETECTION_ENABLED and not analysis["is_transitioning"]:
-                from src.utils.screenshot_analyzer import detect_text_box
+                from src.utils.screenshot_analyzer import detect_text_box, detect_tutorial_panel
                 try:
                     text_box_visible = detect_text_box(
                         SAVED_SCREENSHOT_PATH,
@@ -1442,8 +1453,10 @@ async def run_auto_loop(sock, state: dict, broadcast_func, interval: float = 8.0
                     )
                     if text_box_visible:
                         log.info("Text box detected at bottom of screenshot")
+                    tutorial_panel_visible = detect_tutorial_panel(SAVED_SCREENSHOT_PATH)
                 except Exception as e:
                     log.warning(f"Text box detection failed: {e}")
+                    tutorial_panel_visible = False
 
             # Detect flashing/animated tiles across the captured frames
             # Only run flash detection if tutorial mode is enabled (for tutorial highlights)
@@ -1570,6 +1583,7 @@ async def run_auto_loop(sock, state: dict, broadcast_func, interval: float = 8.0
 
         # Inject dialogue/text detection signals
         llm_input_state["text_box_visible"] = text_box_visible
+        llm_input_state["tutorial_panel_visible"] = tutorial_panel_visible
         # Only add input_locked if text_box is visible (avoid false positives)
         # This prevents confusing hints when game is actually responsive
         if _input_locked and text_box_visible:

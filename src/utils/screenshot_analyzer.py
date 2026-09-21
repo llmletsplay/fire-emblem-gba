@@ -131,6 +131,30 @@ def calculate_similarity(img_path1: str, img_path2: str) -> float:
         log.error(f"Error comparing images: {e}")
         return 0.0
 
+def detect_tutorial_panel(img_path: str) -> bool:
+    """Detect FE7's centered yellow/white guided-tutorial panel."""
+    try:
+        img = Image.open(img_path).convert('RGB')
+        width, height = img.size
+        if width < 120 or height < 100:
+            return False
+        panel = img.crop((40, 45, min(205, width), min(105, height)))
+        bright = 0
+        yellow = 0
+        for r, g, b in panel.getdata():
+            if min(r, g, b) >= 190 and max(r, g, b) - min(r, g, b) <= 25:
+                bright += 1
+            if abs(r - 231) < 18 and abs(g - 239) < 18 and abs(b - 132) < 24:
+                yellow += 1
+        detected = bright >= 1500 or yellow >= 1000
+        if detected:
+            log.info(f"Tutorial dialogue panel detected: bright={bright}, yellow={yellow}")
+        return detected
+    except Exception as e:
+        log.warning(f"Tutorial panel detection failed for {img_path}: {e}")
+        return False
+
+
 def detect_text_box(img_path: str, bottom_rows_px: int = 48,
                     dark_threshold: float = 80.0, contrast_threshold: float = 25.0,
                     top_min_brightness: float = 40.0) -> bool:
@@ -181,22 +205,8 @@ def detect_text_box(img_path: str, bottom_rows_px: int = 48,
         # panels rather than the normal bottom dialogue box. They are easy to
         # miss with the bottom-band heuristic, while ordinary map sprites do
         # not produce this much light area in the bounded panel region.
-        if not detected and width >= 120 and height >= 100:
-            panel_rgb = Image.open(img_path).convert('RGB').crop(
-                (40, 45, min(205, width), min(105, height))
-            )
-            bright = 0
-            yellow = 0
-            for r, g, b in panel_rgb.getdata():
-                if min(r, g, b) >= 190 and max(r, g, b) - min(r, g, b) <= 25:
-                    bright += 1
-                if abs(r - 231) < 18 and abs(g - 239) < 18 and abs(b - 132) < 24:
-                    yellow += 1
-            detected = bright >= 1500 or yellow >= 1000
-            if detected:
-                log.info(
-                    f"Tutorial dialogue panel detected: bright={bright}, yellow={yellow}"
-                )
+        if not detected:
+            detected = detect_tutorial_panel(img_path)
 
         if detected:
             log.info(f"Text box detected: bottom_mean={bottom_mean:.1f}, "
