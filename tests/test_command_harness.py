@@ -108,3 +108,22 @@ def test_validator_rejects_end_turn_on_start_screen():
     assert not result.valid
     assert any("END_TURN" in e and "start_screen" in e for e in result.errors)
 
+
+def test_select_prefers_map_path_when_nearby():
+    from src.game.command_executor import execute_command_sequence
+    from src.game.command_parser import parse_command
+    seq = parse_command('SELECT unit="Lyn"')
+    buttons, desc = execute_command_sequence(
+        seq.commands,
+        {
+            "phase": "player_phase",
+            "cursor": (7, 9),
+            "cursor_on_player": None,
+            "party": [{"name": "Lyn", "x": 7, "y": 7, "hasMoved": False}],
+            "enemies": [],
+            "movement_tiles": [],
+        },
+    )
+    assert "map path" in desc.lower()
+    assert "UP" in buttons.upper()
+    assert buttons.upper().endswith("A;") or buttons.upper().endswith("A")

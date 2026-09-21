@@ -415,12 +415,33 @@ def execute_command_sequence(
                 button_sequence.append("A")
                 cmd_desc = f"SELECT {unit_name}"
             else:
-                # Use L-button cycling as primary strategy (more reliable than menu)
-                # Pass game_state to check for open menu
-                seq = calculate_l_button_cycling_buttons(unit_name, party, cursor_on_player, game_state)
-                button_sequence.extend(seq)
-                cmd_desc = f"SELECT {unit_name} (via L-button)"
-                log.info(f"SELECT sequence: {seq}")
+                # Prefer D-pad path to the unit when we know map coords (L-shoulder
+                # cycling often fails on Windows mGBA / when cursor_on is None).
+                unit_pos = None
+                for u in party:
+                    if str(u.get("name") or "").lower() == unit_name.lower():
+                        try:
+                            unit_pos = (int(u["x"]), int(u["y"]))
+                        except (KeyError, TypeError, ValueError):
+                            unit_pos = None
+                        break
+                use_map = False
+                if unit_pos and cursor:
+                    dist = abs(cursor[0] - unit_pos[0]) + abs(cursor[1] - unit_pos[1])
+                    if dist <= 12:
+                        use_map = True
+                if use_map:
+                    seq = calculate_map_to_unit_buttons(unit_name, party, cursor)
+                    button_sequence.extend(seq)
+                    cmd_desc = f"SELECT {unit_name} (via map path)"
+                    log.info(f"SELECT map path to {unit_name}: {seq}")
+                else:
+                    seq = calculate_l_button_cycling_buttons(
+                        unit_name, party, cursor_on_player, game_state
+                    )
+                    button_sequence.extend(seq)
+                    cmd_desc = f"SELECT {unit_name} (via L-button)"
+                    log.info(f"SELECT L-cycle sequence: {seq}")
 
         elif cmd.type == "MOVE":
             target = cmd.coord
@@ -946,9 +967,11 @@ def calculate_map_to_unit_buttons(
         return calculate_unit_menu_buttons(target_unit_name, party, current_cursor)
     
     tx, ty = target_unit.get("x", 0), target_unit.get("y", 0)
-    
-    # Calculate path
-    return calculate_path(current_cursor, (tx, ty))
+
+    # Walk to the unit, then A to select
+    buttons = calculate_path(current_cursor, (tx, ty))
+    buttons.append("A")
+    return buttons
 
 
 def execute_select_unit(
