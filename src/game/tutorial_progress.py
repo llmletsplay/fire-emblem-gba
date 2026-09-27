@@ -112,8 +112,6 @@ def _step_complete(
 ) -> bool:
     """Return True when this tutorial step should be advanced past (local rules)."""
     unit_xy = _unit_xy(unit)
-    if unit_xy is None or unit_xy not in coords:
-        return False
     kind_l = (kind or "").lower()
     completion = (step or {}).get("completion")
     if isinstance(completion, dict):
@@ -125,7 +123,10 @@ def _step_complete(
             max_hp = unit.get("maxHp", unit.get("max_hp")) if unit else None
             return hp is not None and max_hp is not None and int(hp) >= int(max_hp)
         if condition == "has_moved":
-            return bool(unit and unit.get("hasMoved"))
+            return bool(unit and unit_xy in coords and unit.get("hasMoved"))
+
+    if unit_xy is None or unit_xy not in coords:
+        return False
 
     if kind_l in _ACTION_KINDS:
         # Occupancy alone is not enough — must have finished the action.
