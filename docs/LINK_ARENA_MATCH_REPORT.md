@@ -32,11 +32,12 @@ and the ranking screen are saved from the Zephyrus API captures:
 
 Both sides used `MinimaxAgent(side, defender_auto_weapon=True)` against the
 current side-scoped unit observations. Decisions selected both a matchup and a
-weapon; FE7 resolved the combat, hit RNG, survival, points, and final rank. A
-few representative decisions that reached in-game forecasts were B Hector with
-Wolf Beil into A Oswin, A Canas with Luna into B Hector, B Bartre with Basilikos
-into A Hector, A Canas with Luna into B Oswin, and B Dorcas with Brave Bow into
-A Canas.
+weapon. With this option, the policy score did not explicitly include a
+defender-selected counterweapon; FE7 still resolved the real combat, hit RNG,
+survival, points, and final rank. Representative decisions that reached
+in-game forecasts included B Hector with Wolf Beil into A Oswin, A Canas with
+Luna into B Hector, B Bartre with Basilikos into A Hector, A Canas with Luna
+into B Oswin, and B Dorcas with Brave Bow into A Canas.
 
 The harness actions and observations used the per-side HTTP API and token
 files. The operator handled the setup menus, weapon-row confirms, and turn
