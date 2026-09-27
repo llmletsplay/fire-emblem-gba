@@ -30,6 +30,8 @@ def _env_float(name: str, default: float) -> float:
 
 PORT = _env_int('FE_MGBA_PORT', 8888)
 LOAD_SAVESTATE = _env_bool('FE_LOAD_SAVESTATE', False)
+# Savestate slot to load when FE_LOAD_SAVESTATE=true. Ch0 clean start = slot 1.
+SAVESTATE_SLOT = _env_int('FE_SAVESTATE_SLOT', 1)
 LUA_SCRIPT = os.path.join(PROJECT_ROOT, 'lua/socketserver.lua')
 benchmark_path = None   # default: no external benchmark
 

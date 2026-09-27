@@ -231,6 +231,8 @@ They are NOT stored as coordinate pairs in any RAM region we can read.
 ### Solution
 
 We use **hardcoded chapter-based tutorial targets** as a fallback:
+
+As of the MiniMax harness refresh,  **hard-prefers** the active  destination (derived in  when RAM/screenshot miss) so MOVE confirm lands on the forced Ch0+ tile:
 - FE7 Chapter 0 (Prologue): (9, 8)
 - This is documented in `src/data/fe7_chapters.py`
 

@@ -106,7 +106,10 @@ def prep_fe_llm(sock) -> Dict[str, Any]:
     if game_state.display_cursor_x >= 0:
         context["display_cursor"] = (game_state.display_cursor_x, game_state.display_cursor_y)
 
-    # Tutorial target from event slots (IWRAM) - only if tutorial mode enabled
+    # Tutorial target from event slots (IWRAM) - only if tutorial mode enabled.
+    # NOTE: FE7 does not reliably store tutorial destinations in RAM; event-slot
+    # and screenshot detection are best-effort. Sequence derivation below is the
+    # authoritative fallback (see docs/FE7_MEMORY_MAP.md).
     if config.TUTORIAL_MODE and game_state.tutorial_target_x >= 0:
         context["tutorial_target"] = (game_state.tutorial_target_x, game_state.tutorial_target_y)
 
@@ -278,9 +281,15 @@ def prep_fe_llm(sock) -> Dict[str, Any]:
                     )
                     
                     if reachable:
-                        context["movement_tiles"] = [list(t) for t in reachable]
-                        context["unit_is_selected"] = True
-                        log.info(f"Movement tiles calculated for {context['cursor_on_player']}: {len(reachable)} tiles, movement={movement}")
+                        # Preview only — do NOT set movement_tiles / unit_is_selected.
+                        # Those flags mean "blue squares are up in-game." Faking them
+                        # makes legal_moves offer MOVE before SELECT lands.
+                        context["reachable_tiles"] = [list(t) for t in reachable]
+                        log.info(
+                            f"Reachable preview for {context['cursor_on_player']}: "
+                            f"{len(reachable)} tiles, movement={movement} "
+                            f"(not marking selected)"
+                        )
                 except Exception as e:
                     log.warning(f"Failed to calculate movement tiles: {e}")
         else:
@@ -341,6 +350,40 @@ def prep_fe_llm(sock) -> Dict[str, Any]:
         ally_list.append(entry)
     if ally_list:
         context["allies"] = ally_list
+
+
+    # Derive tutorial_target from chapter tutorial_sequence. Sequence is
+    # authoritative for FE7 Ch0 (live-verified); do not let stale RAM event-slot
+    # coords override hard-prefer destinations. Infers first unmet step from
+    # party positions (WAIT after MOVE; do not skip attack on occupancy alone).
+    if config.TUTORIAL_MODE and context.get("tutorial_sequence"):
+        from src.game.tutorial_progress import infer_active_tutorial_step
+
+        acting = context.get("cursor_on_player") or context.get("tutorial_unit")
+        info = infer_active_tutorial_step(
+            context["tutorial_sequence"],
+            context.get("party") or [],
+            acting_unit_name=acting,
+            enemies=context.get("enemies") or [],
+        )
+        if info.get("target"):
+            ram_target = context.get("tutorial_target")
+            context["tutorial_target"] = info["target"]
+            context["tutorial_step_index"] = info["index"]
+            if info.get("kind"):
+                context["tutorial_step_kind"] = info["kind"]
+            if info.get("description"):
+                context["tutorial_step"] = info["description"]
+            if info.get("acting_unit"):
+                context["tutorial_unit"] = info["acting_unit"]
+            if ram_target and ram_target != info["target"]:
+                log.info(
+                    f"Tutorial sequence overrides RAM target {ram_target} → {info['target']}"
+                )
+            log.info(
+                f"Derived tutorial_target={info['target']} step[{info['index']}] "
+                f"kind={info.get('kind')} unit={info.get('acting_unit')}"
+            )
 
     return context
 

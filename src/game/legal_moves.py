@@ -1,0 +1,473 @@
+"""
+Deterministic legal-move catalog for the FE harness.
+
+The model picks MOVE: <id>. The harness maps that id to a semantic COMMAND
+string and command_executor presses the buttons. No free-form button timing.
+"""
+
+from __future__ import annotations
+
+from typing import Any, Dict, List, Optional, Set, Tuple
+
+
+def _tile(t) -> Optional[Tuple[int, int]]:
+    if t is None:
+        return None
+    if isinstance(t, (list, tuple)) and len(t) >= 2:
+        try:
+            return (int(t[0]), int(t[1]))
+        except (TypeError, ValueError):
+            return None
+    if isinstance(t, dict) and "x" in t and "y" in t:
+        try:
+            return (int(t["x"]), int(t["y"]))
+        except (TypeError, ValueError):
+            return None
+    return None
+
+
+def _available_units(state: dict) -> List[Dict[str, Any]]:
+    unit_status = state.get("unit_status") or {}
+    out = []
+    for u in state.get("party") or []:
+        name = u.get("name")
+        if not name:
+            continue
+        status = unit_status.get(name)
+        if status == "already_acted" or status == "rescued":
+            continue
+        if status == "available":
+            out.append(u)
+            continue
+        if u.get("hasMoved"):
+            continue
+        out.append(u)
+    return out
+
+
+def _tutorial_partner(state: dict, default: str = "Lyn") -> str:
+    """Return the adjacent unit named by the active tutorial trade step."""
+    idx = state.get("tutorial_step_index")
+    sequence = state.get("tutorial_sequence") or []
+    if isinstance(idx, int) and 0 <= idx < len(sequence):
+        step = sequence[idx]
+        if isinstance(step, dict):
+            partner = step.get("partner") or step.get("target_unit")
+            if partner:
+                return str(partner)
+    return default
+
+
+def build_legal_moves(state: dict, max_moves: int = 28) -> List[Dict[str, Any]]:
+    """Build prioritized legal high-level moves from current LLM game_state."""
+    moves: List[Dict[str, Any]] = []
+    seen: Set[str] = set()
+
+    def add(kind: str, command: str, summary: str) -> None:
+        cmd = " ".join(command.split())
+        if not cmd or cmd in seen:
+            return
+        seen.add(cmd)
+        moves.append(
+            {
+                "id": f"m{len(moves)}",
+                "kind": kind,
+                "command": cmd,
+                "summary": summary,
+            }
+        )
+
+    text_box = bool(state.get("text_box_visible"))
+    input_locked = bool(state.get("input_locked"))
+    in_dialogue = bool(state.get("in_dialogue"))
+    in_menu = bool(state.get("in_menu"))
+    screen = (state.get("screen_context") or "") + " " + (state.get("previous_action") or "")
+    screen_l = screen.lower()
+
+    # Map-play signals: never collapse to dialogue-only when these are present.
+    has_map_play = bool(
+        state.get("movement_tiles")
+        or state.get("attack_opportunities")
+        or state.get("unit_is_selected")
+        or state.get("selected_unit")
+        or state.get("cursor_on_player")
+    )
+
+    # Dialogue only when clearly in a text box / cutscene AND not mid map action.
+    # Match llmdriver story-dialogue rule: text_box + locked (or explicit in_dialogue).
+    dialogue_mode = (
+        not has_map_play
+        and (
+            in_dialogue
+            or (text_box and input_locked)
+            or (text_box and ("dialogue" in screen_l or "text box" in screen_l))
+        )
+    )
+    if dialogue_mode:
+        add("dismiss", "DISMISS", "Dismiss dialogue / advance text")
+        add("ui_a", "A", "Press A once")
+        add("ui_b", "B", "Press B / cancel")
+        return moves[:max_moves]
+
+    # Title / start screen: only UI buttons; no END_TURN / map tactics.
+    phase = (state.get("phase") or "").lower()
+    if phase == "start_screen":
+        add("ui_start", "START", "Press Start to begin / advance title")
+        add("ui_a", "A", "Press A to confirm / advance")
+        add("ui_b", "B", "Press B / cancel")
+        return moves[:max_moves]
+
+    # Action / map menus
+    if in_menu:
+        tutorial_step_kind_menu = (state.get("tutorial_step_kind") or "").lower()
+        tutorial_step_index_menu = state.get("tutorial_step_index")
+        step_label_menu = ""
+        if tutorial_step_index_menu is not None:
+            step_label_menu = f" step[{tutorial_step_index_menu}]"
+        # Tutorial hard-prefer inside menus (Ch0 WAIT after MOVE; ITEM vulnerary; SEIZE)
+        if tutorial_step_kind_menu == "wait":
+            add("wait", "WAIT", f"TUTORIAL{step_label_menu}: WAIT after MOVE")
+            add("ui_a", "A", "Confirm highlighted menu option")
+            add("ui_b", "B", "Cancel / leave menu")
+            return moves[:max_moves]
+        if tutorial_step_kind_menu == "item":
+            add("item", "ITEM Vulnerary", f"TUTORIAL{step_label_menu}: Use Vulnerary (dialogue-mash path)")
+            add("ui_a", "A", "Confirm highlighted menu option")
+            add("ui_b", "B", "Cancel / leave menu")
+            return moves[:max_moves]
+        if tutorial_step_kind_menu == "trade":
+            partner = _tutorial_partner(state)
+            add("trade", f'TRADE target="{partner}"', f"TUTORIAL{step_label_menu}: Trade with {partner}")
+            add("ui_a", "A", "Confirm highlighted trade option")
+            add("ui_b", "B", "Cancel / leave menu")
+            return moves[:max_moves]
+        if tutorial_step_kind_menu == "move_again":
+            add("wait", "WAIT", f"TUTORIAL{step_label_menu}: Confirm Wait after Move Again")
+            add("ui_a", "A", "Confirm highlighted menu option")
+            add("ui_b", "B", "Cancel / leave menu")
+            return moves[:max_moves]
+        if tutorial_step_kind_menu == "seize":
+            add("seize", "SEIZE", f"TUTORIAL{step_label_menu}: Seize objective")
+            add("ui_a", "A", "Confirm highlighted menu option")
+            add("ui_b", "B", "Cancel / leave menu")
+            return moves[:max_moves]
+        for opp in (state.get("attack_opportunities") or [])[:6]:
+            target = opp.get("target") or "Enemy"
+            add("attack", f'ATTACK target="{target}"', f"Attack {target}")
+        add("wait", "WAIT", "Wait (end this unit's turn)")
+        add("ui_a", "A", "Confirm highlighted menu option")
+        add("ui_b", "B", "Cancel / leave menu")
+        if "seize" in screen_l:
+            add("seize", "SEIZE", "Seize objective")
+        # Tutorial-only Item menu may be the sole option — always expose ITEM
+        add("item", "ITEM", "Open Item menu / use item")
+        return moves[:max_moves]
+
+    available = _available_units(state)
+    # The sequence names the acting unit explicitly. Put that unit first so a
+    # fresh tutorial turn cannot drift onto another available character before
+    # the model sees the destination.
+    tutorial_unit_name = state.get("tutorial_unit")
+    if tutorial_unit_name:
+        available.sort(
+            key=lambda u: 0
+            if str(u.get("name") or "").lower() == str(tutorial_unit_name).lower()
+            else 1
+        )
+    selected = state.get("selected_unit") or state.get("cursor_on_player")
+    attack_opps = state.get("attack_opportunities") or []
+    enemies = state.get("enemies") or []
+
+    # Tutorial hard-prefer metadata (dest forced later when selected+reachable)
+    tutorial_target = _tile(state.get("tutorial_target"))
+    tutorial_step_index = state.get("tutorial_step_index")
+    tutorial_step_kind = (state.get("tutorial_step_kind") or "").lower()
+    tutorial_step = state.get("tutorial_step") or tutorial_step_kind
+    step_label = ""
+    if tutorial_step_index is not None:
+        step_label = f" step[{tutorial_step_index}]"
+    if tutorial_step:
+        step_label = (step_label + f" {tutorial_step}").strip()
+
+    movement = [_tile(t) for t in (state.get("movement_tiles") or [])]
+    movement = [t for t in movement if t]
+
+    # Drop vision/map tiles that are nowhere near the selected unit (common
+    # screen→map projection glitch: tiles like [1,8] while Lyn is at [7,7]).
+    if selected and movement:
+        unit_pos = None
+        for u in (state.get("party") or []):
+            if str(u.get("name") or "").lower() == str(selected).lower():
+                unit_pos = _tile([u.get("x"), u.get("y")])
+                break
+        if unit_pos:
+            near = [
+                t for t in movement
+                if abs(t[0] - unit_pos[0]) + abs(t[1] - unit_pos[1]) <= 12
+            ]
+            if near:
+                movement = near
+            else:
+                # All tiles absurdly far — treat as no movement data
+                movement = []
+
+    movement_set = set(movement)
+
+    # Only treat as "selected with actionable moves" when we know WHO is
+    # selected AND we have real move/attack options. Ghost unit_is_selected
+    # from bad vision otherwise collapses the catalog to End Turn / B.
+    actionable_selected = bool(selected) and (
+        bool(movement_set) or bool(attack_opps) or in_menu
+    )
+    ghost_selected = bool(state.get("unit_is_selected") or state.get("movement_tiles")) and not actionable_selected
+
+    unit_selected = actionable_selected or (
+        bool(selected)
+        and bool(state.get("cursor_on_player"))
+        and not state.get("cursor_on_player_moved")
+        and bool(movement_set or attack_opps)
+    )
+
+    # Never let a stale/failed selection drift the tutorial onto another
+    # unit. Clear it first; the next observation will re-expose the named
+    # tutorial actor at the front of the catalog.
+    tutorial_unit = state.get("tutorial_unit")
+    if unit_selected and selected and tutorial_unit:
+        if str(selected).lower() != str(tutorial_unit).lower():
+            add("ui_b", "B", f"Clear wrong selection ({selected}); tutorial needs {tutorial_unit}")
+            return moves[:max_moves]
+
+    # --- Selected unit: attack + move options ---
+    if unit_selected and selected:
+        # Unit already standing on tutorial dest for WAIT / ITEM / SEIZE
+        selected_xy = None
+        for u in (state.get("party") or []):
+            if str(u.get("name") or "").lower() == str(selected).lower():
+                selected_xy = _tile([u.get("x"), u.get("y")])
+                break
+        if tutorial_target and selected_xy == tutorial_target:
+            if tutorial_step_kind == "wait":
+                add("wait", "WAIT", f"TUTORIAL{step_label}: WAIT at ({tutorial_target[0]},{tutorial_target[1]})")
+                add("ui_b", "B", "Cancel / deselect")
+                add("end_turn", "END_TURN", "End player phase early")
+                return moves[:max_moves]
+            if tutorial_step_kind == "item":
+                add("item", "ITEM Vulnerary", f"TUTORIAL{step_label}: Use Vulnerary")
+                add("ui_b", "B", "Cancel / deselect")
+                return moves[:max_moves]
+            if tutorial_step_kind == "trade":
+                partner = _tutorial_partner(state)
+                add("trade", f'TRADE target="{partner}"', f"TUTORIAL{step_label}: Trade with {partner}")
+                add("ui_b", "B", "Cancel / deselect")
+                return moves[:max_moves]
+            if tutorial_step_kind == "move_again":
+                add("wait", "WAIT", f"TUTORIAL{step_label}: Confirm Wait after Move Again")
+                add("ui_b", "B", "Cancel / deselect")
+                return moves[:max_moves]
+            if tutorial_step_kind == "seize":
+                add("seize", "SEIZE", f"TUTORIAL{step_label}: Seize at ({tutorial_target[0]},{tutorial_target[1]})")
+                add("ui_b", "B", "Cancel / deselect")
+                return moves[:max_moves]
+
+        # 1) Tutorial destination first (MOVE confirm soft-rejects wrong tiles in FE7 Ch0+)
+        if tutorial_target:
+            from src.game.tutorial_progress import prefer_tutorial_tile
+
+            step_coords = None
+            seq = state.get("tutorial_sequence") or []
+            if isinstance(tutorial_step_index, int) and 0 <= tutorial_step_index < len(seq):
+                raw = seq[tutorial_step_index].get("coords") if isinstance(seq[tutorial_step_index], dict) else None
+                if isinstance(raw, (list, tuple)):
+                    step_coords = [c for c in (_tile(t) for t in raw) if c]
+
+            dest = prefer_tutorial_tile(tutorial_target, movement, step_coords)
+            if dest:
+                tx, ty = dest
+                matching_opp = next(
+                    (
+                        o
+                        for o in attack_opps
+                        if _tile(o.get("move_to") or o.get("tile")) == dest
+                    ),
+                    None,
+                )
+                if matching_opp or tutorial_step_kind == "attack":
+                    if matching_opp:
+                        tgt = matching_opp.get("target") or "Enemy"
+                    else:
+                        adjacent_enemy = next(
+                            (
+                                e
+                                for e in enemies
+                                if abs(int(e.get("x", 0)) - tx) + abs(int(e.get("y", 0)) - ty) == 1
+                            ),
+                            None,
+                        )
+                        tgt = (
+                            (adjacent_enemy or {}).get("name")
+                            or state.get("boss_target")
+                            or "Enemy"
+                        )
+                    add(
+                        "move_attack",
+                        f'SELECT unit="{selected}" MOVE to=[{tx},{ty}] ATTACK target="{tgt}"',
+                        f"TUTORIAL{step_label}: {selected} → ({tx},{ty}) attack {tgt}",
+                    )
+                elif tutorial_step_kind == "item":
+                    add(
+                        "move_item",
+                        f'SELECT unit="{selected}" MOVE to=[{tx},{ty}]',
+                        f"TUTORIAL{step_label}: {selected} → ({tx},{ty}) then ITEM",
+                    )
+                elif tutorial_step_kind == "trade":
+                    # Trade is intentionally a second-cycle action. The
+                    # action menu/tutorial dialogue appears only after MOVE
+                    # confirms, so do not append TRADE to this MOVE.
+                    add(
+                        "move_trade",
+                        f'SELECT unit="{selected}" MOVE to=[{tx},{ty}]',
+                        f"TUTORIAL{step_label}: {selected} → ({tx},{ty}) then TRADE",
+                    )
+                elif tutorial_step_kind == "wait":
+                    add(
+                        "move_wait",
+                        f'SELECT unit="{selected}" MOVE to=[{tx},{ty}] WAIT',
+                        f"TUTORIAL{step_label}: {selected} → ({tx},{ty}) WAIT",
+                    )
+                elif tutorial_step_kind == "seize":
+                    add(
+                        "move_seize",
+                        f'SELECT unit="{selected}" MOVE to=[{tx},{ty}] SEIZE',
+                        f"TUTORIAL{step_label}: {selected} → ({tx},{ty}) SEIZE",
+                    )
+                elif tutorial_step_kind == "move_again":
+                    add(
+                        "move_wait",
+                        f'SELECT unit="{selected}" MOVE to=[{tx},{ty}] WAIT',
+                        f"TUTORIAL{step_label}: {selected} → ({tx},{ty}) then confirm Wait",
+                    )
+                else:
+                    # Default move step: MOVE then WAIT (Ch0 first step)
+                    add(
+                        "move_wait",
+                        f'SELECT unit="{selected}" MOVE to=[{tx},{ty}] WAIT',
+                        f"TUTORIAL{step_label}: {selected} → ({tx},{ty})",
+                    )
+                # Hard-prefer: when dest is reachable, do not flood with random blues
+                if dest in movement_set or tutorial_step_kind in (
+                    "wait", "item", "trade", "seize", "attack", "move", "move_again"
+                ):
+                    for opp in attack_opps[:10]:
+                        odest = _tile(opp.get("move_to") or opp.get("tile"))
+                        target = opp.get("target") or "Enemy"
+                        if not odest or odest == dest:
+                            continue
+                        x, y = odest
+                        add(
+                            "move_attack",
+                            f'SELECT unit="{selected}" MOVE to=[{x},{y}] ATTACK target="{target}"',
+                            f"{selected} → ({x},{y}) attack {target}",
+                        )
+                    add("ui_b", "B", "Cancel / deselect")
+                    if not available:
+                        add("end_turn", "END_TURN", "End player phase — all units acted")
+                    else:
+                        add("end_turn", "END_TURN", "End player phase early")
+                    return moves[:max_moves]
+
+        for opp in attack_opps[:10]:
+            dest = _tile(opp.get("move_to") or opp.get("tile"))
+            target = opp.get("target") or "Enemy"
+            if not dest:
+                continue
+            x, y = dest
+            add(
+                "move_attack",
+                f'SELECT unit="{selected}" MOVE to=[{x},{y}] ATTACK target="{target}"',
+                f"{selected} → ({x},{y}) attack {target}",
+            )
+
+        # Sample wait destinations (near enemies first)
+        enemy_tiles = []
+        for e in enemies:
+            p = _tile([e.get("x"), e.get("y")])
+            if p:
+                enemy_tiles.append(p)
+
+        def nearness(tile: Tuple[int, int]) -> Tuple[int, int, int]:
+            # Tutorial target sorts first when present but not reachable (nav toward it)
+            if tutorial_target and tile == tutorial_target:
+                return (-1, tile[0], tile[1])
+            if enemy_tiles:
+                d = min(abs(tile[0] - ex) + abs(tile[1] - ey) for ex, ey in enemy_tiles)
+            else:
+                d = 50
+            return (d, tile[0], tile[1])
+
+        ranked = sorted(movement_set, key=nearness)
+        cursor = _tile(state.get("cursor") or state.get("display_cursor"))
+        if cursor and cursor in movement_set:
+            add(
+                "move_wait",
+                f'SELECT unit="{selected}" MOVE to=[{cursor[0]},{cursor[1]}] WAIT',
+                f"{selected} wait at ({cursor[0]},{cursor[1]})",
+            )
+        for tile in ranked[:14]:
+            x, y = tile
+            # Skip tiles already covered by attack_opps
+            if any(
+                _tile(o.get("move_to") or o.get("tile")) == tile
+                for o in attack_opps
+            ):
+                continue
+            add(
+                "move_wait",
+                f'SELECT unit="{selected}" MOVE to=[{x},{y}] WAIT',
+                f"{selected} → ({x},{y}) wait",
+            )
+
+    # --- Not selected (or ghost selection): select available units ---
+    if not unit_selected or ghost_selected:
+        if ghost_selected:
+            # Clear bogus selection first, then re-select
+            add("ui_b", "B", "Cancel bogus selection / deselect")
+        for u in available[:12]:
+            name = u.get("name")
+            if not name:
+                continue
+            add(
+                "select",
+                f'SELECT unit="{name}"',
+                f"Select {name} ({u.get('x')},{u.get('y')})",
+            )
+
+    if not available:
+        add("end_turn", "END_TURN", "End player phase — all units acted")
+    elif unit_selected and not ghost_selected:
+        # Escape hatch so the model can finish the turn deliberately
+        add("end_turn", "END_TURN", "End player phase early")
+    else:
+        # Prefer acting with remaining units over ending the phase
+        add("end_turn", "END_TURN", "End player phase early")
+
+    if not ghost_selected:
+        add("ui_b", "B", "Cancel / deselect")
+    return moves[:max_moves]
+
+
+def resolve_move_id(move_id: str, legal_moves: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    if not move_id:
+        return None
+    key = str(move_id).strip().lower()
+    for m in legal_moves or []:
+        if str(m.get("id", "")).lower() == key:
+            return m
+    return None
+
+
+def legal_moves_for_prompt(moves: List[Dict[str, Any]]) -> List[Dict[str, str]]:
+    """Compact list for the model (id + summary + kind)."""
+    return [
+        {"id": m["id"], "kind": m["kind"], "summary": m["summary"]}
+        for m in moves
+    ]

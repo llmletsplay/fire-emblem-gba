@@ -1,0 +1,27 @@
+--- a/src/llm/prompts.py	2026-09-16 22:58:34.937913358 +0000
++++ b/src/llm/prompts.py	2026-09-16 22:59:37.133693647 +0000
+@@ -138,7 +138,7 @@
+ - If `attack_tiles` is present → IGNORE (deprecated). Use `attack_opportunities` instead for attack options.
+ - If `failed_tiles` lists a tile you were planning to visit → pick a DIFFERENT destination. The tile is a dead end.
+ 
+-## COMMAND FORMAT (PREFERRED)
++## COMMAND FORMAT (PREFERRED — REQUIRED WHEN YOU USE COMMAND:)
+ 
+ Use the COMMAND format for all actions. Examples:
+ - `COMMAND: SELECT unit="Lyn"` - select a unit
+@@ -146,6 +146,15 @@
+ - `COMMAND: DROP at=[5,5]` - drop a rescued unit (release them to act)
+ - `COMMAND: A` - dismiss dialogue (shorthand)
+ - `COMMAND: B` - cancel/go back (shorthand)
++- `COMMAND: DISMISS` - dismiss dialogue
++- `COMMAND: WAIT` - wait with selected unit
++- `COMMAND: END_TURN` - end player phase
++
++**HARD RULE:** After `COMMAND:` never write raw button chords (`L;L;A;`, `R;R;D;A;`, etc.).
++Those are rejected and waste a turn. If you must use buttons, use the separate legacy
++`ACTION: L;L;A;` line instead — but prefer semantic COMMAND.
++
++If `game_state.command_parse_error` is set, your previous COMMAND: was rejected — fix the format.
+ 
+ The system handles button execution - focus on tactics, not buttons.
+ 

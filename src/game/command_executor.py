@@ -53,6 +53,63 @@ ATTACK_MENU = {
     "wait": 1,
 }
 
+# FE7 Ch1's scripted trade tutorial opens several different UI states, with a
+# dialogue lock between them. Keep the semantic TRADE command stable while
+# advancing one accepted input at a time; dialogue cycles are handled by the
+# existing auto-A path above. This is deliberately module-local so a normal
+# TRADE command is unaffected.
+_FE7_CH1_TRADE_STAGE = 0
+
+
+def _fe7_ch1_tutorial_trade_buttons(game_state: Dict[str, Any]) -> Optional[Tuple[List[str], str]]:
+    """Return the next button pulse for the Ch1 Lyn/Sain trade tutorial."""
+    global _FE7_CH1_TRADE_STAGE
+
+    if (game_state.get("tutorial_step_kind") or "").lower() != "trade":
+        return None
+    if game_state.get("chapter") not in (1, "1"):
+        return None
+
+    menu_type = str(game_state.get("menu_type") or "").lower()
+    current_selection = game_state.get("menu_selection", -1)
+
+    # A fresh action menu is the only reliable reset marker after a user or
+    # probe reloads slot 41 while this Python process is still alive.
+    if game_state.get("in_menu") and menu_type in ("unit", "action"):
+        _FE7_CH1_TRADE_STAGE = 0
+
+    stage = _FE7_CH1_TRADE_STAGE
+    if stage == 0:
+        if isinstance(current_selection, int) and current_selection >= 0:
+            buttons = calculate_menu_navigation(current_selection, UNIT_ACTION_MENU["trade"])
+        else:
+            buttons = [BUTTONS["DOWN"], BUTTONS["DOWN"]]
+        buttons.append("A")
+        desc = "TUTORIAL Ch1 TRADE: open Trade"
+    elif stage == 1:
+        buttons = ["A"]
+        desc = "TUTORIAL Ch1 TRADE: choose Lyn"
+    elif stage == 2:
+        buttons = [BUTTONS["RIGHT"]]
+        desc = "TUTORIAL Ch1 TRADE: move to Lyn inventory"
+    elif stage == 3:
+        buttons = [BUTTONS["DOWN"]]
+        desc = "TUTORIAL Ch1 TRADE: highlight Vulnerary"
+    elif stage == 4:
+        buttons = ["A"]
+        desc = "TUTORIAL Ch1 TRADE: select Vulnerary"
+    elif stage == 5:
+        buttons = ["A"]
+        desc = "TUTORIAL Ch1 TRADE: confirm transfer"
+    elif stage == 6:
+        buttons = ["B"]
+        desc = "TUTORIAL Ch1 TRADE: exit trade"
+    else:
+        return [], "TUTORIAL Ch1 TRADE: sequence complete"
+
+    _FE7_CH1_TRADE_STAGE = stage + 1
+    return buttons, desc
+
 
 def calculate_menu_navigation(current_selection: int, target_index: int) -> List[str]:
     """Calculate D-pad presses needed to navigate from current selection to target.
@@ -187,13 +244,158 @@ def calculate_direction_to_target(cursor: Tuple[int, int], target: Tuple[int, in
         return "DOWN" if dy > 0 else "UP"
 
 
-def get_enemy_by_name(enemies: List[Dict], name: str) -> Optional[Dict]:
-    """Find enemy by name (case-insensitive partial match)."""
-    name_lower = name.lower()
+def _name_match_score(entity: Dict, name: str) -> int:
+    """Score how well an entity matches a target name/id. Higher is better."""
+    if not name:
+        return 0
+    needle = str(name).strip().lower()
+    ename = str(entity.get("name") or "").strip().lower()
+    eid = entity.get("id")
+    eid_s = str(eid).lower() if eid is not None else ""
+    # Exact name
+    if ename and ename == needle:
+        return 100
+    # Hex/id forms: "0x3e", "unit 0x3e", "62"
+    needle_hex = needle.replace("unit ", "").replace("unit_", "").strip()
+    if needle_hex.startswith("0x"):
+        try:
+            want = int(needle_hex, 16)
+            if eid is not None and int(eid) == want:
+                return 95
+            if ename.endswith(needle_hex) or needle_hex in ename:
+                return 90
+        except ValueError:
+            pass
+    else:
+        try:
+            want = int(needle_hex)
+            if eid is not None and int(eid) == want:
+                return 95
+        except ValueError:
+            pass
+    if eid_s and (eid_s == needle or eid_s == needle_hex):
+        return 92
+    # Prefer exact token containment over weak substring
+    if ename and needle == ename:
+        return 100
+    if ename and (ename.startswith(needle) or needle.startswith(ename)) and min(len(ename), len(needle)) >= 4:
+        return 70
+    # Weak substring — keep low so adjacency/cursor can override duplicates
+    if ename and needle in ename and len(needle) >= 4:
+        return 40
+    if ename and ename in needle and len(ename) >= 4:
+        return 35
+    return 0
+
+
+def get_enemy_by_name(
+    enemies: List[Dict],
+    name: str,
+    cursor: Optional[Tuple[int, int]] = None,
+) -> Optional[Dict]:
+    """Find enemy by exact/id match; break ties by proximity to cursor."""
+    if not enemies or not name:
+        return None
+    scored = []
     for e in enemies:
-        if name_lower in e.get("name", "").lower():
-            return e
-    return None
+        score = _name_match_score(e, name)
+        if score <= 0:
+            continue
+        ex, ey = int(e.get("x", 0) or 0), int(e.get("y", 0) or 0)
+        dist = 10**9
+        if cursor is not None:
+            dist = abs(ex - cursor[0]) + abs(ey - cursor[1])
+        scored.append((score, dist, e))
+    if not scored:
+        return None
+    scored.sort(key=lambda t: (-t[0], t[1]))
+    best = scored[0]
+    if cursor is not None and best[0] < 90:
+        adjacent = [t for t in scored if t[1] == 1]
+        if adjacent:
+            adjacent.sort(key=lambda t: (-t[0], t[1]))
+            return adjacent[0][2]
+    return best[2]
+
+
+def resolve_attack_target_tile(
+    game_state: Dict[str, Any],
+    target_name: Optional[str],
+    cursor: Tuple[int, int],
+):
+    """Prefer attack_opportunities at cursor, else adjacent name match, else raw xy."""
+    enemies = game_state.get("enemies", []) or []
+    opps = game_state.get("attack_opportunities", []) or []
+    cx, cy = cursor
+
+    def _opp_target_name(opp):
+        return str(opp.get("target") or opp.get("enemy") or opp.get("name") or "")
+
+    def _opp_enemy_at(opp):
+        ea = opp.get("enemy_at") or opp.get("enemy_pos") or opp.get("target_pos") or opp.get("at")
+        if isinstance(ea, (list, tuple)) and len(ea) >= 2:
+            return int(ea[0]), int(ea[1])
+        return None
+
+    def _opp_move_to(opp):
+        mt = opp.get("move_to") or opp.get("from") or opp.get("tile") or opp.get("move_tile")
+        if isinstance(mt, (list, tuple)) and len(mt) >= 2:
+            return int(mt[0]), int(mt[1])
+        return None
+
+    matching = []
+    for opp in opps:
+        mt = _opp_move_to(opp)
+        if mt != (cx, cy):
+            continue
+        if target_name:
+            if _name_match_score({"name": _opp_target_name(opp), "id": opp.get("target_id")}, target_name) <= 0:
+                ea = _opp_enemy_at(opp)
+                if ea is None:
+                    continue
+                hit = any(
+                    _name_match_score(e, target_name) > 0 and (int(e.get("x", -1)), int(e.get("y", -1))) == ea
+                    for e in enemies
+                )
+                if not hit:
+                    continue
+        ea = _opp_enemy_at(opp)
+        if ea:
+            matching.append((opp, ea))
+    if matching:
+        opp, ea = matching[0]
+        enemy = next((e for e in enemies if (int(e.get("x", -1)), int(e.get("y", -1))) == ea), None)
+        if enemy is None and target_name:
+            enemy = get_enemy_by_name(enemies, target_name, cursor=cursor)
+        return ea, "attack_opportunities", enemy
+
+    if target_name:
+        adjacent = []
+        for e in enemies:
+            if _name_match_score(e, target_name) <= 0:
+                continue
+            ex, ey = int(e.get("x", 0) or 0), int(e.get("y", 0) or 0)
+            if abs(ex - cx) + abs(ey - cy) == 1:
+                adjacent.append((e, (ex, ey)))
+        if adjacent:
+            adjacent.sort(key=lambda t: -_name_match_score(t[0], target_name))
+            e, tile = adjacent[0]
+            return tile, "adjacent_to_cursor", e
+        enemy = get_enemy_by_name(enemies, target_name, cursor=cursor)
+        if enemy:
+            tile = (int(enemy.get("x", 0) or 0), int(enemy.get("y", 0) or 0))
+            return tile, "raw", enemy
+
+    for opp in opps:
+        if _opp_move_to(opp) == (cx, cy):
+            ea = _opp_enemy_at(opp)
+            if ea:
+                return ea, "attack_opportunities", None
+    for e in enemies:
+        ex, ey = int(e.get("x", 0) or 0), int(e.get("y", 0) or 0)
+        if abs(ex - cx) + abs(ey - cy) == 1:
+            return (ex, ey), "adjacent_to_cursor", e
+    return None, "unresolved", None
 
 
 def execute_command_sequence(
@@ -220,13 +422,24 @@ def execute_command_sequence(
     in_dialogue = game_state.get("in_dialogue", False)
     input_locked = game_state.get("input_locked", False)
     
-    if (text_box_visible or in_dialogue) and input_locked:
+    explicit_dialogue_dismiss = bool(
+        commands
+        and commands[0].type == "BUTTON"
+        and str(commands[0].button or "").upper() == "B"
+    )
+    if (text_box_visible or in_dialogue) and input_locked and not explicit_dialogue_dismiss:
         # Dialogue is active - auto-inject A to advance, ignoring other commands
         log.info("Dialogue detected - auto-advancing with A")
         return "A;", "DIALOGUE_ADVANCE (auto-injected)"
+
+    phase = (game_state.get("phase") or "unknown")
+    phase_l = str(phase).lower()
+    if phase_l == "start_screen":
+        # Title / chapter splash — Start then A are the usual clears
+        log.info("start_screen detected - auto-advancing with START;A")
+        return "START;A;", "START_SCREEN_ADVANCE (auto-injected)"
     
     # Phase validation - check if commands are valid for current phase
-    phase = game_state.get("phase", "unknown")
     player_actions = {"SELECT", "MOVE", "ATTACK", "WAIT", "SEIZE", "VISIT", "TALK", "TRADE", "RESCUE", "ITEM", "DISMISS", "END_TURN"}
     
     if phase in ("enemy_phase", "npc_phase"):
@@ -238,10 +451,21 @@ def execute_command_sequence(
             log.warning(f"Phase is {phase}, ignoring player actions: {non_player_actions}. Auto-waiting.")
             return "", f"BLOCKED: Cannot execute {non_player_actions} during {phase} - auto-waiting"
 
-    # Use display_cursor if available (more accurate during tutorials/movement)
-    # Otherwise fall back to memory cursor
+    # Live FE7 on mGBA: PlaySt cursor often freezes while BmSt display_cursor
+    # tracks the real on-screen cursor (opposite of the old tutorial comment).
+    # Prefer display / overridden context cursor for pathing; keep PlaySt only
+    # as a fallback when display is missing.
     display_cursor = game_state.get("display_cursor")
-    cursor = display_cursor if display_cursor else game_state.get("cursor", (0, 0))
+    context_cursor = game_state.get("cursor")
+    playst_cursor = game_state.get("cursor_memory")
+    cursor = display_cursor or context_cursor or playst_cursor or (0, 0)
+    if isinstance(cursor, list):
+        cursor = tuple(cursor)
+    nav_cursor = (int(cursor[0]), int(cursor[1]))
+    log.info(
+        f"Nav cursor={nav_cursor} (display={display_cursor}, "
+        f"context={context_cursor}, playst={playst_cursor})"
+    )
     cursor_on_player = game_state.get("cursor_on_player")
     party = game_state.get("party", [])
     enemies = game_state.get("enemies", [])
@@ -249,6 +473,16 @@ def execute_command_sequence(
 
     button_sequence = []
     action_descriptions = []
+    moved_this_sequence = False
+
+    def _party_unit_pos(name: str):
+        for u in party:
+            if str(u.get("name") or "").lower() == name.lower():
+                try:
+                    return (int(u["x"]), int(u["y"]))
+                except (KeyError, TypeError, ValueError):
+                    return None
+        return None
 
     for cmd in commands:
         cmd_desc = ""
@@ -258,18 +492,66 @@ def execute_command_sequence(
             if not unit_name:
                 log.warning("SELECT command with no unit name, skipping")
                 continue
-            # Check if cursor is already on this unit - if so, just press A once
-            if cursor_on_player and cursor_on_player.lower() == unit_name.lower():
-                log.info(f"Cursor already on {unit_name}, pressing A once to select")
+            unit_pos = _party_unit_pos(unit_name)
+            # Already in movement mode (blue tiles) — another A confirms stand-still.
+            if movement_tiles or game_state.get("unit_is_selected"):
+                log.info(
+                    f"Already selected (movement_tiles={len(movement_tiles or [])}); "
+                    f"skipping SELECT {unit_name}"
+                )
+                cmd_desc = f"SELECT {unit_name} (already selected, skipped)"
+                action_descriptions.append(cmd_desc)
+                if unit_pos:
+                    nav_cursor = unit_pos
+                continue
+            # Only bare-A when the PATHING cursor is actually on the unit.
+            # cursor_on_player can be true from a stale display_cursor override.
+            on_unit = bool(unit_pos and nav_cursor == unit_pos)
+            if on_unit:
+                log.info(
+                    f"Pathing cursor already on {unit_name} at {nav_cursor}, pressing A once"
+                )
                 button_sequence.append("A")
                 cmd_desc = f"SELECT {unit_name}"
             else:
-                # Use L-button cycling as primary strategy (more reliable than menu)
-                # Pass game_state to check for open menu
-                seq = calculate_l_button_cycling_buttons(unit_name, party, cursor_on_player, game_state)
-                button_sequence.extend(seq)
-                cmd_desc = f"SELECT {unit_name} (via L-button)"
-                log.info(f"SELECT sequence: {seq}")
+                use_map = False
+                if unit_pos and nav_cursor:
+                    dist = abs(nav_cursor[0] - unit_pos[0]) + abs(nav_cursor[1] - unit_pos[1])
+                    if dist <= 12:
+                        use_map = True
+                tutorial_actor = game_state.get("tutorial_unit")
+                use_tutorial_cycle = bool(
+                    tutorial_actor
+                    and str(tutorial_actor).lower() == str(unit_name).lower()
+                    and cursor_on_player
+                    and str(cursor_on_player).lower() != str(unit_name).lower()
+                )
+                if use_tutorial_cycle:
+                    seq = calculate_l_button_cycling_buttons(
+                        unit_name, party, cursor_on_player, game_state
+                    )
+                    button_sequence.extend(seq)
+                    cmd_desc = f"SELECT {unit_name} (tutorial L-cycle)"
+                    log.info(f"SELECT tutorial L-cycle {cursor_on_player}→{unit_name}: {seq}")
+                    if unit_pos:
+                        nav_cursor = unit_pos
+                elif use_map:
+                    seq = calculate_map_to_unit_buttons(unit_name, party, nav_cursor)
+                    button_sequence.extend(seq)
+                    cmd_desc = f"SELECT {unit_name} (via map path)"
+                    log.info(
+                        f"SELECT map path {nav_cursor}→{unit_pos} {unit_name}: {seq}"
+                    )
+                    nav_cursor = unit_pos
+                else:
+                    seq = calculate_l_button_cycling_buttons(
+                        unit_name, party, cursor_on_player, game_state
+                    )
+                    button_sequence.extend(seq)
+                    cmd_desc = f"SELECT {unit_name} (via L-button)"
+                    log.info(f"SELECT L-cycle sequence: {seq}")
+                    if unit_pos:
+                        nav_cursor = unit_pos
 
         elif cmd.type == "MOVE":
             target = cmd.coord
@@ -293,9 +575,11 @@ def execute_command_sequence(
                             tx, ty = nearest
                             target = nearest
 
-                path = calculate_path(cursor, target)
+                path = calculate_path(nav_cursor, target)
                 button_sequence.extend(path)
                 button_sequence.append("A")  # Confirm move
+                nav_cursor = (int(tx), int(ty))
+                moved_this_sequence = True
                 cursor = target  # Update cursor position
                 cmd_desc = f"MOVE to {target}"
                 log.info(f"MOVE path: {path} → {target}")
@@ -334,14 +618,16 @@ def execute_command_sequence(
                     button_sequence.append("A")  # Select Attack from menu
                     
                     if target_name:
-                        enemy = get_enemy_by_name(enemies, target_name)
-                        if enemy:
-                            ex, ey = enemy.get("x", 0), enemy.get("y", 0)
+                        tile, src, enemy = resolve_attack_target_tile(game_state, target_name, cursor)
+                        if tile:
+                            ex, ey = tile
                             dir_btn = calculate_direction_to_target(cursor, (ex, ey))
                             button_sequence.append(BUTTONS.get(dir_btn, "A"))
                             button_sequence.append("A")  # Confirm target
                             cmd_desc = f"ATTACK {target_name}"
-                            log.info(f"ATTACK target: {target_name} at {enemy.get('x')},{enemy.get('y')}")
+                            log.info(
+                                f"ATTACK target: {target_name} from-cursor={cursor} to-tile={tile} source={src}"
+                            )
                         else:
                             cmd_desc = f"ATTACK {target_name} (target not found)"
                     else:
@@ -349,15 +635,22 @@ def execute_command_sequence(
                         cmd_desc = "ATTACK (no target specified)"
 
         elif cmd.type == "WAIT":
-            # Check if we're in a menu and navigate to Wait (index 3)
+            # Same-sequence MOVE+WAIT: defer Wait. The action menu is not open
+            # until the move confirms; DOWN;DOWN;A here often cancels the move.
+            if moved_this_sequence:
+                log.info("Deferring WAIT until next cycle (after MOVE confirm)")
+                cmd_desc = "WAIT (deferred)"
+                action_descriptions.append(cmd_desc)
+                continue
             current_menu_sel = game_state.get("menu_selection", -1)
             if current_menu_sel >= 0:
-                # Calculate navigation from current position to Wait (index 3)
-                nav_buttons = calculate_menu_navigation(current_menu_sel, UNIT_ACTION_MENU["wait"])
+                nav_buttons = calculate_menu_navigation(
+                    current_menu_sel, UNIT_ACTION_MENU["wait"]
+                )
                 button_sequence.extend(nav_buttons)
             else:
-                # Fallback: navigate to Wait (index 3 in Rescue/Item/Trade/Wait menu)
-                button_sequence.extend([BUTTONS["DOWN"], BUTTONS["DOWN"]])  # 0->1->2->3 = 3 downs from Rescue
+                # No attack range: Wait is often index 1 (Item/Wait). Prefer one DOWN.
+                button_sequence.append(BUTTONS["DOWN"])
             button_sequence.append("A")  # Confirm Wait
             cmd_desc = "WAIT"
 
@@ -430,6 +723,13 @@ def execute_command_sequence(
             cmd_desc = "VISIT"
 
         elif cmd.type == "TRADE":
+            tutorial_trade = _fe7_ch1_tutorial_trade_buttons(game_state)
+            if tutorial_trade is not None:
+                trade_buttons, trade_desc = tutorial_trade
+                button_sequence.extend(trade_buttons)
+                cmd_desc = trade_desc
+                action_descriptions.append(cmd_desc)
+                continue
             # Navigate to Trade (index 2) in action menu
             current_menu_sel = game_state.get("menu_selection", -1)
             if current_menu_sel >= 0:
@@ -463,16 +763,60 @@ def execute_command_sequence(
             cmd_desc = f"DROP at {cmd.coord if cmd.coord else 'current position'}"
 
         elif cmd.type == "ITEM":
-            # Navigate to Item (index 1) in action menu
-            current_menu_sel = game_state.get("menu_selection", -1)
-            if current_menu_sel >= 0:
-                nav_buttons = calculate_menu_navigation(current_menu_sel, UNIT_ACTION_MENU["item"])
-                button_sequence.extend(nav_buttons)
+            # After MOVE(5,4) the action menu may show only Item but dialogue is
+            # still mid-flash. Ch0 ITEM step: mash A through tutorial lock, then
+            # Item → DOWN (Vulnerary) → Use. Limited to tutorial_step_kind=item.
+            # Do NOT trust game_state_bits==0 as dialogue-done.
+            tutorial_kind = (game_state.get("tutorial_step_kind") or "").lower()
+            chapter = game_state.get("chapter")
+            use_ch0_item_path = (chapter == 0 and tutorial_kind == "item")
+            if use_ch0_item_path:
+                mash = 40
+                button_sequence.extend(["A"] * mash)
+                button_sequence.append("B")  # clear / close leftover menu
+                button_sequence.append("A")  # reselect Lyn
+                button_sequence.append("A")  # Item (tutorial-only / top option)
+                button_sequence.append(BUTTONS["DOWN"])  # Vulnerary is 2nd (Iron Sword first)
+                button_sequence.append("A")  # select Vulnerary
+                button_sequence.append("A")  # Use
+                cmd_desc = "ITEM vulnerary (Ch0 dialogue-mash → Item → DOWN → Use)"
+                log.info(
+                    "ITEM Ch0 tutorial path: mash A x%d, B, A reselect, A Item, DOWN, A, A Use "
+                    "(ignoring game_state_bits==0 as dialogue-done)",
+                    mash,
+                )
             else:
-                button_sequence.append(BUTTONS["DOWN"])  # 0->1 = 1 down from Rescue
-            if cmd.menu_option:
-                button_sequence.append("A")
-            cmd_desc = f"ITEM {cmd.menu_option if cmd.menu_option else ''}"
+                # Navigate to Item (index 1) in standard unit action menu
+                current_menu_sel = game_state.get("menu_selection", -1)
+                if current_menu_sel >= 0:
+                    nav_buttons = calculate_menu_navigation(current_menu_sel, UNIT_ACTION_MENU["item"])
+                    button_sequence.extend(nav_buttons)
+                else:
+                    button_sequence.append(BUTTONS["DOWN"])  # 0->1 = 1 down from Rescue
+                button_sequence.append("A")  # open Item
+                # If a menu_option was requested (e.g. Vulnerary), nudge to 2nd entry + Use
+                if cmd.menu_option:
+                    selected_name = (
+                        game_state.get("selected_unit")
+                        or game_state.get("cursor_on_player")
+                        or game_state.get("tutorial_unit")
+                    )
+                    item_index = None
+                    for unit in party:
+                        if selected_name and str(unit.get("name") or "").lower() == str(selected_name).lower():
+                            for idx, item in enumerate(unit.get("items") or []):
+                                if isinstance(item, dict) and str(item.get("name") or "").strip().lower() == cmd.menu_option.strip().lower():
+                                    item_index = idx
+                                    break
+                            break
+                    # FE7's item list is ordered like the unit inventory;
+                    # retain the old one-DOWN fallback when memory omits items.
+                    if item_index is None:
+                        item_index = 1
+                    button_sequence.extend([BUTTONS["DOWN"]] * item_index)
+                    button_sequence.append("A")
+                    button_sequence.append("A")
+                cmd_desc = f"ITEM {cmd.menu_option if cmd.menu_option else ''}"
 
         elif cmd.type == "PRESS":
             if cmd.raw:
@@ -793,9 +1137,11 @@ def calculate_map_to_unit_buttons(
         return calculate_unit_menu_buttons(target_unit_name, party, current_cursor)
     
     tx, ty = target_unit.get("x", 0), target_unit.get("y", 0)
-    
-    # Calculate path
-    return calculate_path(current_cursor, (tx, ty))
+
+    # Walk to the unit, then A to select
+    buttons = calculate_path(current_cursor, (tx, ty))
+    buttons.append("A")
+    return buttons
 
 
 def execute_select_unit(

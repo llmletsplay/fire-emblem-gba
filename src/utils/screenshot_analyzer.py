@@ -131,6 +131,30 @@ def calculate_similarity(img_path1: str, img_path2: str) -> float:
         log.error(f"Error comparing images: {e}")
         return 0.0
 
+def detect_tutorial_panel(img_path: str) -> bool:
+    """Detect FE7's centered yellow/white guided-tutorial panel."""
+    try:
+        img = Image.open(img_path).convert('RGB')
+        width, height = img.size
+        if width < 120 or height < 100:
+            return False
+        panel = img.crop((40, 45, min(205, width), min(105, height)))
+        bright = 0
+        yellow = 0
+        for r, g, b in panel.getdata():
+            if min(r, g, b) >= 190 and max(r, g, b) - min(r, g, b) <= 25:
+                bright += 1
+            if abs(r - 231) < 18 and abs(g - 239) < 18 and abs(b - 132) < 24:
+                yellow += 1
+        detected = bright >= 1500 or yellow >= 1000
+        if detected:
+            log.info(f"Tutorial dialogue panel detected: bright={bright}, yellow={yellow}")
+        return detected
+    except Exception as e:
+        log.warning(f"Tutorial panel detection failed for {img_path}: {e}")
+        return False
+
+
 def detect_text_box(img_path: str, bottom_rows_px: int = 48,
                     dark_threshold: float = 80.0, contrast_threshold: float = 25.0,
                     top_min_brightness: float = 40.0) -> bool:
@@ -177,6 +201,13 @@ def detect_text_box(img_path: str, bottom_rows_px: int = 48,
 
         detected = is_dark_bottom and has_text_contrast and is_not_black_screen
 
+        # FE7 Lyn Mode's guided/tutorial prompts are centered yellow/white
+        # panels rather than the normal bottom dialogue box. They are easy to
+        # miss with the bottom-band heuristic, while ordinary map sprites do
+        # not produce this much light area in the bounded panel region.
+        if not detected:
+            detected = detect_tutorial_panel(img_path)
+
         if detected:
             log.info(f"Text box detected: bottom_mean={bottom_mean:.1f}, "
                      f"bottom_stddev={bottom_stddev:.1f}, top_mean={top_mean:.1f}")
@@ -219,7 +250,7 @@ def detect_flash_regions(
     grid_size: int = 16,
     diff_threshold: int = 40,
     min_tile_ratio: float = 0.15,
-    exclude_bottom_fraction: float = 0.25,
+    exclude_bottom_fraction: float = 0.15,
     exclude_top_rows: int = 2,
 ) -> List[Dict[str, Any]]:
     """
@@ -401,7 +432,16 @@ def detect_movement_tiles(
                 avg_b = b_sum / count
 
                 key = (tc, tr)
-                if avg_b - max(avg_r, avg_g) > blue_threshold:
+                # Pure blue (old metric) OR translucent cyan overlay on grass.
+                # FE GBA movement tint is cyan blended over green terrain, so
+                # avg_b - max(r,g) stays ~5–20 and misses the diamond entirely.
+                pure_blue = avg_b - max(avg_r, avg_g) > blue_threshold
+                cyan_overlay = (
+                    avg_b - avg_r > 35
+                    and avg_b > 150
+                    and avg_g > 120
+                )
+                if pure_blue or cyan_overlay:
                     tile_blue_frames[key] = tile_blue_frames.get(key, 0) + 1
                 elif avg_r - max(avg_g, avg_b) > red_threshold:
                     tile_red_frames[key] = tile_red_frames.get(key, 0) + 1

@@ -252,6 +252,7 @@ class GBAMemoryReader:
         Returns:
             Raw bytes from memory
         """
+        reconnected = False
         for attempt in range(retries + 1):
             try:
                 cmd = f"READRANGE {hex(address)} {length}\n"
@@ -274,7 +275,23 @@ class GBAMemoryReader:
 
                 return data
 
-            except (ConnectionError, TimeoutError, socket.timeout) as e:
+            except (ConnectionError, TimeoutError, socket.timeout, OSError) as e:
+                # WinError 10038 / EBADF: operation on a closed / non-socket fd.
+                # One reconnect + retry recovers mid-cycle after END_TURN / Lua death.
+                winerr = getattr(e, "winerror", None)
+                errn = getattr(e, "errno", None)
+                dead_sock = winerr == 10038 or errn in (9, 10038) or "10038" in str(e)
+                if dead_sock and not reconnected:
+                    try:
+                        from src.utils.socket_utils import reconnect_socket
+                        logger.warning(
+                            f"Memory socket dead at 0x{address:X} ({e}); reconnecting once"
+                        )
+                        self.socket = reconnect_socket(self.socket)
+                        reconnected = True
+                        continue
+                    except Exception as re:
+                        logger.error(f"Memory reader reconnect failed: {re}")
                 if attempt < retries:
                     logger.warning(f"Memory read retry {attempt+1} at 0x{address:X}: {e}")
                     time.sleep(0.05)
@@ -620,13 +637,9 @@ class GBAMemoryReader:
                 if screen_target:
                     tut_x, tut_y = screen_target
 
-        # Final fallback: hardcoded chapter-based tutorial targets (only if tutorial mode)
-        if tut_x == -1 and config.TUTORIAL_MODE:
-            chapter_target = self._get_chapter_tutorial_sequence(chapter)
-            if chapter_target and len(chapter_target) > 0:
-                first_step = chapter_target[0]
-                if first_step.get("coords") and len(first_step["coords"]) > 0:
-                    tut_x, tut_y = first_step["coords"][0]
+        # Sequence fallback lives in fe_state.prep_fe_llm (infers active step from
+        # unit positions). Do NOT pin tut_x to sequence[0] here — that freezes the
+        # harness on the first tutorial tile after the unit has already moved on.
 
         return GBAGameState(
             phase=phase,
@@ -1151,8 +1164,15 @@ def get_memory_reader(socket_client=None) -> Optional[GBAMemoryReader]:
 
     Uses FE_GAME/ROM_FILE when configured, otherwise reads the ROM header
     through the mGBA Lua socket to select the correct memory addresses.
+
+    When socket_client is provided and a reader already exists, refresh the
+    reader's socket so post-action reconnects in llmdriver are not ignored.
     """
     global _memory_reader
+    if _memory_reader is not None and socket_client is not None:
+        if _memory_reader.socket is not socket_client:
+            logger.debug("Refreshing memory reader socket after reconnect")
+            _memory_reader.socket = socket_client
     if _memory_reader is None and socket_client:
         # Use FE_GAME env var or infer from ROM_FILE
         from src.core import config

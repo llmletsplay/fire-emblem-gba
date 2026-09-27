@@ -1,0 +1,18 @@
+[Unit]
+Description=FE GBA — validate ROM + create stream FIFOs
+Documentation=https://github.com/llmletsplay/fire-emblem-gba
+After=local-fs.target network-online.target
+Before=fe-mgba.service fe-ffmpeg.service fe-stream.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User=fe
+WorkingDirectory=/opt/fe-gba
+EnvironmentFile=/opt/fe-gba/.env
+ExecStart=/opt/fe-gba/scripts/stream/create-fifos.sh
+# Touch a marker so we can confirm boot-time setup ran
+ExecStartPost=/usr/bin/install -d -o fe -g fe /var/log/fe-gba
+
+[Install]
+WantedBy=multi-user.target

@@ -50,6 +50,34 @@ state = {
     "chronicle_entries": []  # Add chronicle entries to state
 }
 
+def _try_connect_mgba(port, retries=8, delay=1.5):
+    """Connect to an already-listening mGBA Lua socket server."""
+    sock = None
+    for attempt in range(retries):
+        try:
+            sock = socket.create_connection(('localhost', port), timeout=2)
+            # Never leave timeout=None — CAP can hang forever if Lua is wedged.
+            sock.settimeout(getattr(config, "SOCKET_TIMEOUT", 10) or 10)
+            log.info(f"Connected to mGBA scripting server on port {port}")
+            time.sleep(0.3)
+            # LOADSTATE on attach wedges the Lua handler on Darwin; only when opted in.
+            if getattr(config, "LOAD_SAVESTATE", False):
+                try:
+                    slot = int(getattr(config, "SAVESTATE_SLOT", 1) or 1)
+                    log.info(f"Loading save state slot {slot} (FE_LOAD_SAVESTATE=true, FE_SAVESTATE_SLOT)...")
+                    resp = send_command(sock, f"LOADSTATE {slot}")
+                    log.info(f"Save state load result: {resp}")
+                except Exception as e:
+                    log.warning(f"Failed to load save state (may not exist yet): {e}")
+            else:
+                log.info("Skipping LOADSTATE on attach (set FE_LOAD_SAVESTATE=true to enable)")
+            return sock
+        except (ConnectionRefusedError, socket.timeout, OSError) as e:
+            log.warning(f"mGBA connect attempt {attempt+1}/{retries} failed: {e}")
+            time.sleep(delay)
+    return None
+
+
 def start_mgba_with_scripting(rom_path=None, port=config.PORT):
     # Handle both direct execution and module import
     script_dir = os.path.dirname(os.path.abspath(__file__)) if '__file__' in globals() else os.getcwd()
@@ -68,6 +96,33 @@ def start_mgba_with_scripting(rom_path=None, port=config.PORT):
     if not os.path.exists(config.LUA_SCRIPT):
         log.error(f"Lua script not found: {config.LUA_SCRIPT}")
         sys.exit(1)
+
+    # Prefer attaching when a Lua socket is already up (e.g. launched via macOS `open -a`).
+    existing = _try_connect_mgba(port, retries=2, delay=0.5)
+    if existing is not None:
+        log.info("Attached to already-running mGBA socket; skipping launch.")
+        return None, existing
+
+    # On macOS, launching the CLI binary from a non-GUI agent often fails to keep
+    # the window/script alive. `open -a` starts it in the user GUI session.
+    proc = None
+    if sys.platform == 'darwin' and config.MGBA_EXE.endswith('/Contents/MacOS/mgba'):
+        open_cmd = [
+            'open', '-a', 'mGBA', '--args',
+            '--script', config.LUA_SCRIPT, rom_path,
+        ]
+        log.info(f"Starting mGBA via open: {' '.join(open_cmd)}")
+        try:
+            subprocess.Popen(open_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception as e:
+            log.error(f"Error starting mGBA via open: {e}", exc_info=True)
+            sys.exit(1)
+        time.sleep(4)
+        sock = _try_connect_mgba(port, retries=10, delay=1.5)
+        if sock is None:
+            log.error(f"Failed to connect to mGBA scripting server at localhost:{port} after open -a launch.")
+            sys.exit(1)
+        return None, sock
 
     cmd = [config.MGBA_EXE, '--script', config.LUA_SCRIPT, rom_path]
     log.info(f"Starting mGBA: {' '.join(cmd)}")
@@ -101,21 +156,24 @@ def start_mgba_with_scripting(rom_path=None, port=config.PORT):
         try:
             # create_connection handles both IPv4/IPv6
             sock = socket.create_connection(('localhost', port), timeout=2)
-            # Keep blocking for simplicity in current setup (console/llmdriver manage reads)
-            sock.setblocking(True)
+            sock.settimeout(getattr(config, "SOCKET_TIMEOUT", 10) or 10)
             log.info(f"Connected to mGBA scripting server on port {port}")
             # Give mGBA a moment to fully initialize
             time.sleep(0.5)
-            log.info("Loading save state slot 0...")
-            try:
-                resp = send_command(sock, "LOADSTATE 0")
-                log.info(f"Save state load result: {resp}")
-            except Exception as e:
-                log.warning(f"Failed to load save state 0 (may not exist yet): {e}")
+            if getattr(config, "LOAD_SAVESTATE", False):
+                try:
+                    slot = int(getattr(config, "SAVESTATE_SLOT", 1) or 1)
+                    log.info(f"Loading save state slot {slot} on connect (FE_LOAD_SAVESTATE=true)...")
+                    resp = send_command(sock, f"LOADSTATE {slot}")
+                    log.info(f"Save state load result: {resp}")
+                except Exception as e:
+                    log.warning(f"Failed to load save state on connect: {e}")
+            else:
+                log.info("Skipping LOADSTATE on connect (set FE_LOAD_SAVESTATE=true + FE_SAVESTATE_SLOT=1 for clean Ch0)")
             return proc, sock # Success
         except ConnectionRefusedError:
             log.warning(f"Connection to mGBA refused (attempt {attempt+1}/{retries}). Is mGBA running and script loaded?")
-            if proc.poll() is not None: # Check again if mGBA died while waiting
+            if proc is not None and proc.poll() is not None: # Check again if mGBA died while waiting
                  stderr_output = proc.stderr.read()
                  log.error(f"mGBA process terminated while attempting to connect. Exit code: {proc.returncode}")
                  if stderr_output:
@@ -298,7 +356,7 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description="Run the pyAIAgent.")
     parser.add_argument('--auto', action='store_true', help='Enable auto mode, starting the LLM driver.')
-    parser.add_argument('--load_savestate', action='store_true', help='(Deprecated: save state 0 is always loaded on start.)')
+    parser.add_argument('--load_savestate', action='store_true', help='Load FE_SAVESTATE_SLOT (default 1, clean Ch0) on start/attach.')
     parser.add_argument('--benchmark', type=str, metavar='PATH', help='Path to a benchmark file to run.')
     parser.add_argument('--max_loops', type=max_loops_type, metavar='N', help='Maximum number of loops for the LLM driver to run.')
 
@@ -307,6 +365,8 @@ if __name__ == '__main__':
     # Set global config based on parsed arguments
     if args.benchmark:
         config.benchmark_path = args.benchmark
+    if getattr(args, "load_savestate", False):
+        config.LOAD_SAVESTATE = True
 
     if args.auto:
         try:

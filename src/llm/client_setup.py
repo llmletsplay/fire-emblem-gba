@@ -349,6 +349,8 @@ DEFAULT_GROK_MODEL = "grok-3-mini"
 DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-20250514"
 DEFAULT_CUSTOM_MODEL = "gpt-4o-mini"  # Default model for custom OpenAI-compatible endpoints
 DEFAULT_ZAI_MODEL = "glm-4.6"  # Default model for Z.AI GLM
+DEFAULT_MINIMAX_MODEL = "MiniMax-M2.5"  # MiniMax Code Plus / Token Plan
+DEFAULT_MINIMAX_BASE_URL = "https://api.minimax.io/v1"
 
 DEFAULT_MODEL_BY_MODE = {
     "OPENAI": DEFAULT_OPENAI_MODEL,
@@ -361,6 +363,7 @@ DEFAULT_MODEL_BY_MODE = {
     "ANTHROPIC": DEFAULT_ANTHROPIC_MODEL,
     "CUSTOM": DEFAULT_CUSTOM_MODEL,
     "ZAI": DEFAULT_ZAI_MODEL,
+    "MINIMAX": DEFAULT_MINIMAX_MODEL,
 }
 
 MODES = list(DEFAULT_MODEL_BY_MODE.keys())
@@ -634,6 +637,41 @@ def setup_llm_client() -> tuple[OpenAI | None, str | None, str | None]:
             log.error(f"Failed to initialize Together client: {e}", exc_info=True)
             return None, None, False        
 
+
+    elif MODE == "MINIMAX":
+        # MiniMax Code Plus / Token Plan (OpenAI-compatible)
+        # Docs: https://platform.minimax.io/docs/token-plan/quickstart
+        api_key = os.getenv("MINIMAX_API_KEY") or os.getenv("MINIMAX_TOKEN_PLAN_KEY")
+        if not api_key:
+            log.error("MODE is MINIMAX but MINIMAX_API_KEY not found in environment variables.")
+            return None, None, False
+        base_url = get_config("MINIMAX_BASE_URL", DEFAULT_MINIMAX_BASE_URL)
+        try:
+            # Support longer timeouts for agentic turns
+            mm_timeout = os.getenv("MINIMAX_TIMEOUT") or os.getenv("CUSTOM_TIMEOUT")
+            if mm_timeout:
+                try:
+                    timeout_val = float(mm_timeout)
+                    timeout_obj = httpx.Timeout(timeout_val, read=timeout_val, write=10.0, connect=10.0)
+                except ValueError:
+                    timeout_obj = TIMEOUT
+            else:
+                timeout_obj = TIMEOUT
+
+            client = OpenAI(
+                base_url=base_url,
+                api_key=api_key,
+                timeout=timeout_obj,
+            )
+            model = get_config("MINIMAX_MODEL", DEFAULT_MINIMAX_MODEL)
+            # Do NOT set supports_reasoning: that path injects OpenAI reasoning_effort.
+            # MiniMax thinking is handled via extra_body reasoning_split in the driver.
+            supports_reasoning = False
+            log.info(f"Using MINIMAX Mode (OpenAI-compatible Token Plan). Base URL: {base_url}, Model: {model}")
+        except Exception as e:
+            log.error(f"Failed to initialize MINIMAX client: {e}", exc_info=True)
+            return None, None, False
+
     elif MODE == "CUSTOM":
         # Custom OpenAI-compatible API endpoint
         base_url = os.getenv("CUSTOM_BASE_URL")
@@ -718,3 +756,12 @@ def setup_llm_client() -> tuple[OpenAI | None, str | None, str | None]:
     log.info(f"LLM Client setup complete. Image Detail: {IMAGE_DETAIL}")
     print(f"Client: {client}, model: {model}, supports_reasoning: {supports_reasoning}")
     return client, model, supports_reasoning
+
+
+def provider_request_extras() -> dict:
+    """Extra OpenAI-compatible request fields for the active provider."""
+    provider = (os.getenv("LLM_PROVIDER") or os.getenv("MODE") or "").upper()
+    if provider == "MINIMAX":
+        # Keeps chain-of-thought out of message.content
+        return {"extra_body": {"reasoning_split": True}}
+    return {}

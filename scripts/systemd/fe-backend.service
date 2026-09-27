@@ -1,0 +1,26 @@
+[Unit]
+Description=FE GBA — Python orchestrator (MiniMax Code API)
+Documentation=https://github.com/llmletsplay/fire-emblem-gba
+After=fe-mgba.service
+Wants=fe-mgba.service
+
+[Service]
+Type=simple
+User=fe
+WorkingDirectory=/opt/fe-gba
+EnvironmentFile=/opt/fe-gba/.env
+ExecStart=/opt/fe-gba/venv/bin/python src/core/run.py --auto
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=15
+
+# CPU/memory caps tuned to be generous. The orchestrator spends most of its
+# time waiting on the LLM API, so 1 CPU is plenty.
+CPUQuota=150%
+MemoryMax=1G
+
+StandardOutput=append:/var/log/fe-gba/backend.log
+StandardError=append:/var/log/fe-gba/backend.log
+
+[Install]
+WantedBy=fe-stream.target

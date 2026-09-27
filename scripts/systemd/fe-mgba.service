@@ -1,0 +1,31 @@
+[Unit]
+Description=FE GBA — mGBA headless emulator with Lua stream wrapper
+Documentation=https://github.com/llmletsplay/fire-emblem-gba
+After=fe-romfetch.service
+Wants=fe-romfetch.service
+
+[Service]
+Type=simple
+User=fe
+WorkingDirectory=/opt/fe-gba
+EnvironmentFile=/opt/fe-gba/.env
+# QT_QPA_PLATFORM=offscreen makes the Qt GUI run without a display server.
+# The Lua hook reads from the GPU pipeline via emu:screenshotToImage() — that
+# still works headless. Audio callback reads from the same internal buffer.
+Environment="QT_QPA_PLATFORM=offscreen"
+Environment="SDL_AUDIODRIVER=dummy"
+# ROM_FILE is read from .env via EnvironmentFile, then expanded by the shell
+# at exec time. We deliberately do NOT use %i here — single-ROM per host.
+ExecStart=/bin/bash -c 'exec /usr/local/bin/mgba-qt --script lua/stream_wrapper.lua "roms/${ROM_FILE}"'
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=10
+# Soft memory cap so a runaway mGBA can't take the box down.
+MemoryMax=512M
+MemoryHigh=384M
+
+StandardOutput=append:/var/log/fe-gba/mgba.log
+StandardError=append:/var/log/fe-gba/mgba.log
+
+[Install]
+WantedBy=fe-stream.target

@@ -1,5 +1,6 @@
-from src.game.command_parser import parse_command, parse_command_from_llm_output
+from src.game.command_parser import parse_command, parse_command_from_llm_output, parse_move_id_line
 from src.game.command_validator import validate_command_sequence
+from src.game.legal_moves import build_legal_moves, resolve_move_id
 
 
 def test_parse_semantic_command_sequence():
@@ -60,3 +61,162 @@ def test_validator_autocorrects_move_to_nearest_valid_tile():
     assert result.valid
     assert result.commands[0].coord == (3, 3)
     assert any("Auto-corrected" in correction for correction in result.corrections)
+
+
+
+def test_parse_move_id_and_resolve_to_command():
+    """MOVE: mN from model output maps through legal_moves to a semantic COMMAND."""
+    state = {
+        "text_box_visible": False,
+        "input_locked": False,
+        "in_dialogue": False,
+        "in_menu": False,
+        "party": [{"name": "Lyn", "x": 1, "y": 1, "hasMoved": False}],
+        "unit_status": {"Lyn": "available"},
+        "enemies": [],
+        "movement_tiles": [],
+        "attack_opportunities": [],
+        "unit_is_selected": False,
+    }
+    moves = build_legal_moves(state)
+    assert moves and moves[0]["id"] == "m0"
+    move_id = parse_move_id_line("Picking Lyn.\nMOVE: m0")
+    assert move_id == "m0"
+    chosen = resolve_move_id(move_id, moves)
+    assert chosen is not None
+    seq = parse_command(chosen["command"])
+    assert seq.commands
+    assert seq.commands[0].type in {"SELECT", "END_TURN", "BUTTON"}
+
+
+def test_validator_allows_ui_on_start_screen():
+    seq = parse_command("START")
+    result = validate_command_sequence(
+        seq.commands,
+        {"phase": "start_screen", "cursor": (0, 0), "party": [], "enemies": []},
+    )
+    assert result.valid, result.errors
+    assert not any("Cannot execute" in e for e in result.errors)
+
+
+def test_validator_rejects_end_turn_on_start_screen():
+    seq = parse_command("END_TURN")
+    result = validate_command_sequence(
+        seq.commands,
+        {"phase": "start_screen", "cursor": (0, 0), "party": [], "enemies": []},
+    )
+    assert not result.valid
+    assert any("END_TURN" in e and "start_screen" in e for e in result.errors)
+
+
+def test_select_prefers_map_path_when_nearby():
+    from src.game.command_executor import execute_command_sequence
+    from src.game.command_parser import parse_command
+    seq = parse_command('SELECT unit="Lyn"')
+    buttons, desc = execute_command_sequence(
+        seq.commands,
+        {
+            "phase": "player_phase",
+            "cursor": (7, 9),
+            "cursor_on_player": None,
+            "party": [{"name": "Lyn", "x": 7, "y": 7, "hasMoved": False}],
+            "enemies": [],
+            "movement_tiles": [],
+        },
+    )
+    assert "map path" in desc.lower()
+    assert "UP" in buttons.upper()
+    assert buttons.upper().endswith("A;") or buttons.upper().endswith("A")
+
+
+def test_select_uses_display_cursor_not_stale_playst():
+    """Display on Lyn at (7,7); stale PlaySt at (7,9) must not force UP;UP."""
+    from src.game.command_executor import execute_command_sequence
+    from src.game.command_parser import parse_command
+    seq = parse_command('SELECT unit="Lyn" MOVE to=[7,2] WAIT')
+    buttons, desc = execute_command_sequence(
+        seq.commands,
+        {
+            "phase": "player_phase",
+            "cursor": (7, 7),
+            "cursor_memory": (7, 9),
+            "display_cursor": (7, 7),
+            "cursor_on_player": "Lyn",
+            "party": [{"name": "Lyn", "x": 7, "y": 7, "hasMoved": False}],
+            "enemies": [],
+            "movement_tiles": [[7, 7], [7, 6], [7, 5], [7, 4], [7, 3], [7, 2]],
+        },
+    )
+    assert "already selected" in desc.lower()
+    # Already selected with blue tiles — skip SELECT A, just path north
+    assert buttons.upper().startswith("UP;UP;UP;UP;UP;A;")
+    assert "DOWN;DOWN" not in buttons.upper()
+
+
+def test_select_skipped_when_already_selected():
+    from src.game.command_executor import execute_command_sequence
+    from src.game.command_parser import parse_command
+    seq = parse_command('SELECT unit="Lyn" MOVE to=[5,7] WAIT')
+    buttons, desc = execute_command_sequence(
+        seq.commands,
+        {
+            "phase": "player_phase",
+            "cursor": (7, 7),
+            "display_cursor": (7, 7),
+            "cursor_on_player": "Lyn",
+            "unit_is_selected": True,
+            "party": [{"name": "Lyn", "x": 7, "y": 7, "hasMoved": False}],
+            "enemies": [],
+            "movement_tiles": [[7, 7], [6, 7], [5, 7], [5, 6]],
+        },
+    )
+    assert "already selected" in desc.lower()
+    assert not buttons.upper().startswith("A;LEFT")
+    assert "LEFT;LEFT;A;" in buttons.upper()
+    assert "DOWN;DOWN" not in buttons.upper()
+
+
+def test_ch1_tutorial_trade_executor_advances_one_ui_state_at_a_time():
+    from src.game.command_executor import execute_command_sequence
+    from src.game.command_parser import parse_command
+
+    seq = parse_command('TRADE target="Lyn"')
+    base = {
+        "phase": "player_phase",
+        "chapter": 1,
+        "tutorial_step_kind": "trade",
+        "party": [
+            {"name": "Sain", "x": 5, "y": 5, "hasMoved": True},
+            {"name": "Lyn", "x": 5, "y": 4, "hasMoved": False},
+        ],
+        "cursor": (5, 5),
+        "in_menu": True,
+        "menu_type": "unit",
+        "menu_selection": 2,
+    }
+    buttons, desc = execute_command_sequence(seq.commands, base)
+    assert buttons == "A;"
+    assert "open Trade" in desc
+
+    next_state = dict(base, menu_type="trade", menu_selection=0)
+    buttons, desc = execute_command_sequence(seq.commands, next_state)
+    assert buttons == "A;"
+    assert "choose Lyn" in desc
+
+
+def test_dialogue_executor_allows_explicit_b_dismissal():
+    from src.game.command_executor import execute_command_sequence
+    from src.game.command_parser import parse_command
+
+    buttons, desc = execute_command_sequence(
+        parse_command("B").commands,
+        {
+            "chapter": 1,
+            "phase": "player_phase",
+            "input_locked": True,
+            "in_dialogue": True,
+            "text_box_visible": True,
+        },
+    )
+    assert buttons == "B;"
+    assert "BUTTON B" in desc

@@ -79,8 +79,40 @@ def validate_command_sequence(
             game_state_requirements=requirements,
         )
 
-    phase = game_state.get("phase", "unknown")
-    if phase != "player_phase":
+    phase = game_state.get("phase") or "unknown"
+    # Memory often returns None/"player" mid-frame; coerce to player_phase when
+    # any map-play signal or living party is present.
+    if phase in (None, "", "unknown", "player", "Player", "PLAYER"):
+        if (
+            game_state.get("movement_tiles")
+            or game_state.get("cursor_on_player")
+            or game_state.get("unit_is_selected")
+            or game_state.get("selected_unit")
+            or game_state.get("attack_opportunities")
+            or game_state.get("party")
+        ):
+            phase = "player_phase"
+        else:
+            phase = "unknown"
+    if phase == "player_phase":
+        pass
+    elif phase in ("start_screen", "story"):
+        # Title / story: allow UI buttons only; reject map tactics.
+        _ui_buttons = {"A", "B", "START", "S"}
+        _map_cmds = {
+            "SELECT", "MOVE", "ATTACK", "END_TURN", "WAIT", "SEIZE",
+            "VISIT", "TALK", "TRADE", "RESCUE", "DROP", "ITEM",
+        }
+        for cmd in commands:
+            if cmd.type in _map_cmds:
+                errors.append(f"Cannot execute {cmd.type} during {phase}")
+            elif cmd.type == "BUTTON":
+                btn = (cmd.button or "").upper()
+                if btn not in _ui_buttons:
+                    errors.append(f"Cannot execute BUTTON {btn or '?'} during {phase}")
+            elif cmd.type not in ("BUTTON", "PRESS", "DISMISS"):
+                errors.append(f"Cannot execute {cmd.type} during {phase}")
+    elif phase != "player_phase":
         errors.append(f"Cannot execute commands during {phase}. Wait for player phase.")
 
     cursor = game_state.get("cursor")

@@ -45,17 +45,20 @@ from src.llm.prompts import (
 # Import memory and session managers
 from src.utils.memory_manager import MemoryManager, MemoryEntry
 from src.utils.session_manager import SessionManager
-from src.llm.client_setup import setup_llm_client, setup_vision_model
+from src.llm.client_setup import setup_llm_client, setup_vision_model, provider_request_extras
 from src.services.benchmark import Benchmark
 from src.llm.client_setup import DEFAULT_MODE, ONE_IMAGE_PER_PROMPT, REASONING_ENABLED, USES_DEFAULT_TEMPERATURE, REASONING_EFFORT, IMAGE_DETAIL, USES_MAX_COMPLETION_TOKENS, MAX_TOKENS, TEMPERATURE, MINIMAP_ENABLED, MINIMAP_2D, SYSTEM_PROMPT_UNSUPPORTED
 from src.game.feature_config import (
     USE_VISION_MODEL, TRUST_VISION_DESCRIPTIONS, VISION_OVERRIDE_MAIN_MODEL,
     PATHFINDING_ENABLED, LOG_VISION_DESCRIPTIONS, LOG_LLM_RAW_OUTPUT,
     SAVE_SCREENSHOTS, VISION_MAX_TOKENS, USE_INTERNAL_MAPPING,
-    MINIMAP_ENABLED as FEATURE_MINIMAP_ENABLED
+    MINIMAP_ENABLED as FEATURE_MINIMAP_ENABLED,
+    HANDLE_DIALOGUE_SCREENS, DETECT_TITLE_SCREENS, AUTO_UI_ADVANCE_MAX_STREAK,
 )
 
 from src.game.command_parser import parse_command_from_llm_output, extract_command_text
+from src.game.command_parser import parse_move_id_line
+from src.game.legal_moves import build_legal_moves, resolve_move_id, legal_moves_for_prompt
 from src.game.command_executor import execute_with_validation, execute_command_sequence
 from src.game.command_validator import validate_command_sequence, get_validation_feedback
 from src.game.actions import ActionResult
@@ -73,12 +76,86 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(level
 log = logging.getLogger('llmdriver')
 
 
+def _print_stream_delta(delta: str) -> None:
+    """Print streamed model text without crashing Windows CP1252 consoles."""
+    try:
+        print(delta, end="", flush=True)
+    except UnicodeEncodeError:
+        safe = delta.encode("ascii", errors="replace").decode("ascii")
+        print(safe, end="", flush=True)
+
+
 # Updated regex to accept full button names
 ACTION_RE = re.compile(r'^(?:[LRUDAB]|Start|Select)(?:;(?:[LRUDAB]|Start|Select))*(?:;)?$', re.IGNORECASE)
 COORD_RE = re.compile(r'^([0-9]),([0-8])$')
 ANALYSIS_RE = re.compile(r"<game_analysis>([\s\S]*?)</game_analysis>", re.IGNORECASE)
 # Strip model-specific wrapper tokens (GLM <|begin_of_box|>, deepseek <|tool_call|>, etc.)
 _MODEL_TOKEN_RE = re.compile(r'<\|[^|]*\|>')
+_THINK_TAG_RE = re.compile(r'<think>[\s\S]*?</think>', re.IGNORECASE)
+_THINK_TAG_RE_ALT = re.compile(r'<thinking>[\s\S]*?</thinking>', re.IGNORECASE)
+
+def _clean_model_text(text: str) -> str:
+    if not text:
+        return ''
+    text = _THINK_TAG_RE.sub('', text)
+    text = _THINK_TAG_RE_ALT.sub('', text)
+    text = _MODEL_TOKEN_RE.sub('', text)
+    return text.strip()
+
+
+_auto_ui_advance_streak = 0  # consecutive start_screen/dialogue auto presses
+
+
+def _auto_ui_advance_chord(state: dict):
+    """Return (button_chord, reason) to skip the LLM on title/dialogue screens.
+
+    Returns (None, None) when the model should decide. Caps streak so a stuck
+    detection cannot mash forever without a fallback LLM turn.
+    """
+    global _auto_ui_advance_streak
+    if not state:
+        return None, None
+
+    phase = str(state.get("phase") or "").lower()
+    text_box = bool(state.get("text_box_visible"))
+    in_dialogue = bool(state.get("in_dialogue"))
+    input_locked = bool(state.get("input_locked"))
+    tutorial_panel = bool(state.get("tutorial_panel_visible"))
+    try:
+        chapter = int(state.get("chapter", -1))
+    except (TypeError, ValueError):
+        chapter = -1
+
+    want = None
+    reason = None
+    if DETECT_TITLE_SCREENS and phase == "start_screen":
+        # Alternate Start and A — FE title/chapter splash accept either
+        chord = "START;" if (_auto_ui_advance_streak % 2 == 0) else "A;"
+        want, reason = chord, f"AUTO_START_SCREEN ({chord.strip(';')})"
+    elif HANDLE_DIALOGUE_SCREENS and input_locked and (text_box or in_dialogue or tutorial_panel):
+        # The Ch1 guided panel requires a few A advances followed by B to
+        # dismiss the final instruction overlay.
+        if chapter == 1 and tutorial_panel and _auto_ui_advance_streak >= 3:
+            want, reason = "B;", "AUTO_TUTORIAL_PANEL_DISMISS"
+        else:
+            want, reason = "A;", "AUTO_DIALOGUE_ADVANCE"
+
+    if not want:
+        _auto_ui_advance_streak = 0
+        return None, None
+
+    if _auto_ui_advance_streak >= AUTO_UI_ADVANCE_MAX_STREAK:
+        log.warning(
+            f"Auto UI advance streak hit {AUTO_UI_ADVANCE_MAX_STREAK}; "
+            "falling back to LLM for one cycle"
+        )
+        _auto_ui_advance_streak = 0
+        return None, None
+
+    _auto_ui_advance_streak += 1
+    return want, reason
+
+
 IS_LOCAL = DEFAULT_MODE == "LMSTUDIO" or DEFAULT_MODE == "OLLAMA"
 
 # Use configurable timeouts from config/environment
@@ -129,6 +206,8 @@ MAX_INPUT_TOKENS = config.MAX_INPUT_TOKENS       # Token budget for compaction
 _last_action_sent = None
 _last_game_state = None
 _last_action_type = None  # For result capture: "SELECT", "MOVE", "ATTACK", etc.
+_pending_command_parse_error = None
+_current_legal_moves = []  # full catalog for MOVE: id → command  # Feed parse rejects back to the next LLM turn
 # Tracks tiles where actions failed (cursor pos → failure info)
 # Key: (x, y) tuple.  Value: {"count": int, "actions": [str], "last_cycle": int}
 _failed_tiles = {}
@@ -158,6 +237,8 @@ def _emergency_trim_payload(payload: dict):
     payload.pop("navigation", None)
     payload.pop("memory_thumbnails", None)
     payload.pop("movement_tiles", None)
+    # Keep legal_moves — model must see the catalog
+    # (intentionally not popped)
     payload.pop("attack_tiles", None)
     payload.pop("flash_indicators", None)
     payload.pop("minimap_description", None)
@@ -357,11 +438,24 @@ def _infer_screen_context(current_state: dict, last_action: str, last_state: dic
                     # All units have moved — end turn
                     hints.append("ALL units have already acted this turn. End your turn: Select;")
         elif a_press_effective:
-            # We just pressed A with cursor on this unit AND input was NOT locked — unit is now SELECTED
-            context_parts.append(f"UNIT SELECTED: {cursor_on_player}. Blue movement squares should be visible.")
-            hints.append(f"*** STOP *** You just pressed A on {cursor_on_player}. "
-                         f"The unit is NOW SELECTED. Blue squares should be visible. "
-                         f"DO NOT press A again! Use D-pad to navigate to a blue tile, then press A to CONFIRM the move.")
+            # A on this unit — may be selected. Don't assert blue tiles exist (detector/timing lag).
+            has_blue = bool(current_state.get("movement_tiles"))
+            if has_blue:
+                context_parts.append(
+                    f"UNIT SELECTED: {cursor_on_player}. Blue movement squares visible."
+                )
+                hints.append(
+                    f"*** STOP *** {cursor_on_player} is SELECTED with blue tiles. "
+                    f"DO NOT press A again to select — D-pad to a blue tile, then A to CONFIRM."
+                )
+            else:
+                context_parts.append(
+                    f"Pressed A on {cursor_on_player}. If blue tiles are not visible yet, "
+                    f"retry SELECT; if they are, navigate with D-pad then A to confirm."
+                )
+                hints.append(
+                    f"After selecting {cursor_on_player}, wait for blue movement squares before confirming a move."
+                )
             enemies = current_state.get("enemies", [])
             cursor = current_state.get("cursor")
             if enemies:
@@ -741,9 +835,10 @@ def summarize_and_reset(benchmark: Benchmark = None):
         kwargs["temperature"] = TEMPERATURE
 
     try:
+        kwargs.update(provider_request_extras())
         summary_resp = client.chat.completions.create(**kwargs)
         if summary_resp.choices and summary_resp.choices[0].message.content:
-            summary_text = summary_resp.choices[0].message.content.strip()
+            summary_text = _clean_model_text(summary_resp.choices[0].message.content or "")
             summary_output_tokens = count_tokens(summary_text)
         else:
             log.warning("LLM Summary: No choices or empty content.")
@@ -792,6 +887,7 @@ def llm_stream_action(state_data: dict, timeout: float = STREAM_TIMEOUT, benchma
         - needs_summary: Whether to summarize chat history
         - semantic_action: CommandSequence from new semantic command system (or None)
     """
+    global _pending_command_parse_error, _current_legal_moves
     global response_count, tokens_used_session, chat_history, last_input_tokens
 
     # This function intelligently switches between streaming and non-streaming API calls.
@@ -889,10 +985,11 @@ def llm_stream_action(state_data: dict, timeout: float = STREAM_TIMEOUT, benchma
             else:
                 log.info("Skipping reasoning_effort for ZAI adapter (not supported)")
 
+            kwargs.update(provider_request_extras())
             response = client.chat.completions.create(**kwargs)
             log.info(f"LLM request completed in {time.time() - request_start:.2f}s")
             choice = response.choices[0]
-            content = choice.message.content
+            content = _clean_model_text(choice.message.content or "")
 
             if content:
                 full_output = content.strip()
@@ -911,6 +1008,7 @@ def llm_stream_action(state_data: dict, timeout: float = STREAM_TIMEOUT, benchma
             request_start = time.time()
             kwargs["stream"] = True
 
+            kwargs.update(provider_request_extras())
             response = client.chat.completions.create(**kwargs)
 
             iterator = iter(response)
@@ -933,7 +1031,7 @@ def llm_stream_action(state_data: dict, timeout: float = STREAM_TIMEOUT, benchma
                 # Process first chunk
                 delta = chunk.choices[0].delta.content
                 if delta:
-                    print(delta, end="", flush=True)
+                    _print_stream_delta(delta)
                     collected_chunks.append(delta)
                 
                 # Continue until finish or total timeout
@@ -946,7 +1044,7 @@ def llm_stream_action(state_data: dict, timeout: float = STREAM_TIMEOUT, benchma
 
                         delta = chunk.choices[0].delta.content
                         if delta:
-                            print(delta, end="", flush=True)
+                            _print_stream_delta(delta)
                             collected_chunks.append(delta)
 
                         if chunk.choices[0].finish_reason:
@@ -978,6 +1076,7 @@ def llm_stream_action(state_data: dict, timeout: float = STREAM_TIMEOUT, benchma
         output_tokens = count_tokens(full_output)
         tokens_used_session += call_input_tokens + output_tokens
         log.info(f"Used ~{output_tokens} output tokens; session total: {tokens_used_session}")
+        log.info("post-stream: history append + MOVE parse")
 
         user_hist_content = [text_segment] # Images are not saved in history
         chat_history.append({"role": "user", "content": user_hist_content})
@@ -992,15 +1091,67 @@ def llm_stream_action(state_data: dict, timeout: float = STREAM_TIMEOUT, benchma
         if match:
             analysis_text = match.group(1).strip()
 
-        # NEW: Try semantic COMMAND format first
-        command_seq = parse_command_from_llm_output(full_output)
+        # Prefer MOVE: <id>; if that id is a weak UI filler but a real COMMAND:
+        # line exists, prefer the COMMAND (guards against stale dialogue catalogs).
+        global _current_legal_moves, _pending_command_parse_error
+        move_id = parse_move_id_line(full_output)
+        direct_command_seq = parse_command_from_llm_output(full_output)
+        weak_ui = {"A", "B", "DISMISS", "DISMISS_DIALOGUE"}
+        if move_id:
+            chosen = resolve_move_id(move_id, _current_legal_moves)
+            if chosen is None:
+                cmd_map = state_data.get("_legal_move_commands") or {}
+                cmd = cmd_map.get(move_id)
+                if cmd:
+                    chosen = {"id": move_id, "command": cmd, "summary": cmd}
+            if chosen:
+                cmd_text = (chosen.get("command") or "").strip()
+                kind = (chosen.get("kind") or "")
+                is_weak = (
+                    kind in ("ui_a", "ui_b", "dismiss")
+                    or cmd_text.upper() in weak_ui
+                )
+                if (
+                    is_weak
+                    and direct_command_seq is not None
+                    and not direct_command_seq.is_empty
+                    and any(c.type in ("SELECT", "MOVE", "ATTACK", "WAIT", "END_TURN") for c in direct_command_seq.commands)
+                ):
+                    log.info(
+                        f"MOVE:{move_id} was weak UI ({cmd_text}); preferring COMMAND line {direct_command_seq}"
+                    )
+                    command_seq = direct_command_seq
+                    semantic_action = command_seq
+                    action = None
+                else:
+                    synthetic = f'COMMAND: {cmd_text}'
+                    log.info(f"MOVE:{move_id} → {synthetic} ({chosen.get('summary','')})")
+                    command_seq = parse_command_from_llm_output(synthetic)
+                    if command_seq and not command_seq.is_empty:
+                        semantic_action = command_seq
+                        action = None
+                    else:
+                        _pending_command_parse_error = (
+                            f"MOVE:{move_id} mapped to an unparsable command: {cmd_text}"
+                        )
+                        command_seq = direct_command_seq
+            else:
+                _pending_command_parse_error = (
+                    f"MOVE:{move_id} is not in legal_moves. Pick an id from the legal_moves list."
+                )
+                command_seq = direct_command_seq
+        else:
+            # NEW: Try semantic COMMAND format first
+            command_seq = direct_command_seq
         if command_seq and not command_seq.is_empty:
             log.info(f"Parsed semantic command sequence: {command_seq}")
             # We have a semantic command - will execute in the main loop with game_state
             # Store in a special variable for execution later
             semantic_action = command_seq
         else:
-            semantic_action = None
+            semantic_action = command_seq  # may be empty with reject_reason
+            if command_seq is not None and getattr(command_seq, "reject_reason", None):
+                _pending_command_parse_error = command_seq.reject_reason
 
         # Extract action JSON or fallback
         # First strip any leading/trailing quotes and whitespace
@@ -1087,6 +1238,7 @@ def llm_stream_action(state_data: dict, timeout: float = STREAM_TIMEOUT, benchma
                 kwargs["messages"] = [chat_history[0], retry_user_msg]
                 kwargs["stream"] = False  # simplify retry
                 log.info("Retrying API call with emergency-trimmed context...")
+                kwargs.update(provider_request_extras())
                 response = client.chat.completions.create(**kwargs)
                 choice = response.choices[0]
                 if choice.message.content:
@@ -1144,6 +1296,14 @@ def llm_stream_action(state_data: dict, timeout: float = STREAM_TIMEOUT, benchma
     # Only log error if BOTH action AND semantic_action are None
     if action is None and (semantic_action is None or semantic_action.is_empty):
         log.error("No valid action extracted from LLM output.")
+        if semantic_action is not None and getattr(semantic_action, "reject_reason", None):
+            _pending_command_parse_error = semantic_action.reject_reason
+        elif not _pending_command_parse_error:
+            _pending_command_parse_error = (
+                "No valid COMMAND: or ACTION: found. Reply with one line like "
+                'COMMAND: SELECT unit="Lyn" MOVE to=[x,y] or COMMAND: A (dismiss). '
+                "Do not put raw L;R;U;D;A; chords after COMMAND:."
+            )
         # Check if the output was likely truncated
         if len(full_output) > 2000 or not full_output.rstrip().endswith('}'):
             log.warning("Output may have been truncated due to token limit. Consider shorter action sequences.")
@@ -1164,13 +1324,22 @@ def llm_stream_action(state_data: dict, timeout: float = STREAM_TIMEOUT, benchma
             log.debug(f"Full output was: {full_output[:500]}...")
             log.debug(f"Output end: ...{full_output[-200:] if len(full_output) > 200 else full_output}")
 
-    return action, analysis_text, needs_summary, semantic_action
 
+    # Deterministic mode: reject free-form ACTION button chords when a catalog exists
+    if _current_legal_moves and action and (semantic_action is None or semantic_action.is_empty):
+        log.warning(f"Rejecting free-form ACTION while legal_moves is active: {action!r}")
+        _pending_command_parse_error = (
+            "Do not output ACTION button chords. Pick one id from legal_moves and reply "
+            "with a single line: MOVE: mN"
+        )
+        action = None
+
+    return action, analysis_text, needs_summary, semantic_action
 
 
 async def run_auto_loop(sock, state: dict, broadcast_func, interval: float = 8.0, max_loops = math.inf, benchmark: Benchmark = None):
     """Main async loop: Get state, call LLM, send action, update/broadcast state."""
-    global action_count, tokens_used_session, start_time, chat_history, SCREENSHOT_PATH, MINIMAP_PATH, SAVED_SCREENSHOT_PATH, SAVED_MINIMAP_PATH, _last_action_sent, _last_game_state, _failed_tiles, _current_cycle_num, _dialogue_buffer, _unit_attempt_tracker
+    global action_count, tokens_used_session, start_time, chat_history, SCREENSHOT_PATH, MINIMAP_PATH, SAVED_SCREENSHOT_PATH, SAVED_MINIMAP_PATH, _last_action_sent, _last_game_state, _failed_tiles, _current_cycle_num, _dialogue_buffer, _unit_attempt_tracker, _pending_command_parse_error, _current_legal_moves
 
     b64_mm = None
 
@@ -1178,6 +1347,7 @@ async def run_auto_loop(sock, state: dict, broadcast_func, interval: float = 8.0
     _last_action_sent = None
     _last_game_state = None
     _last_action_type = None
+    _pending_command_parse_error = None
     _failed_tiles = {}
     _unit_attempt_tracker = {}
     _dialogue_buffer = []
@@ -1237,7 +1407,25 @@ async def run_auto_loop(sock, state: dict, broadcast_func, interval: float = 8.0
             screenshots = []
             for i in range(config.SCREENSHOT_CAPTURE_COUNT):
                 screenshot_name = f"screenshot_{i}.png"
-                capture(sock, screenshot_name)
+                try:
+                    capture(sock, screenshot_name)
+                except Exception as cap_err:
+                    log.warning(f"CAP {i} failed: {cap_err}")
+                    if i == 0:
+                        try:
+                            from src.utils.socket_utils import reconnect_socket
+                            sock = reconnect_socket(sock)
+                            try:
+                                from src.utils.memory_reader import get_memory_reader as _sync_reader
+                                _sync_reader(sock)
+                            except Exception:
+                                pass
+                            capture(sock, screenshot_name)
+                            log.info("CAP succeeded after mid-cycle reconnect.")
+                        except Exception:
+                            raise cap_err
+                    else:
+                        raise
                 screenshots.append(screenshot_name)
                 if i < config.SCREENSHOT_CAPTURE_COUNT - 1:
                     t.sleep(2.0)
@@ -1261,8 +1449,9 @@ async def run_auto_loop(sock, state: dict, broadcast_func, interval: float = 8.0
 
             # Detect text box (dialogue) at bottom of screenshot
             text_box_visible = False
+            tutorial_panel_visible = False
             if config.TEXT_BOX_DETECTION_ENABLED and not analysis["is_transitioning"]:
-                from src.utils.screenshot_analyzer import detect_text_box
+                from src.utils.screenshot_analyzer import detect_text_box, detect_tutorial_panel
                 try:
                     text_box_visible = detect_text_box(
                         SAVED_SCREENSHOT_PATH,
@@ -1273,8 +1462,10 @@ async def run_auto_loop(sock, state: dict, broadcast_func, interval: float = 8.0
                     )
                     if text_box_visible:
                         log.info("Text box detected at bottom of screenshot")
+                    tutorial_panel_visible = detect_tutorial_panel(SAVED_SCREENSHOT_PATH)
                 except Exception as e:
                     log.warning(f"Text box detection failed: {e}")
+                    tutorial_panel_visible = False
 
             # Detect flashing/animated tiles across the captured frames
             # Only run flash detection if tutorial mode is enabled (for tutorial highlights)
@@ -1348,9 +1539,20 @@ async def run_auto_loop(sock, state: dict, broadcast_func, interval: float = 8.0
              log.warning("Socket timeout getting state from mGBA (game may be in transition). Retrying next cycle.")
              await asyncio.sleep(2)
              continue
-        except socket.error as se:
-             log.error(f"Socket error getting state from mGBA: {se}. Stopping loop.")
-             break
+        except (socket.error, TimeoutError, OSError) as se:
+             log.error(f"Socket error getting state from mGBA: {se}. Reconnecting and continuing...")
+             try:
+                 from src.utils.socket_utils import reconnect_socket
+                 sock = reconnect_socket(sock)
+                 try:
+                     from src.utils.memory_reader import get_memory_reader as _sync_reader
+                     _sync_reader(sock)
+                 except Exception:
+                     pass
+             except Exception as re:
+                 log.error(f"Reconnect failed: {re}")
+             await asyncio.sleep(2)
+             continue
         except Exception as e:
             log.error(f"Error getting state from mGBA: {e}", exc_info=True)
             await asyncio.sleep(max(0, interval - (time.time() - loop_start_time)))
@@ -1378,6 +1580,11 @@ async def run_auto_loop(sock, state: dict, broadcast_func, interval: float = 8.0
         )
         llm_input_state["previous_action"] = screen_context["previous_action"]
         llm_input_state["screen_context"] = screen_context["screen_context"]
+        # Surface prior COMMAND: parse failures so the model can correct format
+        if _pending_command_parse_error:
+            llm_input_state["command_parse_error"] = _pending_command_parse_error
+            log.info(f"Injecting command_parse_error: {_pending_command_parse_error[:80]}...")
+            _pending_command_parse_error = None
         if config.CONTEXT_HINTS_ENABLED and screen_context["context_hints"]:
             llm_input_state["context_hints"] = screen_context["context_hints"]
         if screen_context.get("failed_tiles"):
@@ -1385,6 +1592,7 @@ async def run_auto_loop(sock, state: dict, broadcast_func, interval: float = 8.0
 
         # Inject dialogue/text detection signals
         llm_input_state["text_box_visible"] = text_box_visible
+        llm_input_state["tutorial_panel_visible"] = tutorial_panel_visible
         # Only add input_locked if text_box is visible (avoid false positives)
         # This prevents confusing hints when game is actually responsive
         if _input_locked and text_box_visible:
@@ -1455,15 +1663,53 @@ async def run_auto_loop(sock, state: dict, broadcast_func, interval: float = 8.0
                         blue_map.append([mx, my])
                     # Cap at 20 tiles (sorted by distance from cursor) to limit token usage
                     blue_map.sort(key=lambda t: abs(t[0] - cursor[0]) + abs(t[1] - cursor[1]))
-                    llm_input_state["movement_tiles"] = blue_map[:20]
-                    # Also add to current_mGBA_state so capture_action_result() can see them
-                    current_mGBA_state["movement_tiles"] = blue_map[:20]
-                    current_mGBA_state["unit_is_selected"] = True
-                    llm_input_state["unit_is_selected"] = True  # Blue tiles = unit is selected
-                    # Add selected_unit if we know which unit is selected (from cursor)
+                    blue_map = blue_map[:20]
+
+                    # Prefer memory-calculated tiles when already present and vision
+                    # projects absurdly far from any available unit / cursor.
+                    mem_tiles = current_mGBA_state.get("movement_tiles") or []
                     unit_at_cursor = current_mGBA_state.get("cursor_on_player")
+                    anchor = None
                     if unit_at_cursor:
-                        llm_input_state["selected_unit"] = unit_at_cursor
+                        for u in (current_mGBA_state.get("party") or []):
+                            if str(u.get("name") or "").lower() == str(unit_at_cursor).lower():
+                                try:
+                                    anchor = (int(u["x"]), int(u["y"]))
+                                except (KeyError, TypeError, ValueError):
+                                    anchor = None
+                                break
+                    if anchor is None and cursor:
+                        try:
+                            anchor = (int(cursor[0]), int(cursor[1]))
+                        except (TypeError, ValueError):
+                            anchor = None
+
+                    vision_ok = True
+                    if anchor and blue_map:
+                        near = [
+                            t for t in blue_map
+                            if abs(int(t[0]) - anchor[0]) + abs(int(t[1]) - anchor[1]) <= 12
+                        ]
+                        if not near:
+                            vision_ok = False
+                            log.warning(
+                                f"Ignoring vision movement_tiles (all far from {anchor}): "
+                                f"{blue_map[:5]}..."
+                            )
+
+                    if vision_ok:
+                        llm_input_state["movement_tiles"] = blue_map
+                        current_mGBA_state["movement_tiles"] = blue_map
+                        # Only mark selected when cursor is on a player unit
+                        if unit_at_cursor:
+                            current_mGBA_state["unit_is_selected"] = True
+                            llm_input_state["unit_is_selected"] = True
+                            llm_input_state["selected_unit"] = unit_at_cursor
+                    elif mem_tiles:
+                        llm_input_state["movement_tiles"] = mem_tiles
+                        if unit_at_cursor:
+                            llm_input_state["unit_is_selected"] = True
+                            llm_input_state["selected_unit"] = unit_at_cursor
 
                 # Also store red tiles (blocked tiles) in current_mGBA_state
                 if movement_tiles["red_tiles"]:
@@ -1820,15 +2066,61 @@ async def run_auto_loop(sock, state: dict, broadcast_func, interval: float = 8.0
             else:
                 llm_input_state.pop("memory_thumbnails", None)
 
-        # Call LLM for decision
-        action, game_analysis, needs_summary, semantic_action = await call_llm_with_timeout(llm_input_state, benchmark=benchmark)
+        # Skip LLM on title/start + locked dialogue — mash UI buttons deterministically.
+        auto_chord, auto_reason = _auto_ui_advance_chord(llm_input_state)
+        if auto_chord:
+            log.info(f"Skipping LLM — {auto_reason} (streak={_auto_ui_advance_streak})")
+            action = auto_chord
+            game_analysis = auto_reason
+            needs_summary = False
+            semantic_action = None
+            _current_legal_moves = []
+            await broadcast_func({
+                "type": "ai_processing",
+                "payload": {"status": "auto_ui", "model": "harness-auto", "detail": auto_reason},
+            })
+
+        if not auto_chord:
+            # Deterministic move catalog: model picks MOVE: mN; harness executes buttons.
+            try:
+                _current_legal_moves = build_legal_moves(llm_input_state)
+                llm_input_state["legal_moves"] = legal_moves_for_prompt(_current_legal_moves)
+                # Keep a private full map for resolution (not needed in prompt beyond id/summary)
+                llm_input_state["_legal_move_commands"] = {
+                    m["id"]: m["command"] for m in _current_legal_moves
+                }
+                log.info(
+                    f"legal_moves ({len(_current_legal_moves)}): "
+                    + ", ".join(f'{m["id"]}={m["summary"]}' for m in _current_legal_moves[:8])
+                    + ("..." if len(_current_legal_moves) > 8 else "")
+                )
+            except Exception as e:
+                log.warning(f"legal_moves build failed: {e}")
+                _current_legal_moves = []
+                llm_input_state["legal_moves"] = []
+
+            action, game_analysis, needs_summary, semantic_action = await call_llm_with_timeout(llm_input_state, benchmark=benchmark)
 
         # NEW: Try semantic command execution first
         action_to_send = None
         action_description = None
         if semantic_action and not semantic_action.is_empty:
             log.info(f"Executing semantic command: {semantic_action}")
-            buttons, desc, success = execute_with_validation(semantic_action, current_mGBA_state)
+            try:
+                # Prefer llm_input_state map-play signals so phase inference sees player_phase
+                exec_state = dict(current_mGBA_state or {})
+                for k in (
+                    "movement_tiles", "attack_opportunities", "unit_is_selected",
+                    "selected_unit", "cursor_on_player", "party", "enemies", "phase",
+                ):
+                    if k in llm_input_state and llm_input_state[k] is not None:
+                        exec_state[k] = llm_input_state[k]
+                if not exec_state.get("phase") or exec_state.get("phase") in ("unknown", "player", "Player"):
+                    exec_state["phase"] = "player_phase"
+                buttons, desc, success = execute_with_validation(semantic_action, exec_state)
+            except Exception as e:
+                log.error(f"Semantic command execution crashed: {e}", exc_info=True)
+                buttons, desc, success = "", f"CRASH: {e}", False
             if success:
                 action_to_send = buttons
                 action_description = desc
@@ -1893,9 +2185,63 @@ async def run_auto_loop(sock, state: dict, broadcast_func, interval: float = 8.0
                 # Track action and state for next cycle's inference
                 _last_action_sent = action_to_send
                 _last_game_state = copy.deepcopy(current_mGBA_state)
-            except socket.error as se:
-                log.error(f"Socket error sending action '{action_to_send}': {se}. Stopping loop.")
-                break
+
+                # Wait for lua input queue to finish before settle/CAP.
+                # Without this, confirm-A can be observed as a cancel because we
+                # reconnect/read state mid-queue.
+                if ";" in action_to_send:
+                    try:
+                        from src.utils.socket_utils import wait_queue_complete
+                        # Estimate: N buttons * QUEUE_SPACING(~24) / 60fps + cushion
+                        n_btn = max(1, action_to_send.count(";"))
+                        q_timeout = float(os.environ.get("FE_QUEUE_COMPLETE_TIMEOUT", str(max(8.0, n_btn * 0.55 + 3.0))))
+                        wait_queue_complete(sock, timeout=q_timeout)
+                    except Exception as qe:
+                        log.warning(f"QUEUE_COMPLETE wait failed: {qe}")
+
+                # Let mGBA finish the Lua input queue + movement/combat anims
+                # before the next CAP/state read. QUEUE_SPACING is ~24 frames
+                # per button; short settles overwrite the in-progress queue with
+                # the next action and cursor never moves.
+                settle = float(os.environ.get("FE_ACTION_SETTLE_SEC", "2.5"))
+                n_buttons = max(
+                    1,
+                    len([b for b in action_to_send.replace(",", ";").split(";") if b.strip()]),
+                )
+                queue_sec = n_buttons * float(os.environ.get("FE_BUTTON_QUEUE_SEC", "0.45"))
+                settle = max(settle, queue_sec + 1.0)
+                desc_l = (action_description or "").lower()
+                # Only stretch settle for real attacks — MOVE+WAIT button A spam is not combat.
+                if "attack" in desc_l:
+                    settle = max(settle, float(os.environ.get("FE_ATTACK_SETTLE_SEC", "6.0")))
+                if settle > 0:
+                    log.info(
+                        f"Settling {settle:.1f}s for mGBA queue ({n_buttons} buttons) + anims..."
+                    )
+                    await asyncio.sleep(settle)
+                # Combat/anim often wedges the Lua TCP socket even after settle.
+                # Always reconnect before the next CAP/memory cycle.
+                try:
+                    from src.utils.socket_utils import reconnect_socket
+                    sock = reconnect_socket(sock)
+                    # Keep global memory reader on the live socket (avoids WinError 10038).
+                    try:
+                        from src.utils.memory_reader import get_memory_reader as _sync_reader
+                        _sync_reader(sock)
+                    except Exception:
+                        pass
+                    log.info("Post-action socket reconnect OK.")
+                except Exception as re:
+                    log.warning(f"Post-action reconnect failed (will retry next CAP): {re}")
+            except (socket.error, TimeoutError, OSError) as se:
+                log.error(f"Socket error sending action '{action_to_send}': {se}. Reconnecting and continuing...")
+                try:
+                    from src.utils.socket_utils import reconnect_socket
+                    sock = reconnect_socket(sock)
+                except Exception as re:
+                    log.error(f"Reconnect failed: {re}")
+                await asyncio.sleep(2)
+                continue
             except Exception as e:
                 log.error(f"Unexpected error sending action '{action_to_send}': {e}", exc_info=True)
 
