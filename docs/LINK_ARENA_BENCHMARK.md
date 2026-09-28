@@ -426,9 +426,23 @@ series now has fourteen results (1P 5 wins, 2P 9), two scored games, and
 cumulative official totals 1P 864 / 2P 864. Game fifteen
 (`20260928T214009Z-052371`) began automatically afterward.
 
+By 21:57 UTC, game fifteen completed as a 2P survivor win with a paired
+official score of 2P 576–288 1P. The reader agreed across two stable paired
+reads, verified the result against the terminal roster, and recorded the
+standard layout on both bridges. The two screen hashes are
+`c916d774b4ec8760bf36980d6c0f1ae7756051990b49b86425760633c0e0cf44` and
+`872a261a63367ba462ff8939d111a882e991a40295c4be6053f1352f5c3be82c`. The live
+series has fifteen games (1P 5 wins, 2P 10), three with official scores, and
+totals 1P 1,152 / 2P 1,440. These are still exploratory fixed-seat
+depth-two-minimax runs. The updated result reader has now recorded three live
+paired scores; shifted-layout support remains offline-only and full digit
+coverage remains incomplete. By 21:58 UTC, game sixteen
+(`20260928T215710Z-b02656`) had automatically entered `start_link_battle`
+setup under the same local-minimax configuration.
+
 - [x] Calibrate the fail-closed reader against archived and live final-result
   screens and reject four captured intermediate bonus panels. The standard
-  layout and 12-second paired-read window have two successful live scores.
+  layout and 12-second paired-read window have three successful live scores.
   `layout_by_bridge` persisted as standard on both views for game fourteen.
   Shifted-layout support has offline fixture validation but no live sample yet.
   Complete 0–9 glyph coverage and broader independent validation remain open.

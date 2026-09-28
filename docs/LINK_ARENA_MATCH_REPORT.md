@@ -181,6 +181,21 @@ point-in-time operational heartbeat, not a completed match result or an
 independent game-state audit. The public series still showed fourteen completed
 games and official points from only two verified results.
 
+By 21:57 UTC, game fifteen had completed automatically as a 2P survivor win
+and added a third paired FE7 result: 2P 576–288 1P. The series reader recorded
+two stable paired reads, confirmed the first-place label against the terminal
+roster, and classified both views as the standard layout. Its bridge screenshot
+SHA-256 values are `c916d774b4ec8760bf36980d6c0f1ae7756051990b49b86425760633c0e0cf44`
+and `872a261a63367ba462ff8939d111a882e991a40295c4be6053f1352f5c3be82c`.
+The series now has fifteen completed games (1P five wins, 2P ten), three with
+verified official points, and cumulative totals 1P 1,152 / 2P 1,440. Games
+twelve and thirteen remain unscored. This additional run is still local
+depth-two minimax on both seats and is exploratory operations data, not a
+hosted-model comparison. By 21:58 UTC, game sixteen had launched
+automatically as match `20260928T215710Z-b02656`; the latest API snapshot
+reported the runner in `setting_up` at `start_link_battle` with both seats
+still assigned to depth-two minimax.
+
 ## First supervised match reproduction details
 
 - Match ID: `20260927T171244Z-c0eba3`
