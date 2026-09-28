@@ -361,6 +361,11 @@ class OpenAICompatibleAgent(MinimaxAgent):
             "temperature": self.temperature,
             "max_completion_tokens": self.max_completion_tokens,
             "reasoning_settings": reasoning_settings,
+            "reasoning_capture": {
+                "mode": "brief_user_visible_rationale_only",
+                "provider_private_reasoning_content": "not_read_or_persisted",
+                "reasoning_token_counts": "provider_usage_only_when_reported",
+            },
             "own_team": self.own_team,
         }
 
