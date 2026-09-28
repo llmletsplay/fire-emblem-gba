@@ -23,7 +23,7 @@ class MatchSeries:
     points or match wins.
     """
 
-    def __init__(self, data_dir: Path):
+    def __init__(self, data_dir: Path, *, backfill: bool = True):
         self.path = data_dir / "series" / "results.jsonl"
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.RLock()
@@ -150,7 +150,8 @@ class DecisionLedger:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.RLock()
         self._event_ids = self._load_event_ids()
-        self.backfill_legacy_matches()
+        if backfill:
+            self.backfill_legacy_matches()
 
     def _load_event_ids(self) -> set[str]:
         event_ids: set[str] = set()
@@ -229,7 +230,7 @@ class DecisionLedger:
             pass
         return rows
 
-    def backfill_legacy_matches(self) -> int:
+    def backfill_legacy_matches(self, *, exclude_match_ids: set[str] | None = None) -> int:
         """Import pre-ledger per-match decision/input traces idempotently.
 
         Earlier runner versions logged choices and accepted button presses in
@@ -246,11 +247,14 @@ class DecisionLedger:
             return 0
 
         for match_dir in match_dirs:
-            session_rows = self._read_jsonl(match_dir / "session.json")
-            if not session_rows:
+            try:
+                session = json.loads((match_dir / "session.json").read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
                 continue
-            match_id = session_rows[0][1].get("match_id")
+            match_id = session.get("match_id") if isinstance(session, dict) else None
             if not isinstance(match_id, str):
+                continue
+            if exclude_match_ids and match_id in exclude_match_ids:
                 continue
             auto_rows = self._read_jsonl(match_dir / "minimax-autoplay.jsonl")
             input_rows = self._read_jsonl(match_dir / "events.jsonl")
