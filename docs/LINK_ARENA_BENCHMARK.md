@@ -85,14 +85,17 @@ include provider, requested and resolved model IDs, API request ID, request
 parameters, system-prompt text and hash, response-text hash, token usage,
 latency, and failure details. For a valid action, the exact assistant
 completion is saved because it contains only the required action JSON and a
-brief user-visible rationale. The adapter does not request private reasoning,
-does not read provider-only `reasoning_content` fields, and does not publish
-hidden chain-of-thought. This rationale is an output supplied by the model; it
-is not a faithful or independently verified record of the model's internal
-reasoning. Malformed completions retain their hash and error metadata, not raw
-text that might contain unrequested reasoning. Never record API keys. The
-append-only ledger is a provenance trace, not proof that a provider's model
-weights are unchanged.
+brief user-visible rationale. The adapter does not ask the model to reveal
+private reasoning, does not read or persist provider-only `reasoning_content`
+fields, and does not publish hidden chain-of-thought. The MiniMax API documents
+that some models can return a separate `reasoning_content` field and that
+thinking behavior can depend on model defaults; this harness intentionally
+discards that field. It captures the constrained completion and brief rationale
+only. That rationale is an output supplied by the model; it is not a faithful
+or independently verified record of the model's internal reasoning. Malformed
+completions retain their hash and error metadata, not raw text that might
+contain unrequested reasoning. Never record API keys. The append-only ledger is
+a provenance trace, not proof that a provider's model weights are unchanged.
 
 ### Decision-ledger contract (schema version 1)
 
@@ -123,12 +126,14 @@ Hosted `inference` fields include request/prompt/response hashes, the exact
 system prompt and structured input, start time, request ID, requested/resolved
 model, latency, and token-usage object. The exact assistant `content` is saved
 only after it validates as the constrained JSON action plus brief rationale.
-The adapter never reads `message.reasoning_content`; that field can be returned
-separately by a provider such as MiniMax. When malformed content is returned,
-the trace retains its hash and validation error but not the raw content. This
-preserves a checkable record without collecting hidden reasoning. Screenshot
-files remain local artifacts; released traces must convert machine-specific
-paths to stable match-relative paths or omit them while retaining hashes.
+The adapter never reads `message.reasoning_content`; MiniMax documents that
+some model configurations return it separately and that thinking behavior may
+follow provider defaults. This implementation does not expose that field to
+the decision log. When malformed content is returned, the trace retains its
+hash and validation error but not the raw content. This preserves a checkable
+record without collecting hidden reasoning. Screenshot files remain local
+artifacts; released traces must convert machine-specific paths to stable
+match-relative paths or omit them while retaining hashes.
 
 ### Proposed baselines
 
@@ -248,13 +253,18 @@ personal data.
    use tabular information; a vision interface is a distinct task. Prompt
    engineering and output repair can materially change results and must be
    frozen and disclosed.
-7. **Execution and timing.** The deterministic controller removes much input
+7. **Reasoning observability.** The benchmark records the model-visible action
+   completion and a brief user-visible rationale, not private chain-of-thought.
+   Provider-side reasoning traces can be omitted, separately exposed, hidden,
+   or changed by serving defaults. We cannot make claims about their contents,
+   correctness, or causal role in a decision.
+8. **Execution and timing.** The deterministic controller removes much input
    navigation variance, but emulator timing, capture coherence, link behavior,
    and safe supervision stops still affect completion.
-8. **Small and selected samples.** Always-on stream games are convenient but
+9. **Small and selected samples.** Always-on stream games are convenient but
    are not a randomized research sample. Report exploratory runs separately
    and avoid post hoc exclusions.
-9. **Rights and release.** FE7 game assets and ROM images are third-party
+10. **Rights and release.** FE7 game assets and ROM images are third-party
    copyrighted materials. Public reproducibility may be limited to hashes,
    schemas, code, and legally distributable derived traces.
 

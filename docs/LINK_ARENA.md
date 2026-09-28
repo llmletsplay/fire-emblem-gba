@@ -86,10 +86,11 @@ arguments, source, or logs:
 
 Selecting a hosted policy enables autonomous setup and play. The adapter logs
 the structured request input, validated action, brief user-visible rationale,
-completion text, resolved model, request ID, token usage, and latency. It
-ignores provider-only `reasoning_content` fields and does not request or
-persist private chain-of-thought. The visible rationale is not a verified
-explanation of the model's internal process. See
+completion text, resolved model, request ID, token usage, and latency. It never
+reads or persists provider-only `reasoning_content` fields. Some providers,
+including MiniMax for documented model configurations, may return such a field
+under their defaults; this runner discards it. The visible rationale is not a
+verified explanation of the model's internal process. See
 [`LINK_ARENA_BENCHMARK.md`](LINK_ARENA_BENCHMARK.md) for the study protocol and
 current limits on score claims.
 
