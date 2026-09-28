@@ -646,6 +646,29 @@ at turn 15 with no runner error. The series remained at 20 completed results
 4,320. This is continued unattended harness operation; no new hosted-model
 evidence or completed match was added at this checkpoint.
 
+At 23:50:22 UTC, the legacy-ledger maintenance in PR #33 ran under the shared
+decision-ledger lock. It archived the exact pre-cleanup ledger at
+`series/archive/decisions.pre-legacy-prune.d84be674db4b.jsonl` (SHA-256
+`d84be674db4bcfe81cb2fa294c5835c161c0e7e96e5634eb2eed484a864c5a90`), then
+removed 1,974 redundant `legacy_backfill` rows and quarantined the known
+39-byte fragment from canonical `series/decisions.jsonl`. At the migration
+snapshot, all 5,828 valid live rows were retained. The archive manifest records
+21 excluded historical match IDs so later runner starts cannot import those
+rows again. Per-match source logs were left intact.
+The removed legacy event-ID set is represented by SHA-256
+`a02c72709a6906270ceb59232cc04823966c9c2191494c82a388a49653a9f852` in the
+manifest.
+
+A follow-up lock-protected audit found no malformed lines or legacy rows; it
+observed 5,831 valid live rows as the running process appended new decisions.
+Event hashes, required fields, action/exchange joins, and the absence of
+provider-private reasoning fields passed the audit. At 23:51:06 UTC the stream
+API showed the next minimax match (`20260928T233905Z-dbf43a`) still playing at
+turn 11 with no runner error. The series had 21 completed games (1P 5 wins,
+2P 16), with nine official FE7 scores totaling 1P 2,880 / 2P 4,896. These
+remain fixed-seat local-minimax harness results, not hosted-model comparisons
+or confirmatory evidence.
+
 - [x] Calibrate the fail-closed reader against archived and live final-result
   screens and reject four captured intermediate bonus panels. The standard
   layout and 12-second paired-read window have three successful live scores.
@@ -653,8 +676,9 @@ evidence or completed match was added at this checkpoint.
   Shifted-layout support has offline fixture validation but no live sample yet.
   Complete 0–9 glyph coverage and broader independent validation remain open.
 - [x] Deploy and inspect the series-wide decision ledger on Zephyrus; validate
-  decision IDs join policy choices to every verified input. The one malformed
-  historical source line remains explicitly flagged as described above.
+  decision IDs join policy choices to every verified input. PR #33 quarantined
+  the known malformed fragment from the canonical ledger and preserved its
+  exact bytes and original ledger in the verified private archive above.
 - [ ] Configure Chutes and MiniMax provider adapters with approved model IDs
   and protected credentials; freeze exact model IDs and plan/API configuration.
 - [ ] Define legal action contract, prompt, parsing/repair behavior, timeout,

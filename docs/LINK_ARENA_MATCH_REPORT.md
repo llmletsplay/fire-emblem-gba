@@ -230,3 +230,24 @@ not yet an unattended autoplay run.
 The result screen is not currently parsed into a terminal outcome by the API.
 The match was considered complete only after FE7 displayed the 2P 1st-place
 screen and the ranking table showing 520 points versus 346.
+
+## Latest unattended stream and ledger checkpoint
+
+At 23:51:06 UTC on 2026-09-28, the stream API showed match
+`20260928T233905Z-dbf43a` still playing at turn 11 with both seats assigned to
+depth-two minimax and no runner error. The series had 21 completed games (1P
+five wins, 2P sixteen); nine had verified FE7 final scores, totaling 1P 2,880
+and 2P 4,896 points. This is fixed-seat harness evidence, not a comparison of
+hosted models.
+
+At 23:50:22 UTC, PR #33's lock-protected ledger maintenance archived the exact
+pre-cleanup file under
+`%LOCALAPPDATA%\FE7-Link-Arena\series\archive\decisions.pre-legacy-prune.d84be674db4b.jsonl`
+(SHA-256 `d84be674db4bcfe81cb2fa294c5835c161c0e7e96e5634eb2eed484a864c5a90`).
+It removed 1,974 legacy-import rows and quarantined the single known malformed
+39-byte fragment from the canonical ledger while retaining 5,828 live rows at
+that instant. A subsequent lock-protected audit observed only live rows, no
+malformed lines, and continued appends; the stream was not restarted. The
+archive and manifest are private operational research data. The full audit
+counts and reasoning-capture boundary are recorded in
+[`LINK_ARENA_BENCHMARK.md`](LINK_ARENA_BENCHMARK.md).
