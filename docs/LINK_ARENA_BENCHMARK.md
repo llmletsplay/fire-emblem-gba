@@ -276,9 +276,13 @@ personal data.
    transition panels. The deployed Zephyrus build recognizes the standard
    layout and recorded its first paired live result in game eleven (2P
    576–288 1P). Game ten's shifted 1P view was not recognized by that build.
-   Merged PR #18 adds that layout, but it is staged for deployment rather than
-   live. At 20:46 UTC, only one of eleven completed results had official
-   points; W–L–D is therefore not a complete official-score record.
+   Merged PR #18 adds that layout and was deployed at the game-twelve boundary.
+   Game twelve's standard-layout 1P 576–288 2P screenshots arrived too late in
+   the old 4.5-second result window to obtain two stable paired reads. The
+   reader change under review extends that window to 12 seconds while retaining
+   the same exact screen and winner checks. At 21:04 UTC, one of twelve
+   completed results had official points; W–L–D remains incomplete as an
+   official-score record.
 3. **Uncontrolled randomness.** FE7 combat uses RNG. A file-level save hash
    does not prove identical RNG state or reproducible trajectories across
    launches. Pairing and seat balancing mitigate but do not remove this issue.
@@ -385,9 +389,10 @@ afterward.
 
 - [x] Calibrate the fail-closed reader against archived and live final-result
   screens and reject four captured intermediate bonus panels. The standard
-  layout has one successful paired live score; merged shifted-layout support
-  still needs live deployment and validation. Complete 0–9 glyph coverage and
-  broader independent validation remain open.
+   layout has one successful paired live score; merged shifted-layout support
+   is deployed and awaits live validation, and the longer result window awaits
+   deployment. Complete 0–9 glyph coverage and broader independent validation
+   remain open.
 - [x] Deploy and inspect the series-wide decision ledger on Zephyrus; validate
   decision IDs join policy choices to every verified input. The one malformed
   historical source line remains explicitly flagged as described above.

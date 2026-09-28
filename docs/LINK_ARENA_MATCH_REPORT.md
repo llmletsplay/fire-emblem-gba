@@ -117,8 +117,7 @@ redistributed game-art assets.
 The shifted-view change (PR #18, merged at 20:43 UTC) passed bytecode
 compilation and manual fixture checks against the 520–346 and 576–288 final-rank
 captures, the newly retained game-ten captures, and the archived bonus
-transitions. The transition screens still do not parse as final results. This
-alternate-layout code is staged but not yet installed on Zephyrus.
+transitions. The transition screens still do not parse as final results.
 
 Game eleven (`20260928T202914Z-979bda`) completed at about 20:46 UTC as a 2P
 survivor win. The currently deployed standard-layout reader recorded its first
@@ -130,6 +129,28 @@ and official points of 1P 288 / 2P 576. The stored bridge screen hashes are
 `413f7431ec241f4bf159f543407f6b85d5c9a7d6b12b2419ca7187ff5068db81`.
 Game twelve (`20260928T204610Z-822535`) began automatically in the same
 continuous runner.
+
+Game twelve (`20260928T204610Z-822535`) then completed as a 1P survivor win,
+but its official result was not recorded. The prior reader's 4.5-second window
+ended at 21:04:31 UTC without a paired result. The last paired screenshots
+(`215-A-1103.png`, SHA-256
+`e87a536fe9fd79ed2527cb2692c179421ffc1363f9892cd0efabbdc31d2f9f4e`, and
+`215-B-1034.png`, SHA-256
+`610ff0256a07aea70d5493c6d52e5bfb6f9840fbb1385ea469665fd0a36c3dbf`) were
+captured immediately before that timeout. The updated reader independently
+parses both as standard-layout 1P 576–288 2P. The reader required two identical
+paired reads, and the remaining window was too short to collect both after the
+final screens appeared; no score was guessed or backfilled into the live
+series.
+
+At the verified between-match boundary at 21:04 UTC, PR #18's shifted-layout
+modules were installed on Zephyrus. The deployment kept OBS process 16960,
+restarted the scheduled runner, preserved the 12-game series with its one
+verified official result, and started game thirteen (`20260928T210450Z-175c62`)
+in setup. The game-twelve 1P win raised the survivor record to 1P 4, 2P 8,
+while the official-points tally stayed at 1P 288 / 2P 576 from game eleven.
+The follow-up timeout-window change is 12 seconds; it is not part of PR #18
+and is not yet installed on the live runner.
 
 ## First supervised match reproduction details
 
