@@ -20,7 +20,10 @@ Pass `-TwitchChannel otherhandle` to override it:
 ```
 
 The same stream screen works for a supervised match; omit `-AutoMinimax` and
-use the same `-TwitchChannel` option. The local URL follows this shape:
+use the same `-TwitchChannel` option. To run an autonomous series, add
+`-AutoMinimax -Continuous`; the match runner reloads fresh copies of the
+prepared save between verified wins and records a persistent series W–L–D
+score. The local URL follows this shape:
 
 ```text
 http://127.0.0.1:18700/stream?channel=llmletsplay
@@ -41,6 +44,38 @@ The screen source uses screenshot preview mode, so it displays both linked FE7
 views and live metrics as soon as the runner starts. The chat source is placed
 over the overlay's chat panel. Its source URL and placement are already set for
 `@llmletsplay`.
+
+## Keep the stream running on Zephyrus
+
+After deploying the isolated runner files, install the interactive logon tasks
+for the streaming Windows user:
+
+```powershell
+& "$env:LOCALAPPDATA\FE7-Link-Arena\runner\scripts\windows\Install-Link-Arena-Stream.ps1" `
+  -RunnerRoot "$env:LOCALAPPDATA\FE7-Link-Arena\runner" `
+  -Save "$env:LOCALAPPDATA\FE7-Link-Arena\runner\roms\fe7.sav" `
+  -TwitchChannel llmletsplay -RestartNow
+```
+
+`-RestartNow` replaces the current isolated match and starts the continuous
+minimax series and OBS watchdog immediately. An incomplete match is retained
+in its match data folder but is not added to the series score. Both tasks are
+interactive logon tasks with no 12-hour execution limit. Leave the Zephyrus
+streaming user signed in and keep Windows awake.
+Zephyrus AC sleep and hibernate timeouts are set to **Never** so the logon
+tasks and stream do not pause when the display is idle.
+
+The runner writes process output to `stream-runner.log` and Python errors to
+`stream-runner-errors.log` in `%LOCALAPPDATA%\FE7-Link-Arena`.
+
+The OBS watchdog opens the **FE7 Link Arena** collection and scene in normal
+mode, minimizes OBS to the tray, and starts the saved Twitch output. OBS 32's
+Safe Mode prompt is triggered by an unclean-shutdown marker; for unattended
+stream recovery, the watchdog archives that marker under
+`%LOCALAPPDATA%\FE7-Link-Arena\obs-recovery` before relaunching. It records each
+recovery and exit in `obs-startup.log`, then retries with backoff. This keeps a
+recovery dialog from taking the stream offline; inspect the archived marker
+and the latest OBS log after an unexpected restart.
 
 ## OBS scene
 
@@ -89,10 +124,14 @@ chat URL](https://dev.twitch.tv/docs/embed/chat/)).
 - **Recent exchanges** shows each agent's selected attacker, defender, weapon,
   and policy estimate. Unit IDs are shown because the Link Arena memory bridge
   does not yet expose localized character names.
+- **Series record** shows 1P and 2P wins, draws, games played, and the latest
+  results. Completed outcomes are appended to `series/results.jsonl` in the
+  runner data directory, so the record survives process restarts. The runner
+  records a result only after both linked clients agree on a stable terminal
+  roster. These are match wins, not FE7's numeric Link Arena points table.
 - **Match winner** appears when unattended play reaches the runner's verified
-  synchronized terminal state. The runner does not yet read FE7's final points
-  table into a live score. The overlay therefore shows KOs and roster/HP
-  metrics rather than inventing a point score.
+  synchronized terminal state. Minimax evaluation remains a policy estimate,
+  never a game score.
 - **Arena state / data health** reports setup, active play, supervision needed,
   and linked-core coherence. A supervision stop appears as a visible warning.
 
@@ -113,3 +152,8 @@ session tokens, raw bridge responses, and agent credentials.
 The static screen is served at `/stream`, `/stream.css`, and `/stream.js` by the
 same runner process. The Windows deploy script copies these assets into the
 isolated Zephyrus runner alongside its Python modules.
+
+With `-Continuous`, the HTTP server stays up while the finished mGBA process
+closes and the next isolated match initializes. During that short setup window,
+the overlay holds the final frame and series result, then reconnects to the new
+match telemetry without OBS source changes.

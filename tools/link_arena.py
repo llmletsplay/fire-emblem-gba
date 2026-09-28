@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import argparse
+import copy
+from dataclasses import dataclass
 from datetime import datetime, timezone
 import http.server
 import json
@@ -15,6 +17,7 @@ import shutil
 import socket
 import subprocess
 import sys
+import threading
 from typing import Any
 from urllib.parse import parse_qs, urlencode, urlsplit
 
@@ -26,6 +29,7 @@ from src.link_arena.coordinator import InvalidAction, LinkArenaCoordinator, Stal
 from src.link_arena.bridge import BridgeError
 from src.link_arena.autoplay import MinimaxAutoplay
 from src.link_arena.stream import LinkArenaStreamState
+from src.link_arena.series import MatchSeries
 
 
 DEFAULT_ROM = ROOT / "roms" / "fe7.gba"
@@ -94,7 +98,9 @@ def _find_mgba(requested: str | None) -> str:
     raise FileNotFoundError("mGBA was not found; pass --mgba or set MGBA_PATH")
 
 
-def _new_match(args: argparse.Namespace) -> tuple[Path, dict[str, Any], dict[str, str]]:
+def _new_match(
+    args: argparse.Namespace, *, check_api_port: bool = True,
+) -> tuple[Path, dict[str, Any], dict[str, str]]:
     rom = Path(args.rom).expanduser().resolve()
     save = Path(args.save).expanduser().resolve()
     source_script = ROOT / "lua" / "socketserver.lua"
@@ -116,7 +122,8 @@ def _new_match(args: argparse.Namespace) -> tuple[Path, dict[str, Any], dict[str
     ports = (args.base_port, args.base_port + 1, args.api_port)
     if len(set(ports)) != len(ports):
         raise ValueError("the API port must differ from both bridge ports")
-    busy_ports = [port for port in ports if not _available_port(port)]
+    checked_ports = ports if check_api_port else ports[:2]
+    busy_ports = [port for port in checked_ports if not _available_port(port)]
     if busy_ports:
         raise OSError(f"port(s) already in use: {', '.join(map(str, busy_ports))}")
 
@@ -312,6 +319,103 @@ end"""
     return match_dir, session, tokens
 
 
+@dataclass
+class _RunningMatch:
+    match_dir: Path
+    session: dict[str, Any]
+    process: subprocess.Popen[bytes]
+    coordinator: LinkArenaCoordinator
+    autoplay: MinimaxAutoplay | None
+    closed: bool = False
+
+
+def _start_match(args: argparse.Namespace, *, check_api_port: bool) -> _RunningMatch:
+    """Create fresh isolated save copies and start one linked mGBA match."""
+    mgba = _find_mgba(args.mgba)
+    match_dir, session, tokens = _new_match(args, check_api_port=check_api_port)
+    side_a = match_dir / "side-a" / "FE7.gba"
+    side_b = match_dir / "side-b" / "FE7.gba"
+    bridge_path = match_dir / "link_arena_socketserver.lua"
+    command = [mgba]
+    if args.mgba_log_level is not None:
+        command.extend(("--log-level", str(args.mgba_log_level)))
+    command.extend(("--script", str(bridge_path), str(side_a), str(side_b)))
+    print(f"Match: {session['match_id']}\nData: {match_dir}\nStarting mGBA's linked two-ROM session...")
+    process_env = os.environ.copy()
+    if os.name == "nt":
+        mgba_profile = match_dir / "mgba-profile"
+        mgba_profile.mkdir()
+        process_env["APPDATA"] = str(mgba_profile)
+    mgba_log_path = match_dir / "mgba.log"
+    process: subprocess.Popen[bytes]
+    with mgba_log_path.open("wb") as mgba_log:
+        process = subprocess.Popen(
+            command,
+            cwd=ROOT,
+            env=process_env,
+            stdout=mgba_log,
+            stderr=subprocess.STDOUT,
+        )
+
+    from src.link_arena.bridge import SideBridge
+
+    bridges = {side: SideBridge(session["bridge_ports"][side]) for side in ("A", "B")}
+    coordinator: LinkArenaCoordinator | None = None
+    try:
+        for side, bridge in bridges.items():
+            bridge.wait_until_ready(timeout=args.startup_timeout)
+            print(f"Side {side} bridge ready on 127.0.0.1:{bridge.port}")
+        coordinator = LinkArenaCoordinator(
+            session["bridge_ports"], tokens, match_dir, bridges=bridges
+        )
+        autoplay = None
+        if not args.manual_setup:
+            autoplay = MinimaxAutoplay(
+                coordinator,
+                match_dir,
+                play_minimax=args.auto_minimax,
+                poll_interval=args.auto_poll_interval,
+                settle_timeout=args.auto_settle_timeout,
+            )
+            autoplay.start()
+            if args.auto_minimax:
+                print("Automatic title/setup and minimax armed; the runner will take both clients to the arena map and play.")
+            else:
+                print("Automatic title/setup armed; agent observations and actions unlock when both clients reach the arena map.")
+        else:
+            print("Manual setup enabled; the agent API will expose the current screen.")
+        return _RunningMatch(match_dir, session, process, coordinator, autoplay)
+    except Exception:
+        for bridge in bridges.values():
+            bridge.close()
+        if coordinator is not None:
+            coordinator.close()
+        if process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=5)
+        raise
+
+
+def _stop_match(match: _RunningMatch) -> None:
+    if match.closed:
+        return
+    match.closed = True
+    if match.autoplay is not None:
+        match.autoplay.stop()
+    match.coordinator.close()
+    if match.process.poll() is None:
+        match.process.terminate()
+        try:
+            match.process.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            match.process.kill()
+            match.process.wait(timeout=5)
+
+
 class _ApiServer(http.server.ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = True
@@ -320,6 +424,9 @@ class _ApiServer(http.server.ThreadingHTTPServer):
         self.coordinator = coordinator
         self.autoplay: MinimaxAutoplay | None = None
         self.stream_state: LinkArenaStreamState | None = None
+        self.series: MatchSeries | None = None
+        self.series_state: dict[str, Any] = {"state": "active"}
+        self.last_stream_snapshot: dict[str, Any] | None = None
         super().__init__(address, _ApiHandler)
 
 
@@ -377,12 +484,39 @@ class _ApiHandler(http.server.BaseHTTPRequestHandler):
                 self._json(503, {"error": "stream telemetry is not available"})
                 return
             try:
+                lifecycle = self.server.series_state.get("state")
+                if lifecycle in {"between_matches", "starting_next_match", "stopped_for_supervision"}:
+                    cached = copy.deepcopy(self.server.last_stream_snapshot)
+                    if cached is None:
+                        self._json(503, {"error": "waiting for the next match to initialize"})
+                        return
+                    if path == "/v1/stream/frames":
+                        self._json(200, {
+                            "updated_at": time.time(),
+                            "frames": cached.get("frames", {"1P": None, "2P": None}),
+                        })
+                        return
+                    cached["updated_at"] = time.time()
+                    cached["match"]["runner_state"] = lifecycle
+                    cached["match"]["runner_stage"] = self.server.series_state.get("stage")
+                    cached["match"]["runner_error"] = self.server.series_state.get("error")
+                    cached["game"]["coherent"] = False
+                    cached["game"]["active_side"] = None
+                    cached["game"]["phase_label"] = "NEXT MATCH"
+                    if self.server.series is not None:
+                        cached["series"] = self.server.series.snapshot()
+                    self._json(200, cached)
+                    return
                 if path == "/v1/stream/frames":
                     self._json(200, self.server.stream_state.frames())
                     return
                 query = parse_qs(urlsplit(self.path).query)
                 include_frame = query.get("frame", ["1"])[0] != "0"
-                self._json(200, self.server.stream_state.snapshot(include_frame=include_frame))
+                snapshot = self.server.stream_state.snapshot(include_frame=include_frame)
+                if self.server.series is not None:
+                    snapshot["series"] = self.server.series.snapshot()
+                self.server.last_stream_snapshot = copy.deepcopy(snapshot)
+                self._json(200, snapshot)
             except (BridgeError, OSError, ValueError) as exc:
                 self._json(503, {"error": str(exc)})
             return
@@ -450,95 +584,136 @@ class _ApiHandler(http.server.BaseHTTPRequestHandler):
 def start(args: argparse.Namespace) -> int:
     if args.auto_minimax and args.manual_setup:
         raise ValueError("--auto-minimax requires the default automatic title and Link Arena setup")
-    mgba = _find_mgba(args.mgba)
-    match_dir, session, tokens = _new_match(args)
-    side_a = match_dir / "side-a" / "FE7.gba"
-    side_b = match_dir / "side-b" / "FE7.gba"
-    bridge_path = match_dir / "link_arena_socketserver.lua"
-    command = [mgba]
-    if args.mgba_log_level is not None:
-        command.extend(("--log-level", str(args.mgba_log_level)))
-    command.extend(("--script", str(bridge_path), str(side_a), str(side_b)))
-    print(f"Match: {session['match_id']}\nData: {match_dir}\nStarting mGBA's linked two-ROM session...")
-    process_env = os.environ.copy()
-    if os.name == "nt":
-        mgba_profile = match_dir / "mgba-profile"
-        mgba_profile.mkdir()
-        process_env["APPDATA"] = str(mgba_profile)
-    mgba_log_path = match_dir / "mgba.log"
-    with mgba_log_path.open("wb") as mgba_log:
-        process = subprocess.Popen(
-            command,
-            cwd=ROOT,
-            env=process_env,
-            stdout=mgba_log,
-            stderr=subprocess.STDOUT,
-        )
+    if args.continuous and not args.auto_minimax:
+        raise ValueError("--continuous requires --auto-minimax; continuous supervised matches need an external result reporter")
+    if not 0 <= args.between_matches_seconds <= 600:
+        raise ValueError("--between-matches-seconds must be between 0 and 600")
 
-    from src.link_arena.bridge import SideBridge
+    runtime = _start_match(args, check_api_port=True)
+    series = MatchSeries(Path(args.data_dir).expanduser().resolve())
+    server = _ApiServer(("127.0.0.1", args.api_port), runtime.coordinator)
+    server.autoplay = runtime.autoplay
+    server.series = series
+    server.stream_state = LinkArenaStreamState(
+        runtime.coordinator,
+        match_id=runtime.session["match_id"],
+        started_at=runtime.session["created_at"],
+        autoplay=runtime.autoplay,
+    )
+    runtime_box = {"active": runtime}
+    stop_event = threading.Event()
 
-    bridges = {side: SideBridge(session["bridge_ports"][side]) for side in ("A", "B")}
-    coordinator: LinkArenaCoordinator | None = None
-    try:
-        for side, bridge in bridges.items():
-            bridge.wait_until_ready(timeout=args.startup_timeout)
-            print(f"Side {side} bridge ready on 127.0.0.1:{bridge.port}")
-        coordinator = LinkArenaCoordinator(
-            session["bridge_ports"], tokens, match_dir, bridges=bridges
-        )
-        server = _ApiServer(("127.0.0.1", args.api_port), coordinator)
-        autoplay = None
-        if not args.manual_setup:
-            autoplay = MinimaxAutoplay(
-                coordinator,
-                match_dir,
-                play_minimax=args.auto_minimax,
-                poll_interval=args.auto_poll_interval,
-                settle_timeout=args.auto_settle_timeout,
-            )
-            server.autoplay = autoplay
-            autoplay.start()
-            if args.auto_minimax:
-                print("Automatic title/setup and minimax armed; the runner will take both clients to the arena map and play.")
+    def monitor_matches() -> None:
+        while not stop_event.is_set():
+            current = runtime_box["active"]
+            autoplay = current.autoplay
+            if autoplay is None:
+                return
+            while not stop_event.wait(0.5):
+                status = dict(autoplay.status)
+                state = status.get("state")
+                if state == "complete":
+                    break
+                if state in {"stopped_for_supervision", "stopped"}:
+                    server.series_state = {
+                        "state": "stopped_for_supervision",
+                        "error": status.get("error"),
+                    }
+                    return
             else:
-                print("Automatic title/setup armed; agent observations and actions unlock when both clients reach the arena map.")
-        else:
-            print("Manual setup enabled; the agent API will expose the current screen.")
-        server.stream_state = LinkArenaStreamState(
-            coordinator,
-            match_id=session["match_id"],
-            started_at=session["created_at"],
-            autoplay=autoplay,
-        )
+                return
+
+            if stop_event.is_set():
+                return
+            result = {key: status.get(key) for key in (
+                "winner", "players_alive", "npcs_alive",
+            )}
+            try:
+                recorded = series.record(current.session["match_id"], result)
+            except ValueError as exc:
+                server.series_state = {"state": "stopped_for_supervision", "error": str(exc)}
+                return
+            if recorded:
+                print(f"Match {current.session['match_id']} complete: {result['winner']} wins; "
+                      f"series {series.snapshot()['wins']}")
+            if not args.continuous:
+                server.series_state = {"state": "complete"}
+                return
+
+            server.series_state = {"state": "between_matches", "stage": "next_match_countdown"}
+            if stop_event.wait(args.between_matches_seconds):
+                return
+            _stop_match(current)
+
+            delays = (0, 5, 15, 30)
+            next_match: _RunningMatch | None = None
+            for attempt, delay in enumerate(delays, start=1):
+                if stop_event.is_set():
+                    return
+                server.series_state = {
+                    "state": "starting_next_match",
+                    "stage": f"attempt_{attempt}",
+                }
+                if delay and stop_event.wait(delay):
+                    return
+                try:
+                    next_match = _start_match(args, check_api_port=False)
+                    break
+                except Exception as exc:
+                    print(f"Could not start next Link Arena match (attempt {attempt}/4): {exc}")
+                    server.series_state = {
+                        "state": "starting_next_match",
+                        "stage": f"retry_{attempt}_of_4",
+                        "error": str(exc),
+                    }
+            if next_match is None:
+                server.series_state = {
+                    "state": "stopped_for_supervision",
+                    "error": "four consecutive attempts to start the next match failed",
+                }
+                return
+
+            runtime_box["active"] = next_match
+            if stop_event.is_set():
+                _stop_match(next_match)
+                return
+            server.coordinator = next_match.coordinator
+            server.autoplay = next_match.autoplay
+            server.stream_state = LinkArenaStreamState(
+                next_match.coordinator,
+                match_id=next_match.session["match_id"],
+                started_at=next_match.session["created_at"],
+                autoplay=next_match.autoplay,
+            )
+            server.series_state = {"state": "active"}
+
+    try:
+        monitor = threading.Thread(target=monitor_matches, name="link-arena-series")
+        if runtime.autoplay is not None:
+            monitor.start()
         print(f"Agent API: http://127.0.0.1:{args.api_port}/v1/observe")
         overlay_url = f"http://127.0.0.1:{args.api_port}/stream"
         if args.twitch_channel:
             overlay_url += "?" + urlencode({"channel": args.twitch_channel})
         print(f"OBS Link Arena overlay: {overlay_url}")
-        print(f"Side A token file: {match_dir / 'side-a.token'}")
-        print(f"Side B token file: {match_dir / 'side-b.token'}")
+        print(f"Side A token file: {runtime.match_dir / 'side-a.token'}")
+        print(f"Side B token file: {runtime.match_dir / 'side-b.token'}")
+        print(f"Persistent series results: {series.path}")
+        if args.continuous:
+            print("Continuous mode enabled; a fresh isolated save copy starts after each verified minimax result.")
         print("Press Ctrl-C here to stop the API and close this mGBA session.")
         try:
             server.serve_forever(poll_interval=0.5)
         finally:
+            stop_event.set()
             server.server_close()
-            if autoplay is not None:
-                autoplay.stop()
+            if monitor.is_alive():
+                monitor.join(timeout=max(10, args.startup_timeout * 2 + 5))
     except KeyboardInterrupt:
         pass
     finally:
-        if coordinator is not None:
-            coordinator.close()
-        else:
-            for bridge in bridges.values():
-                bridge.close()
-        if process.poll() is None:
-            process.terminate()
-            try:
-                process.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                process.kill()
-                process.wait(timeout=5)
+        stop_event.set()
+        _stop_match(runtime_box["active"])
     print("Link Arena session stopped.")
     return 0
 
@@ -555,6 +730,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--startup-timeout", type=float, default=20.0)
     parser.add_argument("--auto-minimax", action="store_true",
                         help="automate title/link setup and play both sides with minimax")
+    parser.add_argument("--continuous", action="store_true",
+                        help="after each verified minimax result, restart from a fresh save and keep a persistent series score")
+    parser.add_argument("--between-matches-seconds", type=float, default=8.0,
+                        help="seconds to display the completed result before starting the next match")
     parser.add_argument("--manual-setup", action="store_true",
                         help="leave title and Link Arena menus under operator control")
     parser.add_argument("--auto-poll-interval", type=float, default=0.5,

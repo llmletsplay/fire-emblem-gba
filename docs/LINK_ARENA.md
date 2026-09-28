@@ -69,6 +69,25 @@ To let both built-in minimax agents play as well, add `-AutoMinimax`:
   -AutoMinimax
 ```
 
+For an unattended series, add `-Continuous`. The runner waits for its
+two-client terminal check, writes the winner to
+`%LOCALAPPDATA%\FE7-Link-Arena\series\results.jsonl`, closes that match, then
+starts both linked clients again from fresh copies of the prepared isolated
+save. The loop continues until the runner is stopped or a match needs
+supervision. The local overlay stays available while the next match boots.
+Series W–L–D counts are accumulated across runner restarts; they are separate
+from FE7's numeric Link Arena points table.
+
+```powershell
+& "$env:LOCALAPPDATA\FE7-Link-Arena\runner\scripts\windows\Start-Link-Arena.ps1" `
+  -RepoRoot "$env:LOCALAPPDATA\FE7-Link-Arena\runner" `
+  -Save "$env:LOCALAPPDATA\FE7-Link-Arena\runner\roms\fe7.sav" `
+  -AutoMinimax -Continuous
+```
+
+Use `-BetweenMatchesSeconds 8` to change how long the completed result stays
+on screen before setup of the next match begins (valid range: 0–600 seconds).
+
 Use `-ManualSetup` only for setup debugging; it leaves title and Link Arena
 menus visible and exposes the current screen to the agent API. While automatic
 setup is in progress, `/v1/status` reports only the setup stage, and `/v1/observe`
@@ -106,7 +125,9 @@ The launcher copies the chosen ROM and battery save into a fresh match folder,
 starts two mGBA cores, creates one loopback control bridge per core, and serves
 a loopback-only HTTP API. The coordinator records ROM/save hashes in
 `session.json`, accepted actions and observations in `events.jsonl`, and PNGs
-under each side's `observations` directory.
+under each side's `observations` directory. Continuous runs append terminal
+results to the series ledger in their data directory. A new match always gets
+fresh copies of the configured seed save; the campaign save is never used.
 
 ### Observation fields
 

@@ -106,6 +106,22 @@ function renderRecent(items) {
   }
 }
 
+function renderSeries(series) {
+  const games = count(series?.games_played) ?? 0;
+  const wins = series?.wins || {};
+  const onep = count(wins["1P"]) ?? 0;
+  const twop = count(wins["2P"]) ?? 0;
+  const draws = count(series?.draws) ?? 0;
+  text("series-score", `SERIES · 1P ${onep}–${twop} 2P · ${games}G`);
+  const recent = Array.isArray(series?.recent_games) ? series.recent_games : [];
+  const history = recent.length
+    ? recent.map((game) => `${game.winner || "?"}${Number.isInteger(game.game_number) ? ` G${game.game_number}` : ""}`).join(" · ")
+    : "NO COMPLETED GAMES";
+  text("series-history", `${history}${draws ? ` · ${draws} DRAW${draws === 1 ? "" : "S"}` : ""}`);
+  const historyNode = $("series-history");
+  if (historyNode) historyNode.title = `1P wins: ${onep}; 2P wins: ${twop}; draws: ${draws}; games: ${games}`;
+}
+
 function runnerLabel(match) {
   const state = match?.runner_state || "starting";
   if (state === "complete") return match.winner ? `${match.winner} VICTORY` : "MATCH COMPLETE";
@@ -122,6 +138,7 @@ function render(data) {
   const game = data.game || {};
   const teams = data.teams || {};
   const metrics = data.metrics || {};
+  renderSeries(data.series);
   const turn = Number.isInteger(game.turn) && game.turn > 0 ? game.turn : null;
   const isOnline = game.coherent;
   const dot = document.querySelector(".live-dot");
