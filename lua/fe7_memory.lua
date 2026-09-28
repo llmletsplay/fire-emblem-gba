@@ -2,6 +2,11 @@
 -- Verified against FE7 (Blazing Blade) from live memory probes
 -- Add to socketserver.lua or require this file
 
+-- mGBA's Lua runtime uses Lua 5.4, which no longer provides the 5.2 bit32
+-- compatibility library.  Keep the same masks available to the FE7 reader.
+bit32 = bit32 or {}
+bit32.band = bit32.band or function(a, b) return a & b end
+
 --------------------------------------------------------------------------
 --  FE7 MEMORY ADDRESSES (VERIFIED via live probes) --------------------
 --------------------------------------------------------------------------
@@ -26,7 +31,7 @@ FE7_ADDR = {
     BM_CAMERA_Y      = 0x0202BBC6,
     BM_CURSOR_X      = 0x0202BBCC,  -- verified: playerCursor matches PlaySt cursor
     BM_CURSOR_Y      = 0x0202BBCE,
-    BM_STATE_BITS    = 0x0202BBBC,
+    BM_STATE_BITS    = 0x0202BBBC,   -- u32 game-state bitmask
     BM_TAKEN_ACTION  = 0x0202BBF5,
 }
 
@@ -77,7 +82,6 @@ ALLEGIANCE = {
 -- State flags (from bmunit.h)
 STATE_FLAGS = {
     HIDDEN       = 0x01,
-    DEAD         = 0x02,
     NOT_DEPLOYED = 0x04,
     RESCUING     = 0x10,
     RESCUED      = 0x20,
@@ -142,6 +146,8 @@ function readUnit(baseAddr, index)
         defense = emu:read8(offset + UNIT.DEF),
         res = emu:read8(offset + UNIT.RES),
         lck = emu:read8(offset + UNIT.LCK),
+        con_bonus = emu:read8(offset + UNIT.CON_BONUS),
+        movement_bonus = emu:read8(offset + UNIT.MOV_BONUS),
         x = emu:read8(offset + UNIT.POS_X),
         y = emu:read8(offset + UNIT.POS_Y),
         status = emu:read8(offset + UNIT.STATUS),
@@ -149,9 +155,12 @@ function readUnit(baseAddr, index)
     }
 
     -- Computed flags (FE7-specific: HAS_ACTED is bit 0x02)
-    unit.is_dead = bit32.band(state, STATE_FLAGS.DEAD) ~= 0
     unit.is_hidden = bit32.band(state, STATE_FLAGS.HIDDEN) ~= 0
-    unit.is_alive = unit.current_hp > 0 and not unit.is_dead and not unit.is_hidden
+    unit.is_not_deployed = bit32.band(state, STATE_FLAGS.NOT_DEPLOYED) ~= 0
+    -- FE7 uses 0x02 for HAS_ACTED (FE8 uses it for DEAD), so HP and deploy
+    -- state are the reliable death checks for the shared unit reader.
+    unit.is_dead = unit.current_hp <= 0
+    unit.is_alive = unit.current_hp > 0 and not unit.is_not_deployed and not unit.is_hidden
     unit.has_moved = bit32.band(state, STATE_FLAGS.HAS_MOVED) ~= 0
     unit.has_acted = bit32.band(state, STATE_FLAGS.HAS_ACTED) ~= 0
     unit.is_player = (allegiance == ALLEGIANCE.PLAYER)
@@ -346,16 +355,39 @@ end
 
 function unitToString(unit)
     if not unit then return "nil" end
+    local offset = (unit.index * UNIT.SIZE)
+    local item_fields = {}
+    for slot = 0, 4 do
+        local item = emu:read16(FE7_ADDR.PLAYER_UNITS + offset + UNIT.ITEMS + slot * 2)
+        if unit.allegiance == ALLEGIANCE.NPC then
+            item = emu:read16(FE7_ADDR.NPC_UNITS + offset + UNIT.ITEMS + slot * 2)
+        elseif unit.allegiance == ALLEGIANCE.ENEMY then
+            item = emu:read16(FE7_ADDR.ENEMY_UNITS + offset + UNIT.ITEMS + slot * 2)
+        end
+        item_fields[#item_fields + 1] = string.format("item%d=%04X", slot + 1, item)
+    end
     return string.format(
-        "{id=%d,cls=%d,hp=%d/%d,pos=(%d,%d),moved=%s,ally=%02X}",
+        "{id=%d,cls=%d,lv=%d,exp=%d,hp=%d/%d,str=%d,skl=%d,spd=%d,def=%d,res=%d,lck=%d,con_bonus=%d,mov_bonus=%d,pos=(%d,%d),moved=%s,ally=%02X,state=%08X,%s}",
         unit.char_id,
         unit.class_id,
+        unit.level,
+        unit.exp,
         unit.current_hp,
         unit.max_hp,
+        unit.str,
+        unit.skl,
+        unit.spd,
+        unit.defense,
+        unit.res,
+        unit.lck,
+        unit.con_bonus,
+        unit.movement_bonus,
         unit.x,
         unit.y,
         (unit.has_moved or unit.has_acted) and "Y" or "N",
-        unit.allegiance
+        unit.allegiance,
+        unit.state,
+        table.concat(item_fields, ",")
     )
 end
 

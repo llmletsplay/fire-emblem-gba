@@ -5,7 +5,14 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from typing import Any
 
-from .minimax import DuelChoice, WEAPONS, minimax_matchup, minimax_weapon
+from .minimax import (
+    FE7_COMBAT_WEAPON_IDS,
+    FE7_NONCOMBAT_ITEM_IDS,
+    DuelChoice,
+    WEAPONS,
+    minimax_matchup,
+    minimax_weapon,
+)
 
 
 @dataclass(frozen=True)
@@ -32,15 +39,23 @@ class MinimaxAgent:
             raise ValueError("side must be A or B")
         self.side = normalized
         self.defender_auto_weapon = defender_auto_weapon
+        # The bridge perspective can be rotated between mGBA clients. The
+        # autoplay runner replaces this default after inspecting each live
+        # map; standalone agents keep the historical A/player, B/NPC mapping.
+        self.own_team = "player" if normalized == "A" else "npc"
+
+    def set_own_team(self, team: str) -> None:
+        normalized = team.lower()
+        if normalized not in {"player", "npc"}:
+            raise ValueError("own team must be player or npc")
+        self.own_team = normalized
 
     def _teams(self, observation: dict[str, Any]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         units = observation.get("units", [])
         if not isinstance(units, list):
             return [], []
-        # Side B's local green roster is stored in the NPC array; on side A,
-        # the local blue roster is stored in the player array.
-        own_team = "player" if self.side == "A" else "npc"
-        opponent_teams = {"npc", "enemy"} if self.side == "A" else {"player", "enemy"}
+        own_team = self.own_team
+        opponent_teams = {"npc", "enemy"} if own_team == "player" else {"player", "enemy"}
         own = [unit for unit in units if isinstance(unit, dict) and unit.get("team") == own_team]
         opponents = [unit for unit in units if isinstance(unit, dict) and unit.get("team") in opponent_teams]
         return own, opponents
@@ -49,6 +64,17 @@ class MinimaxAgent:
         x, y = int(position[0]), int(position[1])
         # Each bridge reports positions in that emulator's local map frame:
         # the local roster sits on the bottom edge for both Link Arena clients.
+        return x, y
+
+    @staticmethod
+    def observed_cursor(observation: dict[str, Any]) -> tuple[int, int]:
+        detail = observation.get("detail")
+        cursor = detail.get("bm_cursor") if isinstance(detail, dict) else None
+        if not isinstance(cursor, list) or len(cursor) != 2:
+            raise ValueError("observation has no FE7 battle-map cursor in detail.bm_cursor")
+        x, y = int(cursor[0]), int(cursor[1])
+        if not (0 <= x < 15 and 0 <= y < 10):
+            raise ValueError(f"observed battle-map cursor is outside the board: {(x, y)}")
         return x, y
 
     def choose_matchup(self, observation: dict[str, Any]) -> AgentDecision:
@@ -118,7 +144,7 @@ class MinimaxAgent:
         observation: dict[str, Any],
         decision: AgentDecision,
         *,
-        cursor: tuple[int, int],
+        cursor: tuple[int, int] | None = None,
     ) -> list[str]:
         own, _ = self._teams(observation)
         actor = next((unit for unit in own if int(unit.get("character_id", -1)) == decision.attacker_id), None)
@@ -127,14 +153,15 @@ class MinimaxAgent:
         position = actor.get("position", [])
         if not isinstance(position, list) or len(position) != 2:
             raise ValueError("selected attacker has no map position")
-        return self.cursor_path(cursor, self._input_position(position)) + ["A"]
+        start = self.observed_cursor(observation) if cursor is None else cursor
+        return self.cursor_path(start, self._input_position(position)) + ["A"]
 
     def select_target_buttons(
         self,
         observation: dict[str, Any],
         decision: AgentDecision,
         *,
-        cursor: tuple[int, int],
+        cursor: tuple[int, int] | None = None,
     ) -> list[str]:
         _, opponents = self._teams(observation)
         defender = next((unit for unit in opponents if int(unit.get("character_id", -1)) == decision.defender_id), None)
@@ -143,7 +170,8 @@ class MinimaxAgent:
         position = defender.get("position", [])
         if not isinstance(position, list) or len(position) != 2:
             raise ValueError("selected defender has no map position")
-        return self.cursor_path(cursor, self._input_position(position)) + ["A"]
+        start = self.observed_cursor(observation) if cursor is None else cursor
+        return self.cursor_path(start, self._input_position(position)) + ["A"]
 
     @staticmethod
     def confirm_forecast() -> list[str]:
@@ -158,3 +186,43 @@ class MinimaxAgent:
         delta = decision.inventory_slot - selected_row
         direction = "DOWN" if delta > 0 else "UP"
         return [direction] * abs(delta) + ["A"]
+
+    def weapon_menu_row(
+        self,
+        observation: dict[str, Any],
+        decision: AgentDecision,
+    ) -> int:
+        """Return the menu row for the chosen inventory slot, or fail closed.
+
+        FE7's Link Arena weapon list omits non-weapons. Count every known FE7
+        combat weapon, including weapons not yet modeled by the minimax scorer,
+        and skip known FE7 gear. Unknown inventory IDs still fail closed.
+        """
+        own, _ = self._teams(observation)
+        actor = next((unit for unit in own if int(unit.get("character_id", -1)) == decision.attacker_id), None)
+        if actor is None:
+            raise ValueError(f"attacker {decision.attacker_id} is absent from side {self.side}'s roster")
+        inventory = actor.get("inventory", [])
+        if not isinstance(inventory, list):
+            raise ValueError("selected attacker has no parsed inventory")
+        rows: list[dict[str, Any]] = []
+        for item in inventory:
+            if not isinstance(item, dict):
+                continue
+            item_id = int(item.get("id", -1))
+            if item_id in FE7_COMBAT_WEAPON_IDS:
+                rows.append(item)
+            elif item_id in FE7_NONCOMBAT_ITEM_IDS:
+                # Equipment, staves, and consumables are omitted from the
+                # target's attack-weapon menu.
+                continue
+            else:
+                raise ValueError(
+                    f"cannot map Link Arena weapon-menu rows: inventory item {item_id} is not classified"
+                )
+        for row, item in enumerate(rows):
+            if int(item.get("slot", -1)) == decision.inventory_slot and int(item.get("id", -1)) == decision.weapon_id:
+                return row
+        raise ValueError(
+            f"chosen weapon {decision.weapon_id} in slot {decision.inventory_slot} is absent from the menu inventory"
+        )

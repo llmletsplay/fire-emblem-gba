@@ -6,6 +6,7 @@ import socket
 import struct
 import threading
 import time
+import zlib
 from pathlib import Path
 
 
@@ -98,10 +99,17 @@ class SideBridge:
     def read_range(self, address: int, length: int) -> bytes:
         return self.binary(f"READRANGE 0x{address:X} {length}")
 
-    def act(self, buttons: list[str], timeout: float = 15.0) -> None:
+    def act(
+        self,
+        buttons: list[str],
+        timeout: float = 15.0,
+        *,
+        hold_frames: int | None = None,
+    ) -> None:
         # A semicolon selects the queued-input path even for a single button,
         # which is the only path that returns QUEUE_COMPLETE.
-        command = ";".join(buttons) + ";"
+        suffix = f"@{hold_frames}" if hold_frames is not None else ""
+        command = ";".join(f"{button}{suffix}" for button in buttons) + ";"
         with self._lock:
             sock = self._connect()
             old_timeout = sock.gettimeout()
@@ -156,6 +164,337 @@ def parse_game_state(raw: str) -> dict[str, object]:
                 fields[key] = value
         elif key == "locked":
             fields[key] = value == "Y"
+        else:
+            fields[key] = value
+    fields["game"] = raw.split("|", 1)[0]
+    return fields
+
+
+def parse_ui_state(
+    raw: str,
+    *,
+    game_state: dict[str, object] | None = None,
+    detail: dict[str, object] | None = None,
+    screenshot_png: bytes | None = None,
+) -> dict[str, object]:
+    """Parse STATE and correct FE7 Link Arena's stale battle-flag report.
+
+    The FE7 title screen and Link Arena map can leave the byte read by the
+    legacy ``isInBattle`` helper set. Chapter/phase/lock are separate live
+    signals, so use them together to distinguish a playable map from battle
+    animation. Keep the raw label for diagnosis.
+    """
+    if raw.startswith("menu:"):
+        _, menu_type, selection_raw = (raw.split(":", 2) + [""])[:3]
+        try:
+            selection: object = int(selection_raw)
+        except ValueError:
+            selection = selection_raw
+        known_menu_types = {
+            "unit", "item", "trade", "support", "battle", "repair", "supply",
+            "arena", "vendor", "secret", "gameover", "none",
+        }
+        if (
+            menu_type not in known_menu_types
+            and screenshot_png is not None
+            and detail is not None
+        ):
+            if (
+                _is_unlocked_fe7_link_map(game_state, detail)
+                and _link_arena_phase_banner(screenshot_png)
+            ):
+                return {"name": "phase_transition", "source": "fe7_ch65_player_phase_banner"}
+            overlay = _link_arena_overlay_menu(screenshot_png, game_state, detail)
+            if overlay is not None:
+                return overlay
+        if _is_unlocked_fe7_link_map(game_state, detail) and menu_type not in known_menu_types:
+            # On the live chapter-65 map, FE7's old menu flag can retain an
+            # impossible menu type (observed 0xE1) with selection 48. The
+            # five-unit rosters, unlocked battle map, and valid map cursor are
+            # stronger evidence. Real, named battle menus still take priority.
+            return {"name": "link_arena_map", "raw_name": raw, "source": "fe7_ch65_map"}
+        return {"name": "menu", "menu_type": menu_type, "selection": selection}
+    if raw == "battle" and game_state and detail:
+        phase = game_state.get("phase")
+        if (
+            game_state.get("chapter") == 65
+            and phase in {"player_phase", "npc_phase"}
+            and detail.get("locked") is False
+        ):
+            return {"name": phase, "raw_name": raw, "source": "fe7_ch65_phase"}
+    return {"name": raw}
+
+
+def _is_unlocked_fe7_link_map(
+    game_state: dict[str, object] | None,
+    detail: dict[str, object] | None,
+) -> bool:
+    if not game_state or not detail or game_state.get("chapter") != 65 or detail.get("locked") is not False:
+        return False
+    cursor = detail.get("bm_cursor")
+    if not isinstance(cursor, list) or len(cursor) != 2:
+        return False
+    try:
+        x, y = (int(value) for value in cursor)
+    except (TypeError, ValueError):
+        return False
+    if not (0 <= x < 15 and 0 <= y < 10):
+        return False
+    for key in ("players", "npcs"):
+        value = game_state.get(key)
+        if not isinstance(value, str) or "/" not in value:
+            return False
+        try:
+            total = int(value.rsplit("/", 1)[1])
+        except ValueError:
+            return False
+        if total != 5:
+            return False
+    return True
+
+
+def _link_arena_overlay_menu(
+    png: bytes,
+    game_state: dict[str, object] | None,
+    detail: dict[str, object] | None,
+) -> dict[str, object] | None:
+    """Recognize FE7 Link Arena's blue weapon panel and selected row.
+
+    The bridge's legacy menu pointer reports ``0xE1:48`` while FE7 displays
+    this panel, and marks the map input-locked. The fixed blue-panel geometry
+    plus a unique white cursor wedge in the gutter is sufficient evidence to
+    report the actual item-menu row; the right-side forecast panel is a
+    separate confirm-only screen, and ambiguous panels remain unclassified.
+    """
+    if not _has_fe7_link_arena_roster(game_state):
+        return None
+    pixels = _decode_native_png(png)
+    if pixels is None:
+        return None
+    components = _blue_components(pixels)
+    # Confirming a weapon returns to the arena map with the selected fighter's
+    # FE7 status card open. The panel can be anchored on either edge depending
+    # on the linked client's camera layout; a live Zephyrus capture placed it
+    # on the left at x=6, y=27. The attack starts only after a second A press
+    # from this screen. It is taller than the forecast card (68x80 to 68x93).
+    status_panels = [
+        box for size, box in components
+        if size >= 1500
+        and 60 <= box[2] - box[0] + 1 <= 90
+        # The card is normally near the top edge. FE7 can place it lower on
+        # the second linked client's map camera, where live captures measured
+        # a 68x93 panel beginning at y=27.
+        and 79 <= box[3] - box[1] + 1 <= 105
+        and (box[0] <= 12 or box[0] >= 150)
+        and box[1] <= 35
+    ]
+    if len(status_panels) == 1:
+        return {"name": "unit_status", "source": "fe7_ch65_selected_unit_status"}
+    if detail is None or detail.get("locked") is not True:
+        return None
+    forecasts = [
+        box for size, box in components
+        if size >= 1200
+        and 60 <= box[2] - box[0] + 1 <= 90
+        and 60 <= box[3] - box[1] + 1 <= 78
+        and box[0] >= 144
+        and box[1] <= 12
+    ]
+    if len(forecasts) == 1:
+        return {"name": "battle_forecast", "source": "fe7_ch65_forecast"}
+
+    panels = [
+        box for size, box in components
+        if size >= 500
+        and 80 <= box[2] - box[0] + 1 <= 130
+        and 55 <= box[3] - box[1] + 1 <= 100
+        and box[0] < 144
+    ]
+    if len(panels) != 1:
+        return None
+    left, top, right, bottom = panels[0]
+    panel_height = bottom - top + 1
+    # FE7's Link Arena weapon list uses 16px row spacing. Scan the complete
+    # panel before inferring its row count: a 75px crop made the five-row
+    # weapon panel look 61px tall, which shifted later selections by one row.
+    row_count = round(panel_height / 16.0)
+    if not 1 <= row_count <= 5:
+        return None
+    row = _white_gutter_cursor_row(pixels, left, top, bottom, row_count)
+    if row is None:
+        return {"name": "menu", "menu_type": "item", "selection": -1,
+                "source": "fe7_ch65_weapon_panel"}
+    return {"name": "menu", "menu_type": "item", "selection": row,
+            "source": "fe7_ch65_weapon_panel"}
+
+
+def _link_arena_phase_banner(png: bytes) -> bool:
+    """Recognize FE7's green 1P/2P phase ribbon over the arena map.
+
+    During this banner, chapter-65 memory already looks like an unlocked map,
+    so cursor inputs are ignored even though the legacy bridge reports the
+    usual stale ``menu:0xE1:48`` value. The localized bright-green text band
+    distinguishes this transition from the combat effects and idle map.
+    """
+    pixels = _decode_native_png(png)
+    if pixels is None:
+        return False
+    green_pixels = 0
+    for y in range(65, 100):
+        for x in range(20, 220):
+            red, green, blue = _pixel(pixels, x, y)
+            if green >= 145 and green > red * 1.28 and green > blue * 1.12:
+                green_pixels += 1
+    return green_pixels >= 1500
+
+
+def _has_fe7_link_arena_roster(game_state: dict[str, object] | None) -> bool:
+    if not game_state or game_state.get("chapter") != 65:
+        return False
+    for key in ("players", "npcs"):
+        value = game_state.get(key)
+        if not isinstance(value, str) or "/" not in value:
+            return False
+        try:
+            total = int(value.rsplit("/", 1)[1])
+        except ValueError:
+            return False
+        if total != 5:
+            return False
+    return True
+
+
+def _decode_native_png(png: bytes) -> bytes | None:
+    """Decode the bridge's 240x160 RGBA/filter-0 PNG into packed pixels."""
+    try:
+        if not png.startswith(b"\x89PNG\r\n\x1a\n"):
+            return None
+        offset = 8
+        compressed = bytearray()
+        width = height = depth = color_type = None
+        while offset + 12 <= len(png):
+            length = struct.unpack_from(">I", png, offset)[0]
+            kind = png[offset + 4 : offset + 8]
+            data = png[offset + 8 : offset + 8 + length]
+            offset += length + 12
+            if kind == b"IHDR":
+                width, height, depth, color_type = struct.unpack_from(">IIBB", data)
+            elif kind == b"IDAT":
+                compressed.extend(data)
+            elif kind == b"IEND":
+                break
+        if (width, height, depth, color_type) != (240, 160, 8, 6):
+            return None
+        rows = zlib.decompress(bytes(compressed))
+        stride = width * 4
+        if len(rows) != height * (stride + 1):
+            return None
+        packed = bytearray(width * height * 4)
+        for y in range(height):
+            row = y * (stride + 1)
+            if rows[row] != 0:
+                return None
+            packed[y * stride : (y + 1) * stride] = rows[row + 1 : row + 1 + stride]
+        return bytes(packed)
+    except (ValueError, zlib.error, struct.error):
+        return None
+
+
+def _pixel(pixels: bytes, x: int, y: int) -> tuple[int, int, int]:
+    offset = (y * 240 + x) * 4
+    return pixels[offset], pixels[offset + 1], pixels[offset + 2]
+
+
+def _blue_components(pixels: bytes) -> list[tuple[int, tuple[int, int, int, int]]]:
+    blue = {
+        (x, y)
+        for y in range(120)
+        for x in range(240)
+        for red, green, value in [_pixel(pixels, x, y)]
+        if value > red + 20 and value > green + 10 and red < 140 and green < 160
+    }
+    result = []
+    while blue:
+        start = blue.pop()
+        stack = [start]
+        count = 1
+        left = right = start[0]
+        top = bottom = start[1]
+        while stack:
+            x, y = stack.pop()
+            for neighbor in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)):
+                if neighbor not in blue:
+                    continue
+                blue.remove(neighbor)
+                stack.append(neighbor)
+                count += 1
+                left, right = min(left, neighbor[0]), max(right, neighbor[0])
+                top, bottom = min(top, neighbor[1]), max(bottom, neighbor[1])
+        result.append((count, (left, top, right, bottom)))
+    return result
+
+
+def _white_gutter_cursor_row(
+    pixels: bytes, left: int, top: int, bottom: int, row_count: int
+) -> int | None:
+    bright = {
+        (x, y)
+        for y in range(max(0, top + 1), min(120, bottom))
+        for x in range(max(0, left - 16), left)
+        for red, green, blue in [_pixel(pixels, x, y)]
+        if min(red, green, blue) >= 190 and max(red, green, blue) - min(red, green, blue) <= 55
+    }
+    candidates = []
+    while bright:
+        start = bright.pop()
+        stack = [start]
+        points = [start]
+        while stack:
+            x, y = stack.pop()
+            for neighbor in (
+                (x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1),
+                (x + 1, y + 1), (x - 1, y - 1), (x + 1, y - 1), (x - 1, y + 1),
+            ):
+                if neighbor in bright:
+                    bright.remove(neighbor)
+                    stack.append(neighbor)
+                    points.append(neighbor)
+        xs = [point[0] for point in points]
+        ys = [point[1] for point in points]
+        width, height = max(xs) - min(xs) + 1, max(ys) - min(ys) + 1
+        gap = left - max(xs)
+        if len(points) >= 14 and 4 <= width <= 12 and 4 <= height <= 12 and 1 <= gap <= 9:
+            candidates.append(sum(ys) / len(ys))
+    if len(candidates) != 1:
+        return None
+    row = int((candidates[0] - top) * row_count / (bottom - top + 1))
+    return row if 0 <= row < row_count else None
+
+
+def parse_detail(raw: str) -> dict[str, object]:
+    """Parse FE7_DETAIL key/value fields, including the battle-map cursor."""
+    fields: dict[str, object] = {}
+    for item in raw.split("|")[1:]:
+        if "=" not in item:
+            continue
+        key, value = item.split("=", 1)
+        if key in {"cursor", "bm_cursor", "bm_camera"}:
+            try:
+                fields[key] = [int(part) for part in value.split(",", 1)]
+            except ValueError:
+                fields[key] = value
+        elif key in {"phase_raw", "bm_state"}:
+            try:
+                fields[key] = int(value, 16)
+            except ValueError:
+                fields[key] = value
+        elif key in {"chapter", "turn", "taken_action", "players_alive", "enemies_alive"}:
+            try:
+                fields[key] = int(value)
+            except ValueError:
+                fields[key] = value
+        elif key == "locked":
+            fields[key] = value not in {"0", "N", "false", "False"}
         else:
             fields[key] = value
     fields["game"] = raw.split("|", 1)[0]

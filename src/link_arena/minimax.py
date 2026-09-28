@@ -75,6 +75,32 @@ WEAPONS: dict[int, Weapon] = {
     0x95: Weapon(0x95, "Gespenst", 23, 70, 18, kind="dark"),
 }
 
+# FE7 combat weapons represented in the game inventory. The Link Arena menu
+# shows these in inventory order, even when this deliberately small policy
+# table does not yet model their combat stats. Keeping the full item-ID shape
+# lets the input controller count menu rows without mistaking known gear for a
+# weapon or selecting the wrong row. IDs come from the FE7 item table.
+FE7_COMBAT_WEAPON_IDS = frozenset({
+    *range(0x01, 0x4A),  # swords through dark magic
+    0x59,                # Dragon Axe
+    0x77,                # Uber Spear
+    *range(0x84, 0x87),  # Durandal, Armads, Aureola
+    *range(0x8C, 0x96),  # Sol Katti through Short Spear
+    0x99,                # Wind Sword
+})
+
+# FE7 items that do not appear in the target's attack-weapon menu. This
+# explicit subset keeps the small isolated Link Arena runner independent of
+# the campaign data package while still recognizing its prepared save's gear.
+FE7_NONCOMBAT_ITEM_IDS = frozenset({
+    *range(0x4A, 0x59),  # staves
+    *range(0x5A, 0x77),  # stat boosters, seals, consumables, equipment, gems
+    *range(0x78, 0x80),  # keys, runes, and stat-boosting rings
+    0x87, 0x88, 0x89,    # Earth Seal, Afa's Drops, Heaven Seal
+    0x8B,                # Fell Contract
+    0x96,                # Ocean Seal
+})
+
 CLASS_CON: dict[int, int] = {
     0x09: 11,  # Great Lord
     0x13: 13,  # Warrior

@@ -1,60 +1,58 @@
 # FE7 Link Arena mode
 
-## Goal
+## Goal and current boundary
 
-Give two agents a repeatable, head-to-head Fire Emblem 7 Link Arena match. A
-match starts from a prepared roster, uses the game’s own link battle rules, and
-does not require either agent to play the campaign. The first playable version
-is **supervised**, not seamless autoplay: minimax policies recommend matchups
-and weapons, while an operator handles setup, confirms controls, and checks the
-live emulator screens.
+Link Arena gives two agents repeatable head-to-head Fire Emblem 7 matches from
+prepared rosters. FE7 itself owns combat rules, random numbers, scoring, and the
+winner. The campaign harness is separate.
 
-The existing campaign loop stays separate. It assumes chapters, objectives,
-player/enemy phases, and tutorial state; Link Arena needs its own setup flow,
-observation contract, and match lifecycle.
+The runner handles title and Link Arena setup by default, so agents start at
+the gameplay map. In supervised mode, an operator or external policy controls
+turns after setup. `--auto-minimax` also runs both built-in minimax policies.
+Every setup/menu direction is checked against its rendered selection before
+the next input. Unknown screens stop for supervision. The menu recognizer is
+specific to the supported FE7 (US) 240×160 screen and prepared save; it fails
+closed when a known screen signature does not match. Both a supervised match
+and a complete unattended minimax match have been verified on Zephyrus; see
+[the match report](LINK_ARENA_MATCH_REPORT.md).
 
 ## Save candidate
 
 The selected candidate is the North American Pro Action Replay save by
-Saint_Cyan dated 2004-05-05. GameFAQs describes it as having maxed stats,
-Link Arena teams, weapons, and supports. The public GameFAQs save archive
-snapshot contains the matching entry as `4120.xps`.
+Saint_Cyan dated 2004-05-05. The public GameFAQs save archive snapshot contains
+the matching `4120.xps` entry, described as having Link Arena teams, weapons,
+supports, and maxed stats. The roster loaded in-game, but live unit stats are
+not all at their class caps; “maxed” describes the archive listing, not a
+verified all-capped team.
 
-The candidate is downloaded locally as
-[`roms/fe7-link-arena-maxed.xps`](../roms/fe7-link-arena-maxed.xps). It is a
-64 KB-class X-Port snapshot/container, not a raw mGBA `.sav`. mGBA imported it
-into an isolated FE7 copy and wrote a 32 KB `FE7.sav`. On Zephyrus, that save
-booted, opened Extras and Link Arena, and loaded the `RAGNAROK` teams on both
-clients. The roster is highly trained, but the live unit stats are not all at
-their class caps, so “maxed” here describes the save listing rather than a
-verified all-stats-capped roster. The converted file stays in the ignored
-scratch path `roms/fe7-link-arena-maxed-unverified.sav` and the isolated runner
-copy `%LOCALAPPDATA%\FE7-Link-Arena\runner\roms\fe7.sav`. Do not import over
+The XPS container is at [`roms/fe7-link-arena-maxed.xps`](../roms/fe7-link-arena-maxed.xps).
+mGBA imported it into an isolated FE7 copy and wrote a 32 KB raw battery save.
+The converted copy stays in ignored scratch path
+`roms/fe7-link-arena-maxed-unverified.sav` and in the Zephyrus runner at
+`%LOCALAPPDATA%\FE7-Link-Arena\runner\roms\fe7.sav`. Do not import over
 `roms/fe7.sav` or commit ROM/save data.
 
-The downloaded XPS has SHA-256
-`98a54c038d7d65f0e06f75f23c82612a5acebf2cdac1be07865e6d57248e5bea`.
+XPS SHA-256: `98a54c038d7d65f0e06f75f23c82612a5acebf2cdac1be07865e6d57248e5bea`.
 
-## Zephyrus workspace
+## Stage and start on Zephyrus
 
-The Windows launcher uses mGBA's installed path and stores match data under
-`%LOCALAPPDATA%\FE7-Link-Arena`. To stage an isolated working copy on
-Zephyrus from the Mac checkout, run:
+From the Mac checkout, stage the isolated runner with:
 
 ```bash
 scripts/mac/deploy-link-arena-zephyrus.sh
 ```
 
-That copies the FE7 ROM into
-`%LOCALAPPDATA%\FE7-Link-Arena\runner\roms` and stages the candidate XPS and
-Link Arena runtime there. It stages the unverified 32 KB raw conversion as
-`runner\roms\fe7.sav` only if the target does not already exist. It does not
-open mGBA or touch the campaign save. Open
-only the isolated `runner\roms\fe7.gba` in mGBA and confirm Continue/Extras
-and the Link Arena roster in-game. If the raw save does not load, use mGBA's
-**File → Save games → Convert save game…** with the staged XPS, writing to a
-separate file before replacing the isolated `fe7.sav`. Start the runner after
-the in-game check:
+This copies the FE7 ROM, candidate XPS, runtime, and launcher into
+`%LOCALAPPDATA%\FE7-Link-Arena\runner`. It copies the converted raw save only
+when the isolated target save does not already exist. It does not launch mGBA
+or write to the campaign save. Autoplay recognizes the prepared save's title
+menu and RAGNAROK team selection itself; it does not need a person or an agent
+to navigate those screens.
+
+Start the runner after confirming the isolated save. It takes both clients
+from the title screen to the Link Arena map before unlocking agent observations
+or actions. With no `-AutoMinimax`, the operator or an external policy controls
+the match after setup:
 
 ```powershell
 & "$env:LOCALAPPDATA\FE7-Link-Arena\runner\scripts\windows\Start-Link-Arena.ps1" `
@@ -62,244 +60,266 @@ the in-game check:
   -Save "$env:LOCALAPPDATA\FE7-Link-Arena\runner\roms\fe7.sav"
 ```
 
-This starts a separate two-ROM mGBA process. The existing `roms\fe7.sav` in
-the campaign checkout is not used. The API and both control bridges bind to
-loopback, and Windows inherits the current user's local-app-data ACLs for the
-side-token files.
+To let both built-in minimax agents play as well, add `-AutoMinimax`:
 
-## Verified status
+```powershell
+& "$env:LOCALAPPDATA\FE7-Link-Arena\runner\scripts\windows\Start-Link-Arena.ps1" `
+  -RepoRoot "$env:LOCALAPPDATA\FE7-Link-Arena\runner" `
+  -Save "$env:LOCALAPPDATA\FE7-Link-Arena\runner\roms\fe7.sav" `
+  -AutoMinimax
+```
 
-- The 2004 GameFAQs XPS save was imported into an isolated 32 KB battery save;
-  both Zephyrus clients loaded the RAGNAROK Link Arena roster.
-- Two mGBA cores connected through the Link Arena. Side A used port 18888,
-  side B used 18889, and the token-scoped API served each client.
-- `MinimaxAgent("A")` and `MinimaxAgent("B")` independently selected legal
-  matchups and weapons from their side-scoped observations during a complete
-  game. The game, rather than the policy model, resolved hit RNG, casualties,
-  score, and the winner.
-- The verified match ended on FE7's result screens: green 2P RAGNAROK placed
-  1st with 520 points; blue 1P RAGNAROK placed 2nd with 346 points. Screenshots
-  and the match ID are recorded in
-  [`LINK_ARENA_MATCH_REPORT.md`](LINK_ARENA_MATCH_REPORT.md).
-- Preserve the campaign save: the match used the isolated runner save and did
-  not write to `roms/fe7.sav`.
+Use `-ManualSetup` only for setup debugging; it leaves title and Link Arena
+menus visible and exposes the current screen to the agent API. While automatic
+setup is in progress, `/v1/status` reports only the setup stage, and `/v1/observe`
+and `/v1/action` remain locked until both clients reach the opening map.
 
-The newer North American 32 KB GameShark save by Memory- (2026-05-19) is still
-a possible alternate roster. It is described as 100% complete with three
-optimized teams, not as an all-stats-capped roster.
+The runner launches a separate linked two-ROM mGBA session. The campaign save
+is not used. The API and both bridges bind to loopback; side-token files are
+written into the private match directory.
 
-## Runtime shape
+## Verified live matches
+
+On 2026-09-27, supervised match `20260927T171244Z-c0eba3` finished with green
+2P RAGNAROK first at 520 points and blue 1P RAGNAROK second at 346. On
+2026-09-28, unattended match `20260928T153714Z-75c7b5` ran 31 verified
+exchanges from title screen through FE7's final ranking: green 2P RAGNAROK won
+576–288. Both runs used isolated ROM/save copies. See
+[`LINK_ARENA_MATCH_REPORT.md`](LINK_ARENA_MATCH_REPORT.md) for screenshots,
+policy decisions, runner evidence, and the distinction between supervised and
+unattended control.
+
+## Runtime
 
 ```mermaid
 flowchart LR
-    A[Agent A] -->|observe / action| C[Match coordinator]
-    B[Agent B] -->|observe / action| C
-    C --> S1[FE7 side A adapter]
-    C --> S2[FE7 side B adapter]
-    S1 --> M[mGBA local link session]
+    A[Minimax A] --> C[Coordinator and verified controller]
+    B[Minimax B] --> C
+    C --> S1[FE7 side A bridge]
+    C --> S2[FE7 side B bridge]
+    S1 --> M[mGBA linked cores]
     S2 --> M
-    M --> G[FE7 Link Arena rules]
-    G --> S1
-    G --> S2
+    M --> G[FE7 Link Arena rules and scoring]
 ```
 
-- Start two copies of the same North American FE7 ROM in mGBA’s local
-  multiplayer session. Each side gets a separate copy of the seed save and a
-  side-specific control bridge.
-- An operator takes both clients through Link Arena setup and the link
-  handshake. Once battle begins, FE7 owns turn order, battle rules, RNG, and
-  victory adjudication.
-- Each policy receives only its side’s observation. The coordinator routes
-  bounded button actions to that side and rejects stale observations. The
-  operator still checks screen state and cursor position; reliable
-  screen-settling detection is not implemented.
-- `session.json` records the ROM and seed-save hashes and bridge/API settings.
-  `events.jsonl` records observations and accepted actions, with screenshots
-  saved beside it. The runner does not checkpoint emulator/PRNG memory, parse
-  the final ranking into a result, or replay a match deterministically.
+The launcher copies the chosen ROM and battery save into a fresh match folder,
+starts two mGBA cores, creates one loopback control bridge per core, and serves
+a loopback-only HTTP API. The coordinator records ROM/save hashes in
+`session.json`, accepted actions and observations in `events.jsonl`, and PNGs
+under each side's `observations` directory.
 
-mGBA’s Qt frontend supports multiple game windows and local link cable play;
-the installed app on Zephyrus is an mGBA 0.11 development build. Its Lua
-startup script is attached to each loaded core. Windows allowed both scripts
-to bind the same loopback port, so selecting a port by retrying on a bind error
-did not distinguish the cores. The runner now claims one of two per-match
-marker directories atomically before binding each core to its assigned port.
-On 2026-09-27, this setup reached linked FE7 Link Arena combat and completed
-the match recorded below. Cursor movement must be checked against the live
-`DETAIL` cursor: batching repeated directional keys can overshoot a unit on
-some FE7 screens.
+### Observation fields
 
-## First implementation slice
+`GET /v1/observe` returns an observation tied to a side and generation:
 
-The isolated runtime is in `src/link_arena/` with a launcher in
-`tools/link_arena.py`. It copies the selected ROM and battery save into two
-match-local directories, launches mGBA once with both ROMs and a generated
-bridge script, then serves a loopback-only HTTP API. Each side gets its own
-token file. Observations contain that side’s screenshot, parsed FE7 state and
-units, and raw state strings. The coordinator writes each PNG under that
-match's `side-a/observations` or `side-b/observations` directory and logs the
-full observation state plus its image path to `events.jsonl`. The seed save
-and ROM hashes are recorded in `session.json`. The API still does not parse the
-Link Arena result screen into a terminal outcome; the verified winner was read
-from FE7's result/ranking screens. The `settled` field is intentionally
-null today; `coherent` only means the exposed game-state string matched before
-and after capture. It is not proof that an animation, menu transition, or link
-handoff has finished.
+- `ui_state`: parsed `STATE` result, such as `player_phase`, `dialogue`, or
+  `{name: "menu", menu_type: "item", selection: 2}`. The transient
+  `phase_transition` state means FE7 is still showing its green 1P/2P banner;
+  it is deliberately not an actionable map.
+- `game_state`: parsed FE7 chapter, turn, units-in-play counts, and map cursor.
+- `detail`: parsed `DETAIL`, including `bm_cursor`, battle-map state bits, and
+  the input-lock flag. Link Arena routing uses `detail.bm_cursor`; campaign
+  `game_state.cursor` can remain `(0, 0)` in chapter 65.
+- `units`, `screenshot`, and `raw`: the side-scoped roster, captured screen,
+  and raw bridge responses.
+- `coherent`: `STATE`, `GAMESTATE`, `DETAIL`, and `UNITS` matched before and
+  after that screenshot was captured.
+- `settled`: two consecutive coherent observations matched and FE7 reported
+  input unlocked. This is a useful stability check, not proof that every
+  animation or link timing state is exposed by the bridge.
 
-Actions are side-token scoped, capped at eight button presses, serialized by
-the coordinator, and tied to an observation ID. Every accepted action
-increments one shared generation and invalidates observations for both sides;
-a changed game state also requires a fresh observation. The current action
-contract is raw bounded button input, not typed menu or tactical commands.
+A button action is token-scoped, limited to the latest observation ID, and
+invalidates both sides' previous observations by incrementing one shared
+generation. The HTTP endpoint still accepts bounded raw button lists for
+manual clients. The built-in controller sends one button at a time.
 
-Once a converted `.sav` has been confirmed in-game, start a match with:
+### Endpoints
 
-```bash
-python3 tools/link_arena.py --rom roms/fe7.gba --save /path/to/isolated/fe7.sav
-```
+- `GET /v1/observe`: fresh side-scoped observation and screenshot.
+- `GET /v1/status`: current UI/game/detail state and, when armed, autoplay
+  status.
+- `POST /v1/action`: `{"observation_id":"0-A-1","buttons":["RIGHT"]}`.
+  Optional `hold_frames` accepts an integer from 1–12; the built-in controller
+  uses a 3-frame pulse for confirms that can open another action screen.
 
-The `--save` path must point to a converted raw battery save that was verified
-in the isolated FE7 copy. The CLI default is `roms/fe7-link-arena-maxed.sav`,
-which is not included in the repository; the downloaded `.xps` is not a valid
-`--save` input. Pass the path to your verified conversion explicitly. On
-Zephyrus, use the PowerShell launcher above, which passes the isolated
-`runner\roms\fe7.sav` explicitly.
+Each request needs the side's bearer token. The API is loopback-only; agents on
+another machine need a deliberate secure relay before they can connect.
 
-The launcher prints the local API address and paths to the side token files.
-The agent API is loopback-only, so remote agents on another machine cannot
-connect to it as shipped. No ready-made HTTP agent client is included. A
-same-host client uses `GET /v1/observe` and `GET /v1/status` with its own bearer
-token; `POST /v1/action` accepts JSON of the form
-`{"observation_id":"...","buttons":["RIGHT","A"]}`. It binds only to
-`127.0.0.1`, as are the per-side control bridges; the coordinator writes
-actions and observations to the match directory’s `events.jsonl` and saves
-screenshots alongside them.
+## How supervised matches work
 
-For example, use the side A token printed by the runner to observe and act:
+The startup is seamless: the runner takes both clients from the title screens
+to the opening map before an agent or operator acts. Without `-AutoMinimax`,
+the match itself is supervised; an operator or external policy chooses and
+enters every turn.
 
-```bash
-TOKEN="$(cat /path/to/match/side-a.token)"
-curl -H "Authorization: Bearer $TOKEN" http://127.0.0.1:18700/v1/observe
-curl -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  -d '{"observation_id":"0-A-1","buttons":["RIGHT","A"]}' \
-  http://127.0.0.1:18700/v1/action
-```
+1. Start the runner without `-AutoMinimax`. It enters Extras → Link Arena,
+   chooses the prepared teams, completes the link handshake, and stops at the
+   opening map. Setup is automatic; supervised mode leaves battle turns under
+   operator or external-policy control.
+2. Once setup reports `ready`, observe each side with its own token. The
+   response includes parsed unit records, UI state, cursor details, a
+   screenshot, and an observation ID.
+3. Pass each side's observation to `MinimaxAgent("A")` or
+   `MinimaxAgent("B")`. The policy chooses an attacker, defender, weapon,
+   inventory slot, and score. It does not read the screenshot or press buttons.
+4. In supervised mode, an operator can inspect the screenshot and live
+   `DETAIL` cursor, then post bounded button input. Re-observe after every
+   accepted action; an old observation ID is rejected. FE7 resolves the actual
+   combat, including RNG and casualties. Raw API actions do not enforce the
+   built-in controller's expected one-step cursor/menu delta checks; external
+   clients that need that guarantee should use `VerifiedInputController`.
+5. Continue turns in FE7 and read the final ranking/result screen. The API logs
+   evidence, but it does not yet translate the ranking screen into a structured
+   winner/result object. Ctrl-C stops the local API and mGBA process.
 
-## How a supervised match runs
+The first live match used two minimax policies for decisions, while an operator
+handled setup, cursor/menu input, and transitions. One early grouped cursor move
+overshot; that is why the automation now checks every step.
 
-1. **Prepare and link the clients.** Stage the isolated ROM and save, start the
-   runner, then use the two mGBA windows to enter Link Arena and complete the
-   connection/team setup. The launcher starts the linked emulator and API; it
-   does not navigate these menus.
-2. **Observe one side.** A client requests `/v1/observe` using that side's
-   bearer token. The response includes parsed game-state fields, unit records,
-   the screenshot, raw bridge responses, and an observation ID.
-3. **Ask the policy for a decision.** `MinimaxAgent("A")` or
-   `MinimaxAgent("B")` consumes that side's observation and returns an
-   attacker, defender, weapon, inventory slot, and score. It is a Python
-   policy class, not a running service. A caller must pass observations to it;
-   this repository has no HTTP client or loop that polls both sides, calls the
-   policies, and plays a whole game unattended.
+## Unattended setup and minimax autoplay
 
-   ```python
-   from src.link_arena.agents import MinimaxAgent
+`--auto-minimax` arms `MinimaxAgent("A")` and `MinimaxAgent("B")` in the same
+runner process. Before either policy acts, the setup controller:
 
-   agent = MinimaxAgent("A", defender_auto_weapon=True)
-   decision = agent.choose_matchup(observation)
-   ```
+1. skips FE7 title/attract screens with bounded START taps until it sees the
+   four-row title menu;
+2. checks the visible row marker after each DOWN and selects Extras;
+3. confirms the first Extras row, Link Arena, only after the five-row Extras
+   menu is recognized;
+4. reads the Link Arena hub's help-line signature as its cursor witness and
+   moves one row at a time to Linked Battle;
+5. brings both cores to the saved RAGNAROK team picker before confirming
+   either roster; if FE7 leaves a picker on the exact same screen after the
+   first A, it waits, verifies that screen again, and sends one more A;
+6. waits for both link-ready prompts, starts from side A, selects 1P first,
+   and waits until both cores report five deployed units on the stable map;
+7. probes each core with a single cursor step toward an adjacent unit tile
+   (known arena floor) when possible, restores the cursor, and assigns minimax
+   A to the bridge that actually accepted the 1P opening input.
 
-   The policy reads parsed unit records; it does not interpret the screenshot.
-   The operator uses the screenshot and mGBA `DETAIL` view to verify the actual
-   cursor and menu state.
-4. **Execute with supervision.** The operator/client translates the choice to
-   cursor and menu button presses and posts them to `/v1/action`. Each action
-   contains at most eight presses. Re-observe after every accepted action;
-   never reuse the old observation ID. Check the visible `DETAIL` cursor and
-   menu before confirming. The path helper is geometric and does not verify
-   that the game cursor arrived at the intended unit. The chosen inventory
-   slot also needs to be matched to the actual weapon-menu row.
-5. **Repeat and finish manually.** The operator advances the alternating
-   battle flow, handles transitions and confirmations, and recognizes the
-   result/ranking screens. Ctrl-C stops the API and mGBA process; observations,
-   action records, and screenshots remain in that match's data directory.
+The controller recognizes screens from a small FE7 caption mask plus live
+chapter and roster state. It does not issue a menu input when the current
+screen or selected row is unknown. Setup actions and screen signatures are
+logged in `minimax-autoplay.jsonl`. If an observation ID goes stale, it refreshes
+and retries the input once only when the generation, screen, cursor, phase, and
+roster are unchanged; a turn or state change stops that retry.
 
-The minimax code is a decision aid, not a full arena simulator. It scores
-recognized weapons using estimated hit, damage, critical, weapon triangle,
-doubling/brave attacks, and survival bonuses. Depending on the
-`defender_auto_weapon` option, it either omits a defender-selected counterweapon
-from its score or evaluates the defender's recognized counterweapons and uses
-the worst reply. The verified match used `defender_auto_weapon=True`, so the
-policy did not explicitly score counterattack damage even though FE7 still
-resolved the real battle. This is a one-exchange estimate, not multi-turn game
-search. FE7 resolves the actual forecast, RNG, damage, and winner, so a policy
-choice does not guarantee that a unit survives or wins.
+During FE7's title attract demo, the legacy bridge may report a stale menu
+type and an impossible row. The startup controller ignores that menu label
+only when chapter 0, `start_screen`, and empty rosters agree; it sends a
+bounded START tap and requires the next screenshot to resolve to a recognized
+title or Extras menu before navigating.
 
-## Automation boundary
+The Link Arena opening map can also report a stale `0xE1` menu type and an
+unknown phase byte on this FE7 build. The bridge recognizes it as the map only
+when chapter 65, both five-unit rosters, an unlocked battle map, and an
+in-bounds battle cursor agree. On this arena map, UP from the lower deployed
+row (y=9) reaches the upper row (y=1), and DOWN returns from y=1 to y=9; the
+runner verifies these observed FE7 transitions one press at a time. Horizontal
+cursor movement can skip a tile after its unit falls. The controller uses the
+live roster and HP values to predict the next occupied coordinate and checks
+the observed cursor against it; it will not assume every board coordinate is
+traversable. Named FE7 battle menus remain menus.
 
-| Automated today | Operator still handles |
+When a target is selected, FE7 renders the five-weapon panel while the legacy
+bridge still reports `0xE1:48` and keeps its map lock set. The runner identifies
+the full blue panel and requires exactly one visible cursor wedge before
+accepting its row. The five entries use 16-pixel row spacing; measuring only the
+top 75 pixels clipped the bottom of this panel and made some rows appear one row
+lower. The runner waits for two matching captures before sending a menu input,
+then checks the observed row delta after that single press. It maps rows by
+counting FE7 combat weapons in inventory order, including weapons the minimax
+scorer does not yet model, and skips known gear such as Iron Rune and Delphi
+Shield. An unknown item ID still stops before a menu selection. After each attack,
+it waits for either FE7's player-phase banner or a changed raw phase byte on
+both clients, and requires both clients to return to the arena map with matching
+team/HP/inventory snapshots across four captures and at least three seconds of
+stability. FE7 can publish a settled map to one client before its partner has
+received the latest casualty; the roster barrier prevents the next agent from
+acting on that stale view. Before selecting a target, the controller verifies
+the named live unit is still under the cursor. FE7 removes both chosen fighters
+from the map roster while its weapon panel is open, so the controller treats
+that panel as the next battle step instead of interpreting the temporary roster
+change as a casualty. Chapter-65
+memory alone can look like an unlocked map while the banner is visible, so the
+screen check prevents cursor input during that transition. Some handoffs have
+no banner; the raw phase-byte change covers those. The 60-second transition
+deadline gives FE7's combat animation time to finish; if neither transition
+signal and the map handoff can be verified, autoplay stops for supervision.
+
+After both cores reach the opening map, autoplay:
+
+1. identifies which bridge currently controls the 1P opening turn with one
+   reversible D-pad step; this handles mGBA starting the linked Lua cores in
+   either order; it then detects each bridge's local roster from the occupied
+   near row and records both mappings in `minimax-autoplay.jsonl`;
+2. computes an attacker/defender/weapon decision from a fresh observation;
+3. walks the cursor to a named unit one tile at a time, checking each
+   `bm_cursor` delta;
+4. confirms only while that named live unit is under the verified cursor;
+5. navigates the weapon menu by checked row deltas, using the chosen inventory
+   slot; and
+6. confirms the weapon with a short pulse, recognizes the selected fighter's
+   status card at either screen edge (the left-edge Zephyrus layout is saved
+   in [the evidence folder](link_arena_evidence/selected-unit-status-left-layout.png)),
+   and confirms again to start FE7's attack; then it verifies the phase handoff
+   before choosing the next agent.
+
+The two cores are staged at the team picker before either team confirm starts
+FE7's serial-link setup. This keeps startup synchronized and avoids mGBA
+entering the Link Arena handshake while its partner is still navigating title
+menus. If a boot screen, game state, cursor, menu type, or selected row differs
+from the expected flow, autoplay stops before sending the next input. `/v1/status`
+reports `autoplay.state = "stopped_for_supervision"` with the reason. The loop
+does not trust a single zero-unit observation as a result. Both linked clients
+must show the same terminal counts on unlocked, settled maps with matching
+rosters for at least four paired reads over three seconds. This covers the
+temporary fighter removal in FE7's weapon/battle panels and the delay before a
+casualty reaches the other core. The event log records `terminal_waiting_for_peer`
+and `terminal_roster_confirmed` when relevant. The runner records the winning
+1P/2P agent from FE7's global roster counts and configured player order, but it
+does not parse the result screen's points or ranking table; those still need
+visual review.
+
+## Policy limits and automation boundary
+
+The minimax scorer estimates one exchange from parsed stats and recognized
+weapons. It considers hit, damage, critical, weapon triangle, doubling/brave
+attacks, and survival. With `defender_auto_weapon=True`, it does not explicitly
+score defender counterattack damage. Its combat-stat table covers only a subset
+of FE7 weapons; the controller still counts every known combat-weapon ID when
+mapping inventory slots to Link Arena menu rows, but unmodeled weapons are not
+scored as candidate choices. It is not a multi-turn game search, and FE7's own
+forecast/RNG remains authoritative.
+
+| Automated | Operator still handles |
 | --- | --- |
-| Creates an isolated match folder and copies the ROM and seed save for each side | Starting both Link Arena clients and completing the link/team setup |
-| Launches one linked two-ROM mGBA session and assigns two loopback bridges | Reading the live cursor, menu row, and transition state before confirming |
-| Serves side-token authenticated observe/status/action endpoints | Applying policy choices as safe button presses and alternating turns |
-| Captures screenshots and parsed/raw state; rejects stale actions | Detecting combat end and reading FE7's result/ranking screen |
-| Provides minimax matchup and weapon decision functions | Resetting/replaying a saved state and recording a structured winner |
+| Isolated match folder, ROM/save copies, linked mGBA launch, title/menu setup, link handshake, and 1P-first setup | With no `-AutoMinimax`, operator or external policy chooses and enters turns |
+| Side-token observe/status/action API, stable observations, stale-action rejection | Unsupported or unexpected screens reported by autoplay |
+| Title, Extras, Link Arena, RAGNAROK, link handshake, 1P-first, minimax matchup/weapon selection, verified one-input cursor/menu control, and terminal winner detection | Watching for fail-closed stops and reading the final points/ranking screen |
+| Per-match hashes, screenshots, observations, accepted-action log, and terminal roster evidence | Save-state replay and structured final score parsing |
 
-So the answer to “are matches seamless?” is **no, not yet**. A complete game
-has been played with two minimax policies, but it was supervised. The API has
-no working `settled` signal or terminal-result parser, and the repo has no
-autonomous setup/turn/result loop. One early grouped cursor move overshot its
-target; the operator checked later cursor positions in the live `DETAIL` view.
-
-## Current observation and action contract
-
-An observation currently contains the side, generation, parsed game-state
-fields and units exposed by the Lua bridge, a screenshot, raw game-state/unit
-strings, and a `coherent` flag. `settled` is `null`; menu semantics and terminal
-match state are not decoded into reliable typed fields.
-
-The policy chooses units and weapons from the parsed roster. It does not get an
-engine-verified legal-action catalog, write emulator memory, or send button
-presses itself. The API accepts only that side's bearer token and a bounded list
-of button names tied to the latest observation ID.
-
-## Delivery plan
-
-1. **Save and boot proof — complete.** The isolated XPS conversion opened the
-   RAGNAROK roster in Link Arena.
-2. **Cable and bridge proof — complete.** Two cores reached battle through
-   side-specific loopback bridges and the local API.
-3. **Playable minimax match — complete.** Two independent minimax policies
-   chose matchups and weapons through the API; FE7 produced a 2P win.
-4. **Next improvements.** Add verified cursor/menu decoding, a two-policy
-   driver that re-observes and confirms transitions, automatic turn and result
-   handling, and reset/replay from an emulator checkpoint. These are
-   prerequisites for unattended matches, not part of the current milestone.
-   The early batched cursor path caused one off-policy A Oswin/B Bartre matchup
-   before live cursor verification was added to the operator loop.
-
-## First playable milestone
-
-The first playable milestone is verified. This is a real FE7 Link Arena match,
-not a campaign simulation or a scripted combat replay. The agent policies
-produced matchup and weapon decisions; bounded controller inputs advanced
-FE7's menus and its own battle/result logic. Fully automatic turn and result
-screen orchestration remains future work.
+In autoplay mode, setup is seamless from launching the runner to the first
+battle-map decision. The full unattended path completed on Zephyrus on
+2026-09-28; the captured FE7 ranking screen and 31-exchange run are documented
+in [`LINK_ARENA_MATCH_REPORT.md`](LINK_ARENA_MATCH_REPORT.md). Structured
+result-screen parsing remains future work.
 
 ## Twitch overlay concept
 
-![Generated Link Arena stream-overlay concept with side-by-side game windows, player frames, chat, and metrics](link_arena_evidence/twitch-overlay-concept.png)
+![Link Arena stream overlay with the FE sword insignia and crossed sword motifs](link_arena_evidence/twitch-overlay-concept-v2.png)
 
-This is a visual concept for a future Twitch scene: two transparent game
-capture windows, blue/green player frames, a chat and agent-metrics rail, and a
-match-information footer. It is concept art only; there is no OBS scene,
-browser source, live score/turn feed, or overlay integration in the harness.
+The revised concept removes the “Minimax Showdown” wording and uses the
+livestream sword insignia with crossed-blade and shield details. It keeps the
+side-by-side game windows, blue/green player frames, chat/metrics rail, and
+match footer. This is concept art only: there is no OBS scene, browser source,
+live score/turn feed, or overlay integration yet. The previous draft remains at
+[`twitch-overlay-concept.png`](link_arena_evidence/twitch-overlay-concept.png).
 
 ## Sources
 
 - [GameFAQs FE7 save listings](https://gamefaqs.gamespot.com/gba/468480-fire-emblem/saves)
-- [Internet Archive GameFAQs save archive snapshot](https://archive.org/details/gamefaqs_savegames)
+- [Internet Archive GameFAQs save archive](https://archive.org/details/gamefaqs_savegames)
 - [GameFAQs Link Arena FAQ](https://gamefaqs.gamespot.com/gba/468480-fire-emblem/faqs/31333)
 - [mGBA changes](https://github.com/mgba-emu/mgba/blob/master/CHANGES) and
-  [mGBA SaveConverter](https://github.com/mgba-emu/mgba/blob/master/src/platform/qt/SaveConverter.cpp) and
-  [Qt multiplayer initialization](https://github.com/mgba-emu/mgba/blob/master/src/platform/qt/GBAApp.cpp) and
-  [per-window startup scripting](https://github.com/mgba-emu/mgba/blob/master/src/platform/qt/Window.cpp#L2184-L2193)
+  [mGBA SaveConverter](https://github.com/mgba-emu/mgba/blob/master/src/platform/qt/SaveConverter.cpp)
