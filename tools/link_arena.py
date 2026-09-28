@@ -18,6 +18,7 @@ import socket
 import subprocess
 import sys
 import threading
+import time
 from typing import Any
 from urllib.parse import parse_qs, urlencode, urlsplit
 
@@ -28,8 +29,9 @@ if str(ROOT) not in sys.path:
 from src.link_arena.coordinator import InvalidAction, LinkArenaCoordinator, StaleObservation
 from src.link_arena.bridge import BridgeError
 from src.link_arena.autoplay import MinimaxAutoplay
+from src.link_arena.agents import MinimaxAgent, OpenAICompatibleAgent
 from src.link_arena.stream import LinkArenaStreamState
-from src.link_arena.series import MatchSeries
+from src.link_arena.series import DecisionLedger, MatchSeries
 
 
 DEFAULT_ROM = ROOT / "roms" / "fe7.gba"
@@ -329,7 +331,13 @@ class _RunningMatch:
     closed: bool = False
 
 
-def _start_match(args: argparse.Namespace, *, check_api_port: bool) -> _RunningMatch:
+def _start_match(
+    args: argparse.Namespace,
+    *,
+    check_api_port: bool,
+    decision_ledger: DecisionLedger | None = None,
+    agents: dict[str, MinimaxAgent] | None = None,
+) -> _RunningMatch:
     """Create fresh isolated save copies and start one linked mGBA match."""
     mgba = _find_mgba(args.mgba)
     match_dir, session, tokens = _new_match(args, check_api_port=check_api_port)
@@ -368,6 +376,8 @@ def _start_match(args: argparse.Namespace, *, check_api_port: bool) -> _RunningM
         coordinator = LinkArenaCoordinator(
             session["bridge_ports"], tokens, match_dir, bridges=bridges
         )
+        coordinator.match_id = session["match_id"]
+        coordinator.decision_ledger = decision_ledger
         autoplay = None
         if not args.manual_setup:
             autoplay = MinimaxAutoplay(
@@ -376,10 +386,13 @@ def _start_match(args: argparse.Namespace, *, check_api_port: bool) -> _RunningM
                 play_minimax=args.auto_minimax,
                 poll_interval=args.auto_poll_interval,
                 settle_timeout=args.auto_settle_timeout,
+                decision_ledger=decision_ledger,
+                match_id=session["match_id"],
+                agents=agents,
             )
             autoplay.start()
             if args.auto_minimax:
-                print("Automatic title/setup and minimax armed; the runner will take both clients to the arena map and play.")
+                print("Automatic title/setup and configured policies armed; the runner will take both clients to the arena map and play.")
             else:
                 print("Automatic title/setup armed; agent observations and actions unlock when both clients reach the arena map.")
         else:
@@ -563,7 +576,7 @@ class _ApiHandler(http.server.BaseHTTPRequestHandler):
                                  "autoplay": autoplay.status})
                 return
             if autoplay is not None and autoplay.play_minimax:
-                self._json(409, {"error": "the built-in minimax runner currently owns both sides"})
+                self._json(409, {"error": "the autonomous policy runner currently owns both sides"})
                 return
             length = int(self.headers.get("Content-Length", "0"))
             if not 0 < length <= 8192:
@@ -582,15 +595,48 @@ class _ApiHandler(http.server.BaseHTTPRequestHandler):
 
 
 def start(args: argparse.Namespace) -> int:
-    if args.auto_minimax and args.manual_setup:
-        raise ValueError("--auto-minimax requires the default automatic title and Link Arena setup")
-    if args.continuous and not args.auto_minimax:
-        raise ValueError("--continuous requires --auto-minimax; continuous supervised matches need an external result reporter")
+    agent_specs = {
+        "A": (args.agent_a, args.model_a, args.base_url_a, args.api_key_env_a),
+        "B": (args.agent_b, args.model_b, args.base_url_b, args.api_key_env_b),
+    }
+    hosted_sides = [side for side, spec in agent_specs.items() if spec[0] != "minimax"]
+    auto_policy = args.auto_minimax or bool(hosted_sides)
+    if auto_policy and args.manual_setup:
+        raise ValueError("autonomous policies require the default automatic title and Link Arena setup")
+    if args.continuous and not auto_policy:
+        raise ValueError("--continuous requires --auto-minimax or at least one configured hosted model agent")
     if not 0 <= args.between_matches_seconds <= 600:
         raise ValueError("--between-matches-seconds must be between 0 and 600")
+    args.auto_minimax = auto_policy
 
-    runtime = _start_match(args, check_api_port=True)
+    agents: dict[str, MinimaxAgent] = {}
+    for side, (provider, model, base_url, api_key_env) in agent_specs.items():
+        if provider == "minimax":
+            agents[side] = MinimaxAgent(side)
+            continue
+        if not model:
+            raise ValueError(f"--model-{side.lower()} is required when --agent-{side.lower()} is {provider}")
+        selected_key_env = api_key_env or OpenAICompatibleAgent._PROVIDERS[provider]["api_key_env"]
+        if not os.environ.get(selected_key_env):
+            raise ValueError(
+                f"{side} agent requires credential environment variable {selected_key_env}; "
+                "the value is never written to the decision log"
+            )
+        agents[side] = OpenAICompatibleAgent(
+            side,
+            provider=provider,
+            model=model,
+            base_url=base_url,
+            api_key_env=selected_key_env,
+            timeout_seconds=args.agent_timeout,
+        )
+
     series = MatchSeries(Path(args.data_dir).expanduser().resolve())
+    decision_ledger = DecisionLedger(Path(args.data_dir).expanduser().resolve())
+    runtime = _start_match(
+        args, check_api_port=True, decision_ledger=decision_ledger,
+        agents=agents,
+    )
     server = _ApiServer(("127.0.0.1", args.api_port), runtime.coordinator)
     server.autoplay = runtime.autoplay
     server.series = series
@@ -657,7 +703,10 @@ def start(args: argparse.Namespace) -> int:
                 if delay and stop_event.wait(delay):
                     return
                 try:
-                    next_match = _start_match(args, check_api_port=False)
+                    next_match = _start_match(
+                        args, check_api_port=False, decision_ledger=decision_ledger,
+                        agents=agents,
+                    )
                     break
                 except Exception as exc:
                     print(f"Could not start next Link Arena match (attempt {attempt}/4): {exc}")
@@ -699,8 +748,10 @@ def start(args: argparse.Namespace) -> int:
         print(f"Side A token file: {runtime.match_dir / 'side-a.token'}")
         print(f"Side B token file: {runtime.match_dir / 'side-b.token'}")
         print(f"Persistent series results: {series.path}")
+        print("Seat A/1P policy: " + agents["A"].benchmark_metadata()["name"])
+        print("Seat B/2P policy: " + agents["B"].benchmark_metadata()["name"])
         if args.continuous:
-            print("Continuous mode enabled; a fresh isolated save copy starts after each verified minimax result.")
+            print("Continuous mode enabled; a fresh isolated save copy starts after each verified match result.")
         print("Press Ctrl-C here to stop the API and close this mGBA session.")
         try:
             server.serve_forever(poll_interval=0.5)
@@ -729,9 +780,17 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--api-port", type=int, default=18700, help="loopback agent API port")
     parser.add_argument("--startup-timeout", type=float, default=20.0)
     parser.add_argument("--auto-minimax", action="store_true",
-                        help="automate title/link setup and play both sides with minimax")
+                        help="automate title/link setup and let the configured policies play both sides")
+    for side in ("a", "b"):
+        parser.add_argument(f"--agent-{side}", choices=("minimax", "chutes", "minimax-api"),
+                            default="minimax", help=f"seat {side.upper()} policy (default: minimax)")
+        parser.add_argument(f"--model-{side}", help=f"exact hosted model ID for seat {side.upper()}")
+        parser.add_argument(f"--base-url-{side}", help=f"optional OpenAI-compatible API base URL for seat {side.upper()}")
+        parser.add_argument(f"--api-key-env-{side}", help=f"credential environment variable name for seat {side.upper()}")
+    parser.add_argument("--agent-timeout", type=float, default=120.0,
+                        help="per-call timeout for Chutes/MiniMax hosted policies")
     parser.add_argument("--continuous", action="store_true",
-                        help="after each verified minimax result, restart from a fresh save and keep a persistent series score")
+                        help="after each verified result, restart from a fresh save and keep a persistent series score")
     parser.add_argument("--between-matches-seconds", type=float, default=8.0,
                         help="seconds to display the completed result before starting the next match")
     parser.add_argument("--manual-setup", action="store_true",

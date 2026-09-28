@@ -2,7 +2,7 @@
 
 The Link Arena runner serves a 1920×1080 stream screen from its local API.
 It combines the FE7 battle view, 1P/2P team status, turn and active phase,
-match timer, verified inputs, minimax exchanges, recent agent choices, and a
+match timer, verified inputs, policy exchanges, recent agent choices, and a
 reserved Twitch chat panel. The stream page reads a separate token-free,
 read-only endpoint; it does not use either agent's bearer token.
 
@@ -23,7 +23,11 @@ The same stream screen works for a supervised match; omit `-AutoMinimax` and
 use the same `-TwitchChannel` option. To run an autonomous series, add
 `-AutoMinimax -Continuous`; the match runner reloads fresh copies of the
 prepared save between verified wins and records a persistent series W–L–D
-score. The local URL follows this shape:
+score. Hosted Chutes/MiniMax policies can be supplied with `-AgentA` or
+`-AgentB` plus the matching `-ModelA`/`-ModelB`; the runner starts them only
+when the corresponding key environment variable is present. See
+[`LINK_ARENA.md`](LINK_ARENA.md#stage-and-start-on-zephyrus) for examples. The
+local URL follows this shape:
 
 ```text
 http://127.0.0.1:18700/stream?channel=llmletsplay
@@ -118,17 +122,28 @@ chat URL](https://dev.twitch.tv/docs/embed/chat/)).
 - **Standing / HP / KO** are derived from the FE7 player and NPC rosters. KO
   count is total roster size minus surviving units.
 - **Verified inputs** counts completed controller button pulses recorded by
-  the runner. **Exchanges** counts completed minimax matchup submissions.
-- **Last eval** is the minimax policy's estimated matchup value. It is not a
-  game score, damage total, or win probability.
+  the runner. **Exchanges** counts completed policy matchup submissions.
+- **Last eval** is the minimax policy's estimated matchup value when that
+  policy is in use. Hosted models have no comparable evaluation unless their
+  action contract is extended; blank values are not zero scores.
 - **Recent exchanges** shows each agent's selected attacker, defender, weapon,
-  and policy estimate. Unit IDs are shown because the Link Arena memory bridge
-  does not yet expose localized character names.
+  policy/model label, brief user-visible rationale when supplied, and minimax
+  estimate when available. It does not display provider-private reasoning.
+  Unit IDs are shown because the Link Arena memory bridge does not yet expose
+  localized character names.
 - **Series record** shows 1P and 2P wins, draws, games played, and the latest
   results. Completed outcomes are appended to `series/results.jsonl` in the
   runner data directory, so the record survives process restarts. The runner
   records a result only after both linked clients agree on a stable terminal
   roster. These are match wins, not FE7's numeric Link Arena points table.
+- **Decision history** is persisted in `series/decisions.jsonl`. Policy choices
+  include each side's structured observation and input hash; hosted choices
+  also retain the exact structured prompt input, validated visible completion,
+  rationale, request/model metadata, usage, and latency. Verified button
+  presses, replans, and interrupted decisions link to the choice by ID. Hidden
+  chain-of-thought and provider-only reasoning fields are not collected. Older
+  per-match logs are imported on runner startup. The benchmark draft explains
+  what this trace can and cannot establish.
 - **Match winner** appears when unattended play reaches the runner's verified
   synchronized terminal state. Minimax evaluation remains a policy estimate,
   never a game score.

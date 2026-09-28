@@ -9,10 +9,12 @@ supervision before it sends another input.
 from __future__ import annotations
 
 import json
+import hashlib
 import threading
 import time
+import uuid
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 from .agents import AgentDecision, MinimaxAgent
 from .control import (
@@ -37,6 +39,9 @@ class MinimaxAutoplay:
         poll_interval: float = 0.5,
         settle_timeout: float = 60.0,
         roster_stability_seconds: float = 3.0,
+        decision_ledger: Any | None = None,
+        match_id: str | None = None,
+        agents: Mapping[str, MinimaxAgent] | None = None,
     ):
         self.coordinator = coordinator
         self.match_dir = match_dir
@@ -49,12 +54,31 @@ class MinimaxAutoplay:
             settle_timeout=settle_timeout,
         )
         self.agents = {side: MinimaxAgent(side) for side in ("A", "B")}
+        if agents is not None:
+            for side, agent in agents.items():
+                normalized_side = side.upper()
+                if normalized_side not in self.agents:
+                    raise ValueError(f"unknown Link Arena agent side: {side!r}")
+                if agent.side != normalized_side:
+                    raise ValueError(f"agent assigned to {normalized_side} has side {agent.side}")
+                self.agents[normalized_side] = agent
+        kinds = [agent.benchmark_metadata().get("kind") for agent in self.agents.values()]
+        hosted_count = sum(kind == "hosted_language_model" for kind in kinds)
+        self.stream_mode = "supervised" if not play_minimax else (
+            "llm_duel" if hosted_count == 2 else
+            "mixed_agents" if hosted_count == 1 else
+            "minimax"
+        )
         # mGBA can start either linked Lua VM first, so bridge labels are not
         # a reliable proxy for the 1P/2P controllers.
         self.agent_bridge = {"A": "A", "B": "B"}
         self.stop_event = threading.Event()
         self.thread: threading.Thread | None = None
         self.log_path = match_dir / "minimax-autoplay.jsonl"
+        self.decision_ledger = decision_ledger
+        self.match_id = match_id
+        self._pending_decision_id: str | None = None
+        self._policy_sha256 = self._policy_fingerprint()
         self.status: dict[str, Any] = {"state": "waiting_for_link_arena_map"}
 
     def start(self) -> None:
@@ -72,6 +96,17 @@ class MinimaxAutoplay:
         event = {"timestamp": time.time(), **event}
         with self.log_path.open("a", encoding="utf-8") as stream:
             stream.write(json.dumps(event, sort_keys=True) + "\n")
+        if self.decision_ledger is not None and self.match_id is not None:
+            self.decision_ledger.record(self.match_id, event)
+
+    @staticmethod
+    def _policy_fingerprint() -> str:
+        digest = hashlib.sha256()
+        for filename in ("agents.py", "minimax.py"):
+            path = Path(__file__).with_name(filename)
+            digest.update(filename.encode("utf-8") + b"\0")
+            digest.update(path.read_bytes())
+        return digest.hexdigest()
 
     @staticmethod
     def _unit(agent: MinimaxAgent, observation: dict[str, Any], character_id: int, *, own: bool) -> dict[str, Any]:
@@ -327,7 +362,19 @@ class MinimaxAutoplay:
                 f"agent {agent_side} bridge {bridge_side} is not at an actionable Link Arena map: "
                 f"{_ui(observation)!r}"
             )
-        decision = self.agents[agent_side].choose_matchup(observation)
+        agent = self.agents[agent_side]
+        try:
+            decision = agent.choose_matchup(observation)
+        except Exception as exc:
+            self._log({
+                "type": "policy_call_failed",
+                "side": agent_side,
+                "bridge_side": bridge_side,
+                "policy": agent.benchmark_metadata(),
+                "inference": getattr(agent, "last_call_metadata", {}),
+                "error": str(exc),
+            })
+            raise
         return observation, decision
 
     def _wait_for_turn_boundary(self, *, phase_raw_before: int | None = None) -> None:
@@ -477,15 +524,53 @@ class MinimaxAutoplay:
         for attempt in range(1, 7):
             observation, decision = self._decision(side, bridge_side)
             phase_raw_before = self._phase_raw(observation)
+            decision_id = uuid.uuid4().hex
+            self._pending_decision_id = decision_id
+            self.controller.set_decision_context(decision_id, side)
+            inference_metadata = getattr(agent, "last_call_metadata", None)
+            policy_input = (
+                inference_metadata.get("policy_input")
+                if isinstance(inference_metadata, dict)
+                else None
+            )
+            if not isinstance(policy_input, dict):
+                policy_input = {"own_team": agent.own_team, "units": observation.get("units", [])}
+            policy_input_bytes = json.dumps(
+                policy_input, sort_keys=True, separators=(",", ":"),
+            ).encode("utf-8")
+            policy_metadata = agent.benchmark_metadata()
+            policy_metadata["implementation_sha256"] = self._policy_sha256
+            observation_record = {
+                "observation_id": observation.get("observation_id"),
+                "generation": observation.get("generation"),
+                "ui_state": observation.get("ui_state"),
+                "detail": observation.get("detail"),
+                "game_state": observation.get("game_state"),
+                "units": observation.get("units"),
+                "coherent": observation.get("coherent"),
+                "settled": observation.get("settled"),
+                "screenshot_file": observation.get("screenshot_file"),
+            }
+            self._log({"type": "decision", "decision_id": decision_id,
+                       "side": side, "bridge_side": bridge_side,
+                       "attempt": attempt, "decision": decision.as_dict(),
+                       "observation_id": observation.get("observation_id"),
+                       "generation": observation.get("generation"),
+                       "observation": observation_record,
+                       "policy_input": policy_input,
+                       "policy": policy_metadata,
+                       "inference": inference_metadata,
+                       "seat": "1P" if side == "A" else "2P",
+                       "policy_input_sha256": hashlib.sha256(policy_input_bytes).hexdigest()})
+
+            # Persist the policy choice before any execution-time validation so
+            # a bad or stale selection remains visible in the audit trail.
             actor = self._unit(agent, observation, decision.attacker_id, own=True)
             target = self._unit(agent, observation, decision.defender_id, own=False)
             if not self._unit_is_live(target):
-                raise UnsafeScreen(f"minimax selected fallen defender {decision.defender_id}")
+                raise UnsafeScreen(f"agent selected fallen defender {decision.defender_id}")
             actor_pos = tuple(int(part) for part in actor["position"])
             target_pos = tuple(int(part) for part in target["position"])
-            self._log({"type": "decision", "side": side, "bridge_side": bridge_side,
-                       "attempt": attempt, "decision": decision.as_dict(),
-                       "actor_position": actor_pos, "target_position": target_pos})
 
             self.controller.move_cursor_to(bridge_side, actor_pos)
             actor_selected = self.controller.confirm_unit_at_cursor(
@@ -498,14 +583,20 @@ class MinimaxAutoplay:
             try:
                 target = self._unit(agent, actor_selected, decision.defender_id, own=False)
             except UnsafeScreen:
-                self._log({"type": "decision_replanned", "side": side,
+                self._log({"type": "decision_replanned", "decision_id": decision_id,
+                           "side": side,
                            "attempt": attempt, "stage": "after_actor_selection",
                            "reason": "defender disappeared from live roster"})
+                self.controller.set_decision_context(None)
+                self._pending_decision_id = None
                 continue
             if not self._unit_is_live(target):
-                self._log({"type": "decision_replanned", "side": side,
+                self._log({"type": "decision_replanned", "decision_id": decision_id,
+                           "side": side,
                            "attempt": attempt, "stage": "after_actor_selection",
                            "reason": "defender has zero HP"})
+                self.controller.set_decision_context(None)
+                self._pending_decision_id = None
                 continue
             target_pos = tuple(int(part) for part in target["position"])
 
@@ -530,9 +621,12 @@ class MinimaxAutoplay:
                 except UnsafeScreen:
                     target_missing = True
                 if ArenaSetup.is_arena_map(latest) and (target_missing or not target_live):
-                    self._log({"type": "decision_replanned", "side": side,
+                    self._log({"type": "decision_replanned", "decision_id": decision_id,
+                               "side": side,
                                "attempt": attempt, "stage": "target_confirmation",
                                "reason": "defender disappeared before confirmation"})
+                    self.controller.set_decision_context(None)
+                    self._pending_decision_id = None
                     continue
                 raise
 
@@ -595,13 +689,19 @@ class MinimaxAutoplay:
                 "weapon selection did not lead to a recognized battle gate: "
                 f"{forecast_ui!r}"
             )
-        self._log({"type": "exchange_submitted", "side": side, "bridge_side": bridge_side,
+        self._log({"type": "exchange_submitted", "decision_id": decision_id,
+                   "side": side, "bridge_side": bridge_side,
                    "decision": decision.as_dict(), "after_ui_state": _ui(result),
                    "generation": result.get("generation")})
+        self.controller.set_decision_context(None)
+        self._pending_decision_id = None
         return result, phase_raw_before
 
     def run(self) -> None:
-        self._log({"type": "runner_started", "play_minimax": self.play_minimax})
+        self._log({"type": "runner_started", "play_minimax": self.play_minimax,
+                   "stream_mode": self.stream_mode,
+                   "policies": {side: agent.benchmark_metadata()
+                                for side, agent in self.agents.items()}})
         setup = ArenaSetup(
             self.coordinator,
             self.controller,
@@ -658,7 +758,18 @@ class MinimaxAutoplay:
                 return
             except Exception as exc:
                 self.status = {"state": "stopped_for_supervision", "error": str(exc)}
-                self._log({"type": "autoplay_stopped", "error": str(exc)})
+                try:
+                    if self._pending_decision_id is not None:
+                        self._log({"type": "decision_interrupted",
+                                   "decision_id": self._pending_decision_id,
+                                   "reason": str(exc)})
+                    self.controller.set_decision_context(None)
+                    self._pending_decision_id = None
+                    self._log({"type": "autoplay_stopped", "error": str(exc)})
+                except OSError:
+                    # A storage failure is still fail-closed: no further input
+                    # is sent after this supervision stop.
+                    pass
                 return
         self.status = {"state": "stopped"}
         self._log({"type": "autoplay_stopped_by_request"})

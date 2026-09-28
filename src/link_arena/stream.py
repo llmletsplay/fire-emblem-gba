@@ -52,6 +52,24 @@ class LinkArenaStreamState:
         self._exchange_counts = {"A": 0, "B": 0}
         self._score_totals = {"A": 0.0, "B": 0.0}
         self._recent: list[dict[str, Any]] = []
+        self._agent_labels = self._labels_from_autoplay(autoplay)
+
+    @staticmethod
+    def _labels_from_autoplay(autoplay: Any | None) -> dict[str, str]:
+        labels: dict[str, str] = {}
+        if autoplay is not None and not getattr(autoplay, "play_minimax", False):
+            return {"A": "External agent", "B": "External agent"}
+        agents = getattr(autoplay, "agents", {})
+        if not isinstance(agents, dict):
+            return labels
+        for side, agent in agents.items():
+            metadata = agent.benchmark_metadata() if hasattr(agent, "benchmark_metadata") else {}
+            if metadata.get("kind") == "hosted_language_model":
+                label = f"{metadata.get('provider', 'model')} · {metadata.get('model_requested', 'unknown')}"
+            else:
+                label = "Depth-two minimax"
+            labels[side] = label
+        return labels
 
     def _consume_events(self, key: str, path: Path, *, kind: str) -> None:
         try:
@@ -97,6 +115,8 @@ class LinkArenaStreamState:
                     "defender_id": decision.get("defender_id"),
                     "weapon": decision.get("weapon_name", "Unknown weapon"),
                     "evaluation": value,
+                    "rationale": decision.get("rationale"),
+                    "agent": self._agent_labels.get(side, "Agent"),
                     "timestamp": event.get("timestamp"),
                 })
                 self._recent = self._recent[-8:]
@@ -200,7 +220,13 @@ class LinkArenaStreamState:
                 "match": {
                     "id": self.match_id,
                     "elapsed_seconds": elapsed,
-                    "mode": "minimax" if getattr(self.autoplay, "play_minimax", False) else "supervised",
+                    "mode": getattr(self.autoplay, "stream_mode", None) or (
+                        "minimax" if getattr(self.autoplay, "play_minimax", False) else "supervised"
+                    ),
+                    "agents": {
+                        "1P": self._agent_labels.get("A", "External agent"),
+                        "2P": self._agent_labels.get("B", "External agent"),
+                    },
                     "runner_state": autoplay_status.get("state", "ready"),
                     "runner_stage": autoplay_status.get("stage"),
                     "runner_error": autoplay_status.get("error"),

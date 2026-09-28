@@ -85,14 +85,19 @@ function renderRecent(items) {
     const card = document.createElement("article");
     card.className = `exchange-item side-${event.side === "B" ? "B" : "A"}`;
     const heading = document.createElement("b");
-    heading.textContent = event.side === "A" ? "1P · AGENT A" : "2P · AGENT B";
+    heading.textContent = `${event.side === "A" ? "1P" : "2P"} · ${event.agent || "AGENT"}`;
+    heading.title = heading.textContent;
     const matchup = document.createElement("p");
     matchup.textContent = `${formatUnit(event.attacker_id)} → ${formatUnit(event.defender_id)}`;
     matchup.title = matchup.textContent;
     const weapon = document.createElement("small");
     weapon.textContent = `${event.weapon || "Unknown weapon"}${Number.isFinite(event.evaluation) ? ` · EV ${event.evaluation.toFixed(1)}` : ""}`;
     weapon.title = weapon.textContent;
-    card.append(heading, matchup, weapon);
+    const rationale = document.createElement("small");
+    rationale.className = "exchange-rationale";
+    rationale.textContent = event.rationale || "";
+    rationale.title = event.rationale || "";
+    card.append(heading, matchup, weapon, rationale);
     list.append(card);
   }
   const latest = recent[0];
@@ -125,7 +130,7 @@ function renderSeries(series) {
 function runnerLabel(match) {
   const state = match?.runner_state || "starting";
   if (state === "complete") return match.winner ? `${match.winner} VICTORY` : "MATCH COMPLETE";
-  if (state === "playing") return "LIVE · MINIMAX";
+  if (state === "playing") return `LIVE · ${match.mode === "llm_duel" ? "LLM DUEL" : match.mode === "mixed_agents" ? "MODEL MATCH" : "MINIMAX"}`;
   if (state === "ready") return "READY · SUPERVISED";
   if (state === "stopped_for_supervision") return "SUPERVISOR NEEDED";
   if (state === "stopped") return "RUNNER STOPPED";
@@ -138,7 +143,11 @@ function render(data) {
   const game = data.game || {};
   const teams = data.teams || {};
   const metrics = data.metrics || {};
+  const agents = match.agents || {};
   renderSeries(data.series);
+  text("agent-labels", `${agents["1P"] || "1P"} VS ${agents["2P"] || "2P"}`);
+  const agentLabels = $("agent-labels");
+  if (agentLabels) agentLabels.title = `${agents["1P"] || "1P"} vs ${agents["2P"] || "2P"}`;
   const turn = Number.isInteger(game.turn) && game.turn > 0 ? game.turn : null;
   const isOnline = game.coherent;
   const dot = document.querySelector(".live-dot");
@@ -148,7 +157,10 @@ function render(data) {
   text("elapsed", formatTime(match.elapsed_seconds));
   text("screen-status", isOnline ? "LINKED · FRAME SYNCED" : "WAITING FOR STABLE LINK");
   text("data-health", isOnline ? "BRIDGES SYNCED" : "SYNCING CORES");
-  text("footer-mode", match.mode === "minimax" ? "MINIMAX DUEL" : "SUPERVISED MATCH");
+  const modeLabel = match.mode === "llm_duel" ? "LLM DUEL"
+    : match.mode === "mixed_agents" ? "MODEL VS POLICY"
+      : match.mode === "minimax" ? "MINIMAX DUEL" : "SUPERVISED MATCH";
+  text("footer-mode", modeLabel);
   text("footer-turn", turn);
   text("footer-phase", game.phase_label || "LINK SETUP");
   text("turn-label", turn !== null
