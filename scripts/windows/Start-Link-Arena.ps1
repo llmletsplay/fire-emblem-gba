@@ -34,6 +34,8 @@ param(
     [ValidateRange(1, 600)]
     [double]$AgentTimeout = 120,
     [switch]$Continuous,
+    [switch]$AlternateAgentSeats,
+    [int]$SeatOrderSeed = 0,
     [switch]$ManualSetup,
     [ValidateRange(0.05, 30)]
     [double]$AutoPollInterval = 0.5,
@@ -127,6 +129,10 @@ if ($AgentA -ne 'minimax' -or $AgentB -ne 'minimax') { $Arguments += @('--agent-
 if ($Continuous) {
     $Arguments += '--continuous'
     $Arguments += @('--between-matches-seconds', $BetweenMatchesSeconds)
+}
+if ($AlternateAgentSeats) {
+    $Arguments += '--alternate-agent-seats'
+    $Arguments += @('--seat-order-seed', $SeatOrderSeed)
 }
 if ($ManualSetup) { $Arguments += '--manual-setup' }
 $Arguments += @('--auto-poll-interval', $AutoPollInterval, '--auto-settle-timeout', $AutoSettleTimeout)

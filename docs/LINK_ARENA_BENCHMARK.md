@@ -103,8 +103,8 @@ decision metadata. MiniMax M3.1 requires an explicit `reasoning_effort` from
 `low`, `medium`, `high`, `xhigh`, or `max`; the CLI rejects M3.1 without it.
 M3.1 cannot disable thinking. M3 accepts `adaptive` or `disabled`; M2 models
 cannot effectively disable thinking, so this runner rejects that misleading
-setting. These controls can be frozen per seat with `--minimax-thinking-a/b`
-and `--minimax-reasoning-effort-a/b`. The per-seat
+setting. These controls can be frozen per configured policy slot with
+`--minimax-thinking-a/b` and `--minimax-reasoning-effort-a/b`. The per-slot
 `--max-completion-tokens-a/b` ceiling is also stored with the request. The
 adapter captures only the constrained completion and brief rationale. That
 rationale is an output supplied by the model; it is not a faithful or
@@ -181,11 +181,23 @@ with the source hash.
 Use a frozen ROM hash, seed-save hash, emulator version, bridge/runtime commit,
 team roster, and rules/settings manifest. The seed save is the current prepared
 RAGNAROK roster; it is not a representative sample of all FE7 units or
-strategies. Every match should begin from an isolated copy. Randomize which
-policy receives 1P and 2P, and use paired seat-swapped blocks for each
-initialization condition. If FE7's RNG state cannot be reliably reset or
-observed, record that limitation, randomize run order, and do not call nominally
-identical launches deterministic replays.
+strategies. Every match should begin from an isolated copy. The runner now has
+`--alternate-agent-seats` for continuous runs. It groups completed games into
+two-match blocks, chooses the first A/B-to-1P/2P orientation by SHA-256 of the
+frozen `--seat-order-seed` and block index, then reverses policy slots for the
+second match. The next orientation is derived from the persisted verified
+game count, so a runner restart does not reset the schedule. Each
+`session.json` records the schedule version, seed, block, match-in-block,
+whether slots were swapped, and the model/policy metadata assigned to each
+runner side. Use dedicated data directories for each frozen model pairing.
+Before the first match in a hosted or seat-balanced run, the runner checks
+prior session manifests and refuses to mix different models, settings, ROM/save
+hashes, seat-schedule modes, or seeds in that data directory.
+This controls seat allocation; it does not reset or pair FE7's combat RNG. If
+the RNG state cannot be reliably reset or observed, record that limitation,
+randomize run order, and do not call nominally identical launches deterministic
+replays. Incomplete games remain excluded from the completed-game ordinal and
+must be reported separately.
 
 Run all agents in a round-robin schedule against common baselines, rather than
 only comparing a model to itself. Freeze prompt, model ID, provider, sampling
@@ -440,6 +452,28 @@ coverage remains incomplete. By 21:58 UTC, game sixteen
 (`20260928T215710Z-b02656`) had automatically entered `start_link_battle`
 setup under the same local-minimax configuration.
 
+By 22:16:57 UTC, game sixteen had completed as another 2P survivor win and
+produced the fourth paired official FE7 score: 2P 576–288 1P. Both bridges
+agreed across two stable reads, the screen winner matched the terminal roster,
+and both layouts were standard. The screen hashes are
+`aece3085f2c6f04e22cbb80cf58bfb1c2cfcbb9dbaff440a06e653acc36ace01` and
+`13756396d40430cd08ea230306b381c850c94b8dcc239b1d27cc5c65fe54ab0e`. The
+series had sixteen games (1P 5 wins, 2P 11), four scored games, and cumulative
+FE7 points 1P 1,440 / 2P 2,016. Game seventeen
+(`20260928T221409Z-505f8b`) had started automatically; at the capture it was
+on player phase, turn 1, with 4/5 and 5/5 units alive. These remain exploratory
+fixed-seat minimax results, not hosted-model evaluations or confirmatory data.
+
+The 22:16:57 UTC decision-ledger audit found 6,456 valid events across 37
+matches: 1,090 decisions, 1,072 submitted exchanges, and 4,293 verified button
+actions. All decisions remained `local/unknown` minimax decisions; the audit
+found zero hosted rationales and zero provider-private reasoning fields. It
+also found no duplicate IDs, hash mismatches, missing common fields, unknown
+event types, or unlinked actions/exchanges. The same preserved malformed
+39-byte legacy line 2010 remains, so the audit still exits nonzero; no source
+line was rewritten. The live 24/7 stream is therefore gathering controller
+and minimax benchmark traces, but not LLM thoughts or rationales yet.
+
 - [x] Calibrate the fail-closed reader against archived and live final-result
   screens and reject four captured intermediate bonus panels. The standard
   layout and 12-second paired-read window have three successful live scores.
@@ -456,8 +490,10 @@ setup under the same local-minimax configuration.
 - [ ] Freeze provider reasoning/thinking configuration as an explicit study
   condition before hosted evaluation; the adapter excludes private reasoning
   payloads and records only the validated visible action/rationale.
-- [ ] Freeze team/save manifest; characterize side advantage and RNG reset
-  behavior; decide paired seeds/seat swaps.
+- [x] Implement deterministic randomized seat-swapped pairs for continuous
+  runs and persist assignments with policy metadata in each session manifest.
+- [ ] Freeze the seed and team/save manifest for each study run; characterize
+  side advantage and RNG reset behavior. Seat pairing does not control FE7 RNG.
 - [ ] Run a pilot, estimate variance/latency/cost, perform prospective power or
   precision analysis, then preregister confirmatory hypotheses and exclusions.
 - [ ] Create an analysis script that checks ledger consistency, produces

@@ -7,6 +7,7 @@ import argparse
 import copy
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import hashlib
 import http.server
 import json
 import os
@@ -42,6 +43,116 @@ def _twitch_channel(value: str) -> str:
     if not re.fullmatch(r"[A-Za-z0-9_]{1,25}", value):
         raise argparse.ArgumentTypeError("Twitch channel must be a channel handle (letters, digits, underscore)")
     return value.lower()
+
+
+def _seat_assignment_for(
+    match_ordinal: int, *, seed: int, alternate: bool,
+) -> dict[str, Any]:
+    """Return a restart-stable policy-slot assignment for one completed-game ordinal."""
+    if match_ordinal < 1:
+        raise ValueError("match ordinal must be positive")
+    pair_block = (match_ordinal - 1) // 2
+    match_in_pair = (match_ordinal - 1) % 2 + 1
+    first_orientation_swapped = bool(
+        hashlib.sha256(
+            f"fe7-link-arena-seat-order-v1:{seed}:{pair_block}".encode("ascii")
+        ).digest()[0] & 1
+    )
+    swapped = (first_orientation_swapped ^ (match_in_pair == 2)) if alternate else False
+    return {
+        "policy": (
+            "deterministic_randomized_seat_swapped_pairs_v1"
+            if alternate else "fixed_policy_slots_v1"
+        ),
+        "seed": seed if alternate else None,
+        "match_ordinal": match_ordinal,
+        "pair_block": pair_block + 1 if alternate else None,
+        "match_in_pair": match_in_pair if alternate else None,
+        "first_orientation_swapped": first_orientation_swapped if alternate else None,
+        "seat_swapped": swapped,
+        "policy_slot_by_seat": {"A": "B", "B": "A"} if swapped else {"A": "A", "B": "B"},
+    }
+
+
+def _policy_metadata_by_slot(
+    agents: dict[str, MinimaxAgent], assignment: dict[str, Any],
+) -> dict[str, dict[str, Any]]:
+    metadata_by_slot: dict[str, dict[str, Any]] = {}
+    for seat, slot in assignment["policy_slot_by_seat"].items():
+        metadata = agents[seat].benchmark_metadata()
+        metadata.pop("own_team", None)
+        metadata_by_slot[slot] = metadata
+    return metadata_by_slot
+
+
+def _validate_frozen_series(
+    data_dir: Path,
+    *,
+    agents: dict[str, MinimaxAgent],
+    assignment: dict[str, Any],
+    rom_sha256: str,
+    save_sha256: str,
+    games_played: int,
+) -> None:
+    """Reject silent condition/seat-schedule changes within a study directory."""
+    session_paths = sorted(data_dir.glob("*/session.json"))
+    if games_played and not session_paths:
+        raise ValueError(
+            "this study data directory has prior results but no match manifests; "
+            "use a dedicated empty --data-dir"
+        )
+    expected_policies = _policy_metadata_by_slot(agents, assignment)
+    for path in session_paths:
+        try:
+            previous = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise ValueError(f"cannot validate prior study manifest {path}: {exc}") from None
+        if not isinstance(previous, dict):
+            raise ValueError(f"prior study manifest is not a JSON object: {path}")
+        previous_assignment = previous.get("seat_assignment")
+        if not isinstance(previous_assignment, dict):
+            raise ValueError(
+                f"prior match {previous.get('match_id', path.parent.name)} has no frozen "
+                "seat assignment; use a dedicated --data-dir"
+            )
+        ordinal = previous_assignment.get("match_ordinal")
+        if isinstance(ordinal, bool) or not isinstance(ordinal, int):
+            raise ValueError(f"prior match has an invalid seat-schedule ordinal: {path}")
+        expected_assignment = _seat_assignment_for(
+            ordinal,
+            seed=int(assignment["seed"] or 0),
+            alternate=assignment["policy"] == "deterministic_randomized_seat_swapped_pairs_v1",
+        )
+        if previous_assignment != expected_assignment:
+            raise ValueError(
+                f"prior match {previous.get('match_id', path.parent.name)} uses a different "
+                "seat schedule or seed; use a dedicated --data-dir"
+            )
+        if previous.get("rom_sha256") != rom_sha256 or previous.get("seed_save_sha256") != save_sha256:
+            raise ValueError(
+                f"prior match {previous.get('match_id', path.parent.name)} uses a different ROM or save; "
+                "use a dedicated --data-dir"
+            )
+        previous_agents = previous.get("agents_by_seat")
+        if not isinstance(previous_agents, dict):
+            raise ValueError(
+                f"prior match {previous.get('match_id', path.parent.name)} has no policy manifest; "
+                "use a dedicated --data-dir"
+            )
+        policies_by_slot: dict[str, dict[str, Any]] = {}
+        for seat, policy in previous_agents.items():
+            if not isinstance(policy, dict):
+                continue
+            slot = policy.get("policy_slot")
+            if slot not in {"A", "B"}:
+                continue
+            clean_policy = {key: value for key, value in policy.items() if key != "policy_slot"}
+            policies_by_slot[slot] = clean_policy
+        if policies_by_slot != expected_policies:
+            raise ValueError(
+                f"prior match {previous.get('match_id', path.parent.name)} used different policy settings; "
+                "use a dedicated --data-dir"
+            )
 
 
 def _default_data_dir() -> Path:
@@ -337,10 +448,27 @@ def _start_match(
     check_api_port: bool,
     decision_ledger: DecisionLedger | None = None,
     agents: dict[str, MinimaxAgent] | None = None,
+    seat_assignment: dict[str, Any] | None = None,
 ) -> _RunningMatch:
     """Create fresh isolated save copies and start one linked mGBA match."""
     mgba = _find_mgba(args.mgba)
     match_dir, session, tokens = _new_match(args, check_api_port=check_api_port)
+    if agents is not None:
+        policy_slots = (seat_assignment or {}).get("policy_slot_by_seat", {})
+        session["agents_by_seat"] = {}
+        for side, agent in agents.items():
+            metadata = agent.benchmark_metadata()
+            # The autoplay bridge probe can rotate local rosters after this
+            # manifest is written; decision events record the actual team.
+            metadata.pop("own_team", None)
+            session["agents_by_seat"][side] = {
+                "policy_slot": policy_slots.get(side, side), **metadata,
+            }
+    if seat_assignment is not None:
+        session["seat_assignment"] = seat_assignment
+    (match_dir / "session.json").write_text(
+        json.dumps(session, indent=2) + "\n", encoding="utf-8",
+    )
     side_a = match_dir / "side-a" / "FE7.gba"
     side_b = match_dir / "side-b" / "FE7.gba"
     bridge_path = match_dir / "link_arena_socketserver.lua"
@@ -595,58 +723,81 @@ class _ApiHandler(http.server.BaseHTTPRequestHandler):
 
 
 def start(args: argparse.Namespace) -> int:
-    agent_specs = {
+    policy_specs = {
         "A": (args.agent_a, args.model_a, args.base_url_a, args.api_key_env_a),
         "B": (args.agent_b, args.model_b, args.base_url_b, args.api_key_env_b),
     }
-    hosted_sides = [side for side, spec in agent_specs.items() if spec[0] != "minimax"]
-    auto_policy = args.auto_minimax or bool(hosted_sides)
+    hosted_slots = [slot for slot, spec in policy_specs.items() if spec[0] != "minimax"]
+    auto_policy = args.auto_minimax or bool(hosted_slots)
     if auto_policy and args.manual_setup:
         raise ValueError("autonomous policies require the default automatic title and Link Arena setup")
     if args.continuous and not auto_policy:
         raise ValueError("--continuous requires --auto-minimax or at least one configured hosted model agent")
+    if args.alternate_agent_seats and not args.continuous:
+        raise ValueError("--alternate-agent-seats requires --continuous so each paired seat swap can run")
     if not 0 <= args.between_matches_seconds <= 600:
         raise ValueError("--between-matches-seconds must be between 0 and 600")
     args.auto_minimax = auto_policy
 
-    agents: dict[str, MinimaxAgent] = {}
-    for side, (provider, model, base_url, api_key_env) in agent_specs.items():
-        minimax_thinking = getattr(args, f"minimax_thinking_{side.lower()}")
-        minimax_reasoning_effort = getattr(args, f"minimax_reasoning_effort_{side.lower()}")
-        if provider != "minimax-api" and (
-            minimax_thinking is not None or minimax_reasoning_effort is not None
-        ):
-            raise ValueError(
-                f"MiniMax reasoning options for seat {side} require --agent-{side.lower()} minimax-api"
-            )
-        if provider == "minimax":
-            agents[side] = MinimaxAgent(side)
-            continue
-        if not model:
-            raise ValueError(f"--model-{side.lower()} is required when --agent-{side.lower()} is {provider}")
-        selected_key_env = api_key_env or OpenAICompatibleAgent._PROVIDERS[provider]["api_key_env"]
-        if not os.environ.get(selected_key_env):
-            raise ValueError(
-                f"{side} agent requires credential environment variable {selected_key_env}; "
-                "the value is never written to the decision log"
-            )
-        agents[side] = OpenAICompatibleAgent(
-            side,
-            provider=provider,
-            model=model,
-            base_url=base_url,
-            api_key_env=selected_key_env,
-            timeout_seconds=args.agent_timeout,
-            max_completion_tokens=getattr(args, f"max_completion_tokens_{side.lower()}"),
-            minimax_thinking=minimax_thinking,
-            minimax_reasoning_effort=minimax_reasoning_effort,
-        )
-
     series = MatchSeries(Path(args.data_dir).expanduser().resolve())
     decision_ledger = DecisionLedger(Path(args.data_dir).expanduser().resolve())
+
+    def build_agents(assignment: dict[str, Any]) -> dict[str, MinimaxAgent]:
+        configured: dict[str, MinimaxAgent] = {}
+        for seat, slot in assignment["policy_slot_by_seat"].items():
+            provider, model, base_url, api_key_env = policy_specs[slot]
+            minimax_thinking = getattr(args, f"minimax_thinking_{slot.lower()}")
+            minimax_reasoning_effort = getattr(args, f"minimax_reasoning_effort_{slot.lower()}")
+            if provider != "minimax-api" and (
+                minimax_thinking is not None or minimax_reasoning_effort is not None
+            ):
+                raise ValueError(
+                    f"MiniMax reasoning options for policy slot {slot} require "
+                    f"--agent-{slot.lower()} minimax-api"
+                )
+            if provider == "minimax":
+                configured[seat] = MinimaxAgent(seat)
+                continue
+            if not model:
+                raise ValueError(f"--model-{slot.lower()} is required when --agent-{slot.lower()} is {provider}")
+            selected_key_env = api_key_env or OpenAICompatibleAgent._PROVIDERS[provider]["api_key_env"]
+            if not os.environ.get(selected_key_env):
+                raise ValueError(
+                    f"policy slot {slot} requires credential environment variable {selected_key_env}; "
+                    "the value is never written to the decision log"
+                )
+            configured[seat] = OpenAICompatibleAgent(
+                seat,
+                provider=provider,
+                model=model,
+                base_url=base_url,
+                api_key_env=selected_key_env,
+                timeout_seconds=args.agent_timeout,
+                max_completion_tokens=getattr(args, f"max_completion_tokens_{slot.lower()}"),
+                minimax_thinking=minimax_thinking,
+                minimax_reasoning_effort=minimax_reasoning_effort,
+            )
+        return configured
+
+    first_assignment = _seat_assignment_for(
+        series.snapshot()["games_played"] + 1,
+        seed=args.seat_order_seed,
+        alternate=args.alternate_agent_seats,
+    )
+    agents = build_agents(first_assignment)
+    if hosted_slots or args.alternate_agent_seats:
+        data_dir = Path(args.data_dir).expanduser().resolve()
+        _validate_frozen_series(
+            data_dir,
+            agents=agents,
+            assignment=first_assignment,
+            rom_sha256=_sha256(Path(args.rom).expanduser().resolve()),
+            save_sha256=_sha256(Path(args.save).expanduser().resolve()),
+            games_played=series.snapshot()["games_played"],
+        )
     runtime = _start_match(
         args, check_api_port=True, decision_ledger=decision_ledger,
-        agents=agents,
+        agents=agents, seat_assignment=first_assignment,
     )
     server = _ApiServer(("127.0.0.1", args.api_port), runtime.coordinator)
     server.autoplay = runtime.autoplay
@@ -715,9 +866,15 @@ def start(args: argparse.Namespace) -> int:
                 if delay and stop_event.wait(delay):
                     return
                 try:
+                    next_assignment = _seat_assignment_for(
+                        series.snapshot()["games_played"] + 1,
+                        seed=args.seat_order_seed,
+                        alternate=args.alternate_agent_seats,
+                    )
+                    next_agents = build_agents(next_assignment)
                     next_match = _start_match(
                         args, check_api_port=False, decision_ledger=decision_ledger,
-                        agents=agents,
+                        agents=next_agents, seat_assignment=next_assignment,
                     )
                     break
                 except Exception as exc:
@@ -816,6 +973,10 @@ def build_parser() -> argparse.ArgumentParser:
                         help="per-call timeout for Chutes/MiniMax hosted policies")
     parser.add_argument("--continuous", action="store_true",
                         help="after each verified result, restart from a fresh save and keep a persistent series score")
+    parser.add_argument("--alternate-agent-seats", action="store_true",
+                        help="run deterministic paired matches with the two configured policy slots swapping physical seats")
+    parser.add_argument("--seat-order-seed", type=int, default=0,
+                        help="seed used to choose each seat-swapped pair's first orientation (default: 0)")
     parser.add_argument("--between-matches-seconds", type=float, default=8.0,
                         help="seconds to display the completed result before starting the next match")
     parser.add_argument("--manual-setup", action="store_true",

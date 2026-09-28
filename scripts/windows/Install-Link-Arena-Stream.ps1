@@ -27,6 +27,8 @@ param(
     [int]$MaxCompletionTokensB = 2048,
     [ValidateRange(1, 600)]
     [double]$AgentTimeout = 120,
+    [switch]$AlternateAgentSeats,
+    [int]$SeatOrderSeed = 0,
     [switch]$RestartNow
 )
 
@@ -122,6 +124,9 @@ $runnerArgumentParts = @(
     '-AgentB', $AgentB, '-MaxCompletionTokensB', "$MaxCompletionTokensB",
     '-AgentTimeout', "$AgentTimeout"
 )
+if ($AlternateAgentSeats) {
+    $runnerArgumentParts += @('-AlternateAgentSeats', '-SeatOrderSeed', "$SeatOrderSeed")
+}
 if ($ModelA) { $runnerArgumentParts += @('-ModelA', ('"{0}"' -f $ModelA)) }
 if ($MinimaxThinkingA) { $runnerArgumentParts += @('-MinimaxThinkingA', $MinimaxThinkingA) }
 if ($MinimaxReasoningEffortA) { $runnerArgumentParts += @('-MinimaxReasoningEffortA', $MinimaxReasoningEffortA) }
