@@ -309,11 +309,17 @@ result-screen parsing remains future work.
 
 ![Link Arena stream overlay with the FE sword insignia and crossed sword motifs](link_arena_evidence/twitch-overlay-concept-v2.png)
 
-The revised concept removes the “Minimax Showdown” wording and uses the
-livestream sword insignia with crossed-blade and shield details. It keeps the
-side-by-side game windows, blue/green player frames, chat/metrics rail, and
-match footer. This is concept art only: there is no OBS scene, browser source,
-live score/turn feed, or overlay integration yet. The previous draft remains at
+The runnable stream screen uses the livestream sword insignia, gold/navy FE7
+framing, and 1P blue / 2P green team panels. It shows the game feed, current
+phase and turn, living units and aggregate HP, knockouts, runner health,
+verified input counts, completed exchanges, recent matchup/weapon decisions,
+and minimax policy evaluation. The evaluation is labelled as a policy estimate;
+it is not FE7's official points score.
+
+See [the stream and OBS setup guide](LINK_ARENA_STREAM.md) for the overlay URL,
+Twitch chat source, smooth capture option, and scene setup. The runner serves
+the overlay and a token-free, read-only metrics feed on its loopback API port.
+The previous static draft remains at
 [`twitch-overlay-concept.png`](link_arena_evidence/twitch-overlay-concept.png).
 
 ## Sources

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Prepare an isolated Link Arena work folder on Zephyrus. This only copies the
-# FE7 ROM into the lab folder; it does not launch mGBA or touch the campaign save.
+# Stage the isolated Link Arena runner and OBS overlay on Zephyrus. This does
+# not launch mGBA or read/write the campaign save.
 set -euo pipefail
 
 REMOTE="${ZEPHYRUS_HOST:-zephyrus.thomasjvu.com}"
@@ -16,7 +16,8 @@ if [[ ! -f "$XPS" ]]; then
 fi
 
 echo '== create isolated runner folders on Zephyrus =='
-ssh "$REMOTE" "cmd /c \"if not exist $REMOTE_ROOT\\tools mkdir $REMOTE_ROOT\\tools & if not exist $REMOTE_ROOT\\src\\link_arena mkdir $REMOTE_ROOT\\src\\link_arena & if not exist $REMOTE_ROOT\\lua mkdir $REMOTE_ROOT\\lua & if not exist $REMOTE_ROOT\\scripts\\windows mkdir $REMOTE_ROOT\\scripts\\windows & if not exist $REMOTE_ROOT\\roms mkdir $REMOTE_ROOT\\roms\""
+ssh "$REMOTE" "cmd /c \"if not exist $REMOTE_ROOT\\tools mkdir $REMOTE_ROOT\\tools & if not exist $REMOTE_ROOT\\src\\link_arena mkdir $REMOTE_ROOT\\src\\link_arena & if not exist $REMOTE_ROOT\\src\\link_arena\\stream_overlay mkdir $REMOTE_ROOT\\src\\link_arena\\stream_overlay & if not exist $REMOTE_ROOT\\lua mkdir $REMOTE_ROOT\\lua & if not exist $REMOTE_ROOT\\scripts\\windows mkdir $REMOTE_ROOT\\scripts\\windows & if not exist $REMOTE_ROOT\\roms mkdir $REMOTE_ROOT\\roms\""
+ssh "$REMOTE" "cmd /c \"if not exist $REMOTE_ROOT\\src\\link_arena\\stream_overlay mkdir $REMOTE_ROOT\\src\\link_arena\\stream_overlay\""
 
 echo '== copy Link Arena-only runtime files =='
 scp "$ROOT/tools/link_arena.py" "$REMOTE:$REMOTE_ROOT\\tools\\link_arena.py"
@@ -28,6 +29,10 @@ scp "$ROOT/src/link_arena/agents.py" "$REMOTE:$REMOTE_ROOT\\src\\link_arena\\age
 scp "$ROOT/src/link_arena/control.py" "$REMOTE:$REMOTE_ROOT\\src\\link_arena\\control.py"
 scp "$ROOT/src/link_arena/autoplay.py" "$REMOTE:$REMOTE_ROOT\\src\\link_arena\\autoplay.py"
 scp "$ROOT/src/link_arena/setup.py" "$REMOTE:$REMOTE_ROOT\\src\\link_arena\\setup.py"
+scp "$ROOT/src/link_arena/stream.py" "$REMOTE:$REMOTE_ROOT\\src\\link_arena\\stream.py"
+scp "$ROOT/src/link_arena/stream_overlay/index.html" "$REMOTE:$REMOTE_ROOT\\src\\link_arena\\stream_overlay\\index.html"
+scp "$ROOT/src/link_arena/stream_overlay/overlay.css" "$REMOTE:$REMOTE_ROOT\\src\\link_arena\\stream_overlay\\overlay.css"
+scp "$ROOT/src/link_arena/stream_overlay/overlay.js" "$REMOTE:$REMOTE_ROOT\\src\\link_arena\\stream_overlay\\overlay.js"
 scp "$ROOT/lua/socketserver.lua" "$REMOTE:$REMOTE_ROOT\\lua\\socketserver.lua"
 scp "$ROOT/lua/fe7_memory.lua" "$REMOTE:$REMOTE_ROOT\\lua\\fe7_memory.lua"
 scp "$ROOT/scripts/windows/Start-Link-Arena.ps1" "$REMOTE:$REMOTE_ROOT\\scripts\\windows\\Start-Link-Arena.ps1"
