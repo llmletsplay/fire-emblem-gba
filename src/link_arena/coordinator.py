@@ -72,6 +72,8 @@ class LinkArenaCoordinator:
         self.status_fingerprint_count: dict[str, int] = defaultdict(int)
         self.lock = threading.RLock()
         self.log_path = match_dir / "events.jsonl"
+        self.decision_ledger: Any | None = None
+        self.match_id: str | None = None
 
     def close(self) -> None:
         with self.lock:
@@ -202,8 +204,18 @@ class LinkArenaCoordinator:
                       "completed_buttons": normalized}
             if hold_frames is not None:
                 result["hold_frames"] = hold_frames
-            self._log({"type": "action", **result, "observation_id": observation_id,
-                       "timestamp": time.time()})
+            event = {"type": "action", **result, "observation_id": observation_id,
+                     "timestamp": time.time()}
+            decision_id = payload.get("decision_id")
+            agent_side = payload.get("agent_side")
+            if isinstance(decision_id, str):
+                event["decision_id"] = decision_id
+            if agent_side in {"A", "B"}:
+                event["agent_side"] = agent_side
+                event["seat"] = "1P" if agent_side == "A" else "2P"
+            self._log(event)
+            if isinstance(decision_id, str) and self.decision_ledger is not None and self.match_id:
+                self.decision_ledger.record(self.match_id, event)
             return result
 
     def status(self) -> dict[str, Any]:

@@ -108,7 +108,7 @@ h1 span { color: var(--gold-bright); }
 .chat-panel, .metrics-panel, .exchange-panel { min-height: 0; border: 1px solid var(--gold-dim); background: var(--panel); box-shadow: inset 0 0 0 2px rgba(237, 200, 121, .06), 0 6px 20px rgba(0, 0, 0, .24); display: flex; flex-direction: column; }
 .panel-heading { height: 37px; min-height: 37px; display: flex; align-items: center; gap: 8px; padding: 0 11px; border-bottom: 1px solid rgba(237, 200, 121, .28); color: var(--gold-bright); font: 700 10px Cinzel, Georgia, serif; letter-spacing: .14em; }
 .panel-heading i { flex: 1; height: 1px; background: linear-gradient(90deg, var(--gold-dim), transparent); margin: 0 3px; }
-.panel-heading small { color: #a9a08e; font: 700 7px Inter, sans-serif; letter-spacing: .12em; }
+.panel-heading small { max-width: 38%; overflow: hidden; color: #a9a08e; font: 700 7px Inter, sans-serif; letter-spacing: .12em; text-overflow: ellipsis; white-space: nowrap; }
 .chat-live { width: 7px; height: 7px; border-radius: 50%; background: #db4c4c; box-shadow: 0 0 8px rgba(219, 76, 76, .6); }
 .metric-icon, .sword-small { color: var(--gold-bright); font-size: 16px; }
 .chat-window { position: relative; flex: 1; min-height: 0; overflow: hidden; background: linear-gradient(160deg, rgba(25, 28, 38, .98), rgba(12, 14, 21, .99)); }
@@ -148,7 +148,7 @@ h1 span { color: var(--gold-bright); }
 .exchange-panel { padding: 0 10px 7px; }
 .exchange-panel .panel-heading { margin: 0 -10px 5px; }.exchange-list { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; min-height: 0; }
 .exchange-item { min-width: 0; padding: 6px 8px; border-left: 2px solid var(--blue); background: rgba(255,255,255,.035); }.exchange-item.side-B { border-color: var(--green); }
-.exchange-item b { color: #ded3bb; font-size: 8px; letter-spacing: .06em; }.exchange-item p { overflow: hidden; margin: 4px 0 3px; color: #f4e8ce; font: 600 10px Cinzel, Georgia, serif; text-overflow: ellipsis; white-space: nowrap; }.exchange-item small { color: #9f9685; font-size: 8px; }
+.exchange-item b { display: block; overflow: hidden; color: #ded3bb; font-size: 8px; letter-spacing: .06em; text-overflow: ellipsis; white-space: nowrap; }.exchange-item p { overflow: hidden; margin: 4px 0 3px; color: #f4e8ce; font: 600 10px Cinzel, Georgia, serif; text-overflow: ellipsis; white-space: nowrap; }.exchange-item small { display: block; overflow: hidden; color: #9f9685; font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }.exchange-item .exchange-rationale { color: #c1b59d; font-style: italic; }
 .empty-exchange { grid-column: 1/-1; display: grid; place-items: center; color: #8f8675; font-size: 10px; letter-spacing: .05em; }
 
 .lower-third { display: grid; grid-template-columns: 32px 105px 1px 160px 1px 154px 1px minmax(160px, 1fr) 32px; align-items: center; gap: 13px; padding: 6px 12px; border: 1px solid var(--gold-dim); background: linear-gradient(90deg, rgba(27, 31, 43, .98), rgba(18, 19, 26, .98) 52%, rgba(28, 34, 29, .98)); box-shadow: inset 0 0 0 2px rgba(237, 200, 121, .07); }

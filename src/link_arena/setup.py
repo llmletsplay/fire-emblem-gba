@@ -241,12 +241,47 @@ class ArenaSetup:
 
     def _press(self, side: str, button: str, stage: str) -> dict[str, Any]:
         before = self._fresh(side)
-        self.coordinator.act(side, {
-            "observation_id": before["observation_id"],
-            "buttons": [button],
-        })
-        self._log_step(side, stage, button, before)
-        return before
+        last_stale: StaleObservation | None = None
+        for attempt in range(3):
+            try:
+                self.coordinator.act(side, {
+                    "observation_id": before["observation_id"],
+                    "buttons": [button],
+                })
+            except StaleObservation as exc:
+                last_stale = exc
+                refreshed = self._fresh(side)
+                # Another linked core can advance the coordinator's shared
+                # generation while this local menu remains byte-for-byte at
+                # the same control state. The refreshed observation still
+                # must match cursor, menu, phase, roster, HP, and inventory.
+                same_context = self.controller._same_control_context(
+                    before, refreshed, require_generation=False,
+                )
+                self.log({
+                    "type": "setup_stale_observation",
+                    "side": side,
+                    "stage": stage,
+                    "attempt": attempt + 1,
+                    "before_observation_id": before.get("observation_id"),
+                    "refreshed_observation_id": refreshed.get("observation_id"),
+                    "same_control_context": same_context,
+                    "reason": str(exc),
+                })
+                if not same_context:
+                    raise UnsafeScreen(
+                        f"setup state changed before {stage}; refusing to retry"
+                    ) from exc
+                if attempt == 2:
+                    break
+                before = refreshed
+                time.sleep(self.poll_interval)
+                continue
+            self._log_step(side, stage, button, before)
+            return before
+        raise UnsafeScreen(
+            f"setup observation stayed stale at {stage} after bounded safe retries: {last_stale}"
+        )
 
     def _press_startup(self, side: str) -> None:
         """Retry only stale START observations while the safe boot gate holds."""

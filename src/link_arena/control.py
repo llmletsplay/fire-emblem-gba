@@ -88,6 +88,13 @@ class VerifiedInputController:
         self.coordinator = coordinator
         self.poll_interval = poll_interval
         self.settle_timeout = settle_timeout
+        self.decision_id: str | None = None
+        self.agent_side: str | None = None
+
+    def set_decision_context(self, decision_id: str | None, agent_side: str | None = None) -> None:
+        """Tag every verified button pulse with the policy choice that caused it."""
+        self.decision_id = decision_id
+        self.agent_side = agent_side if decision_id is not None else None
 
     def observe_settled(self, side: str) -> dict[str, Any]:
         deadline = time.monotonic() + self.settle_timeout
@@ -136,7 +143,12 @@ class VerifiedInputController:
         raise UnsafeScreen(f"screen did not settle for side {side}: state={ui!r} detail={detail!r}")
 
     @staticmethod
-    def _same_control_context(before: dict[str, Any], after: dict[str, Any]) -> bool:
+    def _same_control_context(
+        before: dict[str, Any],
+        after: dict[str, Any],
+        *,
+        require_generation: bool = True,
+    ) -> bool:
         """Allow a stale-ID retry only when the game is exactly where we saw it."""
         def generation(observation: dict[str, Any]) -> str | None:
             observation_id = observation.get("observation_id")
@@ -166,8 +178,9 @@ class VerifiedInputController:
         after_state = after.get("game_state")
         state_keys = ("chapter", "turn", "phase", "players", "npcs")
         return (
-            generation(before) == generation(after)
-            and generation(before) is not None
+            generation(before) is not None
+            and generation(after) is not None
+            and (not require_generation or generation(before) == generation(after))
             and _ui(before) == _ui(after)
             and isinstance(before_detail, dict)
             and isinstance(after_detail, dict)
@@ -191,6 +204,9 @@ class VerifiedInputController:
             "observation_id": before["observation_id"],
             "buttons": [button],
         }
+        if self.decision_id is not None:
+            action["decision_id"] = self.decision_id
+            action["agent_side"] = self.agent_side
         if hold_frames is not None:
             action["hold_frames"] = hold_frames
         try:

@@ -69,6 +69,30 @@ To let both built-in minimax agents play as well, add `-AutoMinimax`:
   -AutoMinimax
 ```
 
+Hosted benchmark agents can replace either seat. They use the same observed
+state contract and verified controller; the runner validates selected units
+and weapons before moving a cursor. Set `CHUTES_API_KEY` or `MINIMAX_API_KEY`
+in the runner process environment using the host's secret management, then
+pass concrete provider model IDs. Never put credentials in command-line
+arguments, source, or logs:
+
+```powershell
+& "$env:LOCALAPPDATA\FE7-Link-Arena\runner\scripts\windows\Start-Link-Arena.ps1" `
+  -RepoRoot "$env:LOCALAPPDATA\FE7-Link-Arena\runner" `
+  -Save "$env:LOCALAPPDATA\FE7-Link-Arena\runner\roms\fe7.sav" `
+  -AgentA chutes -ModelA '<Chutes model ID>' `
+  -AgentB minimax-api -ModelB '<MiniMax model ID>' -Continuous
+```
+
+Selecting a hosted policy enables autonomous setup and play. The adapter logs
+the structured request input, validated action, brief user-visible rationale,
+completion text, resolved model, request ID, token usage, and latency. It
+ignores provider-only `reasoning_content` fields and does not request or
+persist private chain-of-thought. The visible rationale is not a verified
+explanation of the model's internal process. See
+[`LINK_ARENA_BENCHMARK.md`](LINK_ARENA_BENCHMARK.md) for the study protocol and
+current limits on score claims.
+
 For an unattended series, add `-Continuous`. The runner waits for its
 two-client terminal check, writes the winner to
 `%LOCALAPPDATA%\FE7-Link-Arena\series\results.jsonl`, closes that match, then
@@ -128,6 +152,20 @@ a loopback-only HTTP API. The coordinator records ROM/save hashes in
 under each side's `observations` directory. Continuous runs append terminal
 results to the series ledger in their data directory. A new match always gets
 fresh copies of the configured seed save; the campaign save is never used.
+
+Automated choices are also appended to `series/decisions.jsonl`. Each choice
+includes its player side, linked bridge, decision ID, policy/input hash,
+structured observation, and screenshot path. Hosted model decisions also
+include the exact structured input, validated visible completion and rationale,
+provider/model/request metadata, latency, and token usage. Provider-private
+reasoning fields are ignored. Every accepted controller button is tagged with
+that same decision ID; re-plans and interrupted decisions are
+separate events. Older match folders keep their original per-match logs; the
+series ledger imports those traces on the next runner start without rewriting
+the evidence files. The ledger excludes bearer tokens, screenshots themselves,
+and hidden model reasoning. See
+[`LINK_ARENA_BENCHMARK.md`](LINK_ARENA_BENCHMARK.md) for the research protocol
+and its current score/result limitations.
 
 ### Observation fields
 

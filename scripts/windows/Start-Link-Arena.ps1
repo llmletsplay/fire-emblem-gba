@@ -8,6 +8,18 @@ param(
     [string]$MgbaLogLevel,
     [string]$TwitchChannel = 'llmletsplay',
     [switch]$AutoMinimax,
+    [ValidateSet('minimax', 'chutes', 'minimax-api')]
+    [string]$AgentA = 'minimax',
+    [string]$ModelA,
+    [string]$BaseUrlA,
+    [string]$ApiKeyEnvA,
+    [ValidateSet('minimax', 'chutes', 'minimax-api')]
+    [string]$AgentB = 'minimax',
+    [string]$ModelB,
+    [string]$BaseUrlB,
+    [string]$ApiKeyEnvB,
+    [ValidateRange(1, 600)]
+    [double]$AgentTimeout = 120,
     [switch]$Continuous,
     [switch]$ManualSetup,
     [ValidateRange(0.05, 30)]
@@ -25,12 +37,14 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-if ($Continuous -and -not $AutoMinimax) {
-    throw 'Continuous mode requires -AutoMinimax.'
+if ($Continuous -and -not ($AutoMinimax -or $AgentA -ne 'minimax' -or $AgentB -ne 'minimax')) {
+    throw 'Continuous mode requires -AutoMinimax or at least one hosted model policy.'
 }
-if ($Continuous -and $ManualSetup) {
-    throw 'Continuous mode cannot be combined with -ManualSetup.'
+if (($AutoMinimax -or $AgentA -ne 'minimax' -or $AgentB -ne 'minimax') -and $ManualSetup) {
+    throw 'Autonomous policies cannot be combined with -ManualSetup.'
 }
+if ($AgentA -ne 'minimax' -and -not $ModelA) { throw '-ModelA is required for a hosted seat A policy.' }
+if ($AgentB -ne 'minimax' -and -not $ModelB) { throw '-ModelB is required for a hosted seat B policy.' }
 $RepoRoot = (Resolve-Path $RepoRoot).Path
 $Runner = Join-Path $RepoRoot 'tools\link_arena.py'
 if (-not (Test-Path $Runner)) {
@@ -62,6 +76,13 @@ if ($Mgba) { $Arguments += @('--mgba', (Resolve-Path $Mgba).Path) }
 if ($MgbaLogLevel) { $Arguments += @('--mgba-log-level', $MgbaLogLevel) }
 if ($TwitchChannel) { $Arguments += @('--twitch-channel', $TwitchChannel) }
 if ($AutoMinimax) { $Arguments += '--auto-minimax' }
+if ($AgentA -ne 'minimax') { $Arguments += @('--agent-a', $AgentA, '--model-a', $ModelA) }
+if ($BaseUrlA) { $Arguments += @('--base-url-a', $BaseUrlA) }
+if ($ApiKeyEnvA) { $Arguments += @('--api-key-env-a', $ApiKeyEnvA) }
+if ($AgentB -ne 'minimax') { $Arguments += @('--agent-b', $AgentB, '--model-b', $ModelB) }
+if ($BaseUrlB) { $Arguments += @('--base-url-b', $BaseUrlB) }
+if ($ApiKeyEnvB) { $Arguments += @('--api-key-env-b', $ApiKeyEnvB) }
+if ($AgentA -ne 'minimax' -or $AgentB -ne 'minimax') { $Arguments += @('--agent-timeout', $AgentTimeout) }
 if ($Continuous) {
     $Arguments += '--continuous'
     $Arguments += @('--between-matches-seconds', $BetweenMatchesSeconds)
