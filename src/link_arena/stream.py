@@ -191,6 +191,14 @@ class LinkArenaStreamState:
             )
             turn = detail.get("turn", game_state.get("turn"))
             chapter = detail.get("chapter", game_state.get("chapter"))
+            if not isinstance(turn, int) or isinstance(turn, bool) or turn <= 0:
+                if active_side is not None or any(self._exchange_counts.values()):
+                    # FE7's Link Arena chapter does not expose a useful turn
+                    # byte on this build. Number paired A/B exchanges instead:
+                    # once both seats act, the next pair begins a new round.
+                    turn = min(self._exchange_counts.values()) + 1
+                else:
+                    turn = None
             autoplay_status = getattr(self.autoplay, "status", {})
             if not isinstance(autoplay_status, dict):
                 autoplay_status = {}
