@@ -359,7 +359,7 @@ class OpenAICompatibleAgent(MinimaxAgent):
             "model": self.model,
             "messages": messages,
             "temperature": self.temperature,
-            ("max_completion_tokens" if normalized_provider == "minimax-api" else "max_tokens"):
+            ("max_completion_tokens" if self.provider == "minimax-api" else "max_tokens"):
                 self.max_completion_tokens,
             "stream": False,
         }
