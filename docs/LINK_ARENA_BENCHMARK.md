@@ -172,6 +172,19 @@ The optional `--export-valid <derived-path.jsonl>` writes only parseable event
 rows to a separate derived file and writes an adjacent `.audit.json` report;
 it never edits the original append-only ledger.
 
+The canonical ledger is append-only during ordinary runs. A one-time
+maintenance tool is available for removing redundant `legacy_backfill` rows:
+`python tools/prune_legacy_link_arena_ledger.py <path-to-decisions.jsonl>` is a
+dry run; add `--apply` only after reviewing its report. Under the same file
+lock as the runner, it archives the exact pre-cleanup bytes (including the
+known malformed fragment), then retains live rows and removes legacy imports
+plus that one fragment only when its byte count and SHA-256 match the audited
+record. A checked manifest prevents the runner from importing those historical
+match IDs again. The tool leaves original per-match logs untouched and refuses
+unexpected corruption or any cleanup that would break live decision/action
+links. Keep the archive with the private raw research data; it is provenance,
+not a publication-ready derivative.
+
 ### Proposed baselines
 
 - Built-in depth-two minimax policy (current baseline; policy estimate is not a
@@ -615,6 +628,23 @@ estimates, but no inference calls were made and no hosted pilot is represented
 in this operational sample. The account plan and hosted credentials remain
 unconfirmed. Keep this checkpoint as operational harness evidence only, not
 as an LLM comparison or confirmatory result.
+
+At 23:37 UTC, another audit found 7,617 valid events across 41 match IDs:
+1,237 decisions, 1,219 submitted exchanges, 5,160 verified button actions,
+and one replan. The trace contained 1,974 legacy-backfill and 5,643 live
+rows. Every decision was still `local/unknown`. The audit reported zero
+duplicate IDs, event-hash mismatches, missing common fields, unknown event
+types, unlinked actions/exchanges, provider-private reasoning fields, hosted
+rationales, or hosted calls missing the rationale-only capture policy. The
+same malformed 39-byte legacy line 2010 remains the sole audit defect
+(SHA-256 `1aad963f1b81decd4988583e25fbbc3ba2839f05bac8df529d4329770f7686af`);
+it was not repaired or removed.
+
+At 23:38 UTC, match twenty-one (`20260928T232202Z-55009f`) was still running
+at turn 15 with no runner error. The series remained at 20 completed results
+(1P 5 wins, 2P 15), eight with official FE7 scores, totaling 1P 2,592 / 2P
+4,320. This is continued unattended harness operation; no new hosted-model
+evidence or completed match was added at this checkpoint.
 
 - [x] Calibrate the fail-closed reader against archived and live final-result
   screens and reject four captured intermediate bonus panels. The standard
