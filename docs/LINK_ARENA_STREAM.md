@@ -8,22 +8,22 @@ read-only endpoint; it does not use either agent's bearer token.
 
 ## Start a match with a Twitch channel
 
-On Zephyrus, start the isolated runner as usual and add your Twitch channel
-handle. The runner prints the exact overlay URL after it starts:
+On Zephyrus, start the isolated runner as usual. The launcher defaults to the
+`llmletsplay` Twitch channel and prints the exact overlay URL after it starts.
+Pass `-TwitchChannel otherhandle` to override it:
 
 ```powershell
 & "$env:LOCALAPPDATA\FE7-Link-Arena\runner\scripts\windows\Start-Link-Arena.ps1" `
   -RepoRoot "$env:LOCALAPPDATA\FE7-Link-Arena\runner" `
   -Save "$env:LOCALAPPDATA\FE7-Link-Arena\runner\roms\fe7.sav" `
-  -AutoMinimax `
-  -TwitchChannel yourchannel
+  -AutoMinimax
 ```
 
 The same stream screen works for a supervised match; omit `-AutoMinimax` and
 use the same `-TwitchChannel` option. The local URL follows this shape:
 
 ```text
-http://127.0.0.1:18700/stream?channel=yourchannel
+http://127.0.0.1:18700/stream?channel=llmletsplay
 ```
 
 The API port changes if the runner uses a non-default `-ApiPort`; use the URL
@@ -40,16 +40,17 @@ to top:
    This is the full-motion path for smooth battle animations.
 2. **Link Arena overlay** — add a Browser Source using the printed URL with
    `&capture=obs` added, for example
-   `http://127.0.0.1:18700/stream?channel=yourchannel&capture=obs`. Set its
+   `http://127.0.0.1:18700/stream?channel=llmletsplay&capture=obs`. Set its
    dimensions to 1920×1080. The overlay is transparent over the gameplay
    frame and draws the FE7 sword header, team trim, live metrics, lower third,
    and chat frame.
 3. **Twitch chat** — on a local HTTP overlay, add a second Browser Source using
-   `https://www.twitch.tv/popout/yourchannel/chat?popout=`. Size it to about
+   `https://www.twitch.tv/popout/llmletsplay/chat?popout=`. Size it to about
    **447×550** and place it inside the right-hand LIVE CHAT frame (at the
    default 1920×1080 canvas, approximately x=1448, y=143). Keep it above the
    Link Arena overlay so its chat messages cover the setup prompt in that
-   frame. Use the matching Twitch handle from `-TwitchChannel`.
+   frame. The launcher uses `llmletsplay` unless overridden with
+   `-TwitchChannel`.
 
 For a quick preview without setting up a game capture, omit `&capture=obs`.
 The page then displays the linked 1P and 2P bridge screenshots side by side.

@@ -6,7 +6,7 @@ param(
     [string]$DataDir,
     [string]$Mgba,
     [string]$MgbaLogLevel,
-    [string]$TwitchChannel,
+    [string]$TwitchChannel = 'llmletsplay',
     [switch]$AutoMinimax,
     [switch]$ManualSetup,
     [ValidateRange(0.05, 30)]
