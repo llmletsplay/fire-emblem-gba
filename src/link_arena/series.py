@@ -23,7 +23,7 @@ class MatchSeries:
     points or match wins.
     """
 
-    def __init__(self, data_dir: Path, *, backfill: bool = True):
+    def __init__(self, data_dir: Path):
         self.path = data_dir / "series" / "results.jsonl"
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.RLock()
@@ -144,7 +144,7 @@ class DecisionLedger:
         ),
     }
 
-    def __init__(self, data_dir: Path):
+    def __init__(self, data_dir: Path, *, backfill: bool = True):
         self.data_dir = data_dir
         self.path = data_dir / "series" / "decisions.jsonl"
         self.path.parent.mkdir(parents=True, exist_ok=True)
