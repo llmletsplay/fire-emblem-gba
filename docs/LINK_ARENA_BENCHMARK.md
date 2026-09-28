@@ -95,14 +95,21 @@ whether that content is separated or embedded in assistant content, but does
 not disable thinking. This adapter ignores `reasoning_content`; if a provider
 mixes non-JSON reasoning into assistant content, strict validation rejects the
 completion and the log keeps only its hash and error metadata. The adapter
-currently omits provider-specific `thinking`, `reasoning_effort`, and
-`reasoning_split` fields, so the request hash documents that omission but does
-not freeze the provider's default behavior. Before any hosted study, choose
-and record each model's explicit reasoning/thinking settings and freeze the
-provider configuration. The adapter captures only the constrained completion
-and brief rationale. That rationale is an output supplied by the model; it is
-not a faithful or independently verified record of the model's internal
-reasoning. Malformed completions retain their hash and error metadata, not raw
+request explicitly sets `thinking.type` (default `adaptive`) and
+`reasoning_split: true` for MiniMax, and includes both in the request hash and
+decision metadata. MiniMax M3.1 requires an explicit `reasoning_effort` from
+`low`, `medium`, `high`, `xhigh`, or `max`; the CLI rejects M3.1 without it.
+M3.1 cannot disable thinking. M3 accepts `adaptive` or `disabled`; M2 models
+cannot effectively disable thinking, so this runner rejects that misleading
+setting. These controls can be frozen per seat with `--minimax-thinking-a/b`
+and `--minimax-reasoning-effort-a/b`. The per-seat
+`--max-completion-tokens-a/b` ceiling is also stored with the request. The
+adapter captures only the constrained completion and brief rationale. That
+rationale is an output supplied by the model; it is not a faithful or
+independently verified record of the model's internal reasoning. Provider
+usage objects are retained as reported; whether they include separate
+reasoning-token totals is provider-specific and is not inferred by this
+benchmark. Malformed completions retain their hash and error metadata, not raw
 text that might contain unrequested reasoning. Never record API keys. The
 append-only ledger is a provenance trace, not proof that a provider's model
 weights are unchanged. [MiniMax Chat Completions API](https://platform.minimax.io/docs/api-reference/text-chat-openai).
@@ -277,6 +284,10 @@ personal data.
    Provider-side reasoning traces can be omitted, separately exposed, hidden,
    or changed by serving defaults. We cannot make claims about their contents,
    correctness, or causal role in a decision.
+   For MiniMax M3.1, record the required explicit `reasoning_effort`; freeze
+   thinking mode, effort, and completion-token ceiling per seat before a
+   confirmatory run. The request hash and inference metadata preserve those
+   settings. Never save the separate `reasoning_content` field.
 8. **Execution and timing.** The deterministic controller removes much input
    navigation variance, but emulator timing, capture coherence, link behavior,
    and safe supervision stops still affect completion.

@@ -611,6 +611,14 @@ def start(args: argparse.Namespace) -> int:
 
     agents: dict[str, MinimaxAgent] = {}
     for side, (provider, model, base_url, api_key_env) in agent_specs.items():
+        minimax_thinking = getattr(args, f"minimax_thinking_{side.lower()}")
+        minimax_reasoning_effort = getattr(args, f"minimax_reasoning_effort_{side.lower()}")
+        if provider != "minimax-api" and (
+            minimax_thinking is not None or minimax_reasoning_effort is not None
+        ):
+            raise ValueError(
+                f"MiniMax reasoning options for seat {side} require --agent-{side.lower()} minimax-api"
+            )
         if provider == "minimax":
             agents[side] = MinimaxAgent(side)
             continue
@@ -629,6 +637,9 @@ def start(args: argparse.Namespace) -> int:
             base_url=base_url,
             api_key_env=selected_key_env,
             timeout_seconds=args.agent_timeout,
+            max_completion_tokens=getattr(args, f"max_completion_tokens_{side.lower()}"),
+            minimax_thinking=minimax_thinking,
+            minimax_reasoning_effort=minimax_reasoning_effort,
         )
 
     series = MatchSeries(Path(args.data_dir).expanduser().resolve())
@@ -787,6 +798,19 @@ def build_parser() -> argparse.ArgumentParser:
         parser.add_argument(f"--model-{side}", help=f"exact hosted model ID for seat {side.upper()}")
         parser.add_argument(f"--base-url-{side}", help=f"optional OpenAI-compatible API base URL for seat {side.upper()}")
         parser.add_argument(f"--api-key-env-{side}", help=f"credential environment variable name for seat {side.upper()}")
+        parser.add_argument(
+            f"--max-completion-tokens-{side}", type=int, default=2048,
+            help=f"per-call output token ceiling for seat {side.upper()} (default: 2048)",
+        )
+        parser.add_argument(
+            f"--minimax-thinking-{side}", choices=("adaptive", "disabled"),
+            help=f"MiniMax API thinking mode for seat {side.upper()} (default: adaptive)",
+        )
+        parser.add_argument(
+            f"--minimax-reasoning-effort-{side}",
+            choices=("low", "medium", "high", "xhigh", "max"),
+            help=f"required MiniMax M3.1 thinking depth for seat {side.upper()}",
+        )
     parser.add_argument("--agent-timeout", type=float, default=120.0,
                         help="per-call timeout for Chutes/MiniMax hosted policies")
     parser.add_argument("--continuous", action="store_true",
