@@ -273,16 +273,16 @@ personal data.
 2. **Outcome gap.** The result reader recognizes the standard final-rank
    layout and the shifted view shown by the opposite linked client. Manual
    calibration fixtures parse 520–346 and 576–288 and reject retained bonus
-   transition panels. The deployed Zephyrus build recognizes the standard
-   layout and recorded its first paired live result in game eleven (2P
-   576–288 1P). Game ten's shifted 1P view was not recognized by that build.
-   Merged PR #18 adds that layout and was deployed at the game-twelve boundary.
-   Game twelve's standard-layout 1P 576–288 2P screenshots arrived too late in
-   the old 4.5-second result window to obtain two stable paired reads. The
-   reader change under review extends that window to 12 seconds while retaining
-   the same exact screen and winner checks. At 21:04 UTC, one of twelve
-   completed results had official points; W–L–D remains incomplete as an
-   official-score record.
+   transition panels. The deployed reader recorded paired FE7 results in games
+   eleven and fourteen. Game ten's shifted 1P view was missed by the original
+   reader; merged PR #18 added that layout. Game twelve's final screen arrived
+   too late for two paired reads in the old 4.5-second window. Merged PR #20
+   extended sampling to 12 seconds without relaxing exact-screen,
+   paired-agreement, or terminal-winner checks. The updated reader was deployed
+   before game fourteen, which stored a paired 1P 576–288 2P score 6.39 seconds
+   after terminal confirmation and recorded both bridge layouts. At 21:40 UTC,
+   two of fourteen results had official points; W–L–D and the partial point
+   totals still do not constitute a complete official-score record.
 3. **Uncontrolled randomness.** FE7 combat uses RNG. A file-level save hash
    does not prove identical RNG state or reproducible trajectories across
    launches. Pairing and seat balancing mitigate but do not remove this issue.
@@ -387,12 +387,45 @@ of 1P 288 and 2P 576. The two bridge screenshot hashes are retained in its
 score record. Game twelve (`20260928T204610Z-822535`) began automatically
 afterward.
 
+At 21:42 UTC, a fresh lock-consistent audit snapshot contained 5,927 valid
+events across 35 match IDs: 1,024 decisions, 1,006 submitted exchanges, 3,896
+accepted button actions, and one replan. It found no duplicate event IDs,
+event-hash mismatches, missing common fields, unknown event types, unlinked
+actions/exchanges, or provider-private reasoning keys. All 1,024 decisions
+were still attributed to `local/unknown`; the snapshot had zero hosted model
+completions or visible rationales. There were 1,974 legacy-backfill and 3,953
+live rows. The preserved malformed 39-byte historical line 2010 remains the
+only malformed row (SHA-256
+`1aad963f1b81decd4988583e25fbbc3ba2839f05bac8df529d4329770f7686af`) and keeps
+the audit command's exit status nonzero.
+
+The hosted-model adapters record the exact structured input and the validated
+assistant action plus a short user-visible rationale, along with provider/model
+IDs, request parameters, usage, latency, and response hashes. This visible
+rationale is not private chain-of-thought. Provider-only reasoning payloads
+are deliberately ignored. A presence-only credential check found
+`CHUTES_API_KEY` and `MINIMAX_API_KEY` unset in the local shell and in
+Zephyrus's process, user, and machine environment scopes. The current live
+series therefore contains minimax-policy decisions, not hosted LLM decisions.
+
+At 21:40 UTC, game fourteen (`20260928T212305Z-aced65`) completed as a 1P
+survivor win and added a second official paired FE7 score, 1P 576–288 2P. Both
+bridge captures independently parse to the same score; the result persisted
+6.39 seconds after synchronized terminal confirmation with two stable paired
+reads and a terminal-winner match. The record stores
+`layout_by_bridge: {A: standard, B: standard}` and screenshot hashes
+`813903f9857c520179e9da4d7d89d7c3075b80d01664fcf9a4bd3f1769a58bde` and
+`f7b44e1772008a687105089609d4490e46044c12b2b3c7bd52ec538e81bbc588`. The
+series now has fourteen results (1P 5 wins, 2P 9), two scored games, and
+cumulative official totals 1P 864 / 2P 864. Game fifteen
+(`20260928T214009Z-052371`) began automatically afterward.
+
 - [x] Calibrate the fail-closed reader against archived and live final-result
   screens and reject four captured intermediate bonus panels. The standard
-   layout has one successful paired live score; merged shifted-layout support
-   is deployed and awaits live validation, and the longer result window awaits
-   deployment. Complete 0–9 glyph coverage and broader independent validation
-   remain open.
+  layout and 12-second paired-read window have two successful live scores.
+  `layout_by_bridge` persisted as standard on both views for game fourteen.
+  Shifted-layout support has offline fixture validation but no live sample yet.
+  Complete 0–9 glyph coverage and broader independent validation remain open.
 - [x] Deploy and inspect the series-wide decision ledger on Zephyrus; validate
   decision IDs join policy choices to every verified input. The one malformed
   historical source line remains explicitly flagged as described above.
