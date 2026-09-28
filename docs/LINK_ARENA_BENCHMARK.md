@@ -295,10 +295,28 @@ It verifies frozen session conditions and the decision-ledger audit, then
 reports decisive win rates with Wilson intervals, official points with
 match-level bootstrap intervals, seat-paired win score and official-point
 difference intervals, decision reliability, latency, and provider-reported
-token counts.
+token counts. At hosted-agent initialization, the Chutes adapter makes a
+read-only `GET /v1/models` metadata request and freezes the selected model's
+USD input/output/cache-read rates, reported `confidential_compute` field,
+capture time, and catalog/model-record hashes into policy metadata. The
+runner refuses a Chutes match when it cannot freeze valid input and output
+rates before play, and reuses the same snapshot across subsequent matches
+and process restarts in the same data directory. The
+analyzer estimates Chutes request cost from provider-reported token usage;
+when cached-token usage is not reported, it labels the uncached-rate result as
+an upper bound. It also reports match-level bootstrap intervals only for
+completed matches with complete cost traces. These are published-rate
+estimates, not invoice amounts. [Chutes live model catalog](https://llm.chutes.ai/v1/models).
+
+MiniMax Token Plan usage is retained as provider-reported tokens, but this
+adapter does not turn a shared subscription/quota into an invented per-request
+USD price. Record the actual account plan charge and quota separately, and
+report those as subscription-level cost; per-match dollar attribution remains
+unavailable unless the provider exposes account usage that can be assigned to
+these matches without other-workload confounding.
 Bootstrap seed and resample count are recorded in the output. It does not
-estimate cost without a versioned provider price schedule, and it does not
-generate manuscript plots or support confirmatory claims by itself. The
+estimate MiniMax subscription USD cost, and it does not generate manuscript
+plots or support confirmatory claims by itself. The
 analysis command takes a lock-consistent ledger snapshot; run it after freezing
 the result series for publication-grade output. Bootstrap intervals are marked
 not estimable when fewer than two independent resampling units are available.
@@ -598,8 +616,9 @@ hosted LLM decisions or rationales have yet been collected.
 - [x] Add an initial analysis script that checks ledger consistency, frozen
   conditions, seat-swap completeness, and confidence intervals from one study
   directory.
-- [ ] Generate manuscript tables/figures from a completed hosted pilot, add a
-  versioned cost schedule, and validate every output against released data.
+- [ ] Generate manuscript tables/figures from a completed hosted pilot;
+  validate Chutes rate-based estimates and record MiniMax plan fee/quota
+  separately before reporting account-level costs.
 - [x] Add a ledger audit/export command that verifies event hashes, duplicate
   IDs, action/exchange joins, malformed lines, and private-reasoning-key absence.
 - [ ] Complete a venue-specific reproducibility, ethics, authorship, and

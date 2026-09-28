@@ -170,9 +170,67 @@ def _usage_count(usage: Any, names: tuple[str, ...]) -> int | None:
     return None
 
 
-def _collect_inference_metrics(metric: dict[str, Any], inference: Any) -> None:
+def _estimate_chutes_cost_usd(
+    inference: Any, pricing_snapshot: Any,
+) -> tuple[float | None, str]:
     if not isinstance(inference, dict):
-        return
+        return None, "missing_inference_record"
+    if inference.get("provider") != "chutes":
+        return None, "no_per_request_usd_rate"
+    if not isinstance(pricing_snapshot, dict) or pricing_snapshot.get("status") != "captured":
+        return None, "missing_frozen_price_snapshot"
+    model_id = pricing_snapshot.get("model_id")
+    observed_model = inference.get("model_resolved") or inference.get("model_requested")
+    if not isinstance(model_id, str) or observed_model != model_id:
+        return None, "resolved_model_does_not_match_price_snapshot"
+    usage = inference.get("usage")
+    input_tokens = _usage_count(usage, ("prompt_tokens", "input_tokens"))
+    output_tokens = _usage_count(usage, ("completion_tokens", "output_tokens"))
+    if input_tokens is None or output_tokens is None:
+        return None, "missing_provider_token_usage"
+
+    rates = pricing_snapshot.get("rates_per_million_tokens")
+    if not isinstance(rates, dict):
+        return None, "missing_price_rates"
+    input_rate, output_rate = rates.get("input"), rates.get("output")
+    if any(isinstance(value, bool) or not isinstance(value, (int, float))
+           or not math.isfinite(float(value)) or value < 0
+           for value in (input_rate, output_rate)):
+        return None, "invalid_price_rates"
+
+    cached_tokens: int | None = None
+    if isinstance(usage, dict):
+        details = usage.get("prompt_tokens_details")
+        if not isinstance(details, dict):
+            details = usage.get("input_tokens_details")
+        if isinstance(details, dict):
+            cached_tokens = _usage_count(details, ("cached_tokens", "cache_read_tokens"))
+    cached_rate = rates.get("cached_input")
+    if cached_tokens is not None and cached_tokens > input_tokens:
+        return None, "cached_token_count_exceeds_input_usage"
+    if cached_tokens is not None and cached_tokens > 0:
+        if (isinstance(cached_rate, bool) or not isinstance(cached_rate, (int, float))
+                or not math.isfinite(float(cached_rate)) or cached_rate < 0):
+            return None, "cached_usage_has_no_valid_price_rate"
+        uncached_tokens = input_tokens - cached_tokens
+        cost = (
+            uncached_tokens * float(input_rate)
+            + cached_tokens * float(cached_rate)
+            + output_tokens * float(output_rate)
+        ) / 1_000_000
+        return cost, "catalog_rate_with_reported_cache_usage"
+
+    cost = (input_tokens * float(input_rate) + output_tokens * float(output_rate)) / 1_000_000
+    if cached_rate is not None and cached_tokens is None:
+        return cost, "uncached_rate_upper_bound_cache_usage_unreported"
+    return cost, "catalog_rate_with_provider_token_usage"
+
+
+def _collect_inference_metrics(
+    metric: dict[str, Any], inference: Any, pricing_snapshot: Any = None,
+) -> tuple[float | None, str | None]:
+    if not isinstance(inference, dict):
+        return None, None
     latency = inference.get("latency_ms")
     if isinstance(latency, (int, float)) and not isinstance(latency, bool) and latency >= 0:
         metric["latency_ms"].append(float(latency))
@@ -193,6 +251,18 @@ def _collect_inference_metrics(metric: dict[str, Any], inference: Any) -> None:
     if reasoning_tokens is not None:
         metric["reported_reasoning_tokens"] += reasoning_tokens
         metric["reasoning_token_observations"] += 1
+    provider = inference.get("provider")
+    if provider == "local" or not isinstance(provider, str):
+        return None, None
+    metric["hosted_inference_calls"] += 1
+    estimated_cost, cost_basis = _estimate_chutes_cost_usd(inference, pricing_snapshot)
+    if estimated_cost is None:
+        metric["unpriced_inference_calls"] += 1
+    else:
+        metric["estimated_token_cost_usd"] += estimated_cost
+        metric["priced_inference_calls"] += 1
+    metric["cost_basis_counts"][cost_basis] = metric["cost_basis_counts"].get(cost_basis, 0) + 1
+    return estimated_cost, cost_basis
 
 
 def _summarize(values: list[float]) -> dict[str, float | int | None]:
@@ -417,9 +487,39 @@ def analyze(
             "output_token_observations": 0,
             "reported_reasoning_tokens": 0,
             "reasoning_token_observations": 0,
+            "hosted_inference_calls": 0,
+            "priced_inference_calls": 0,
+            "unpriced_inference_calls": 0,
+            "estimated_token_cost_usd": 0.0,
+            "cost_basis_counts": {},
         }
         for slot in _POLICY_SLOTS
     }
+    cost_by_match: dict[str, defaultdict[str, dict[str, Any]]] = {
+        slot: defaultdict(lambda: {"calls": 0, "priced_calls": 0, "unpriced_calls": 0, "cost_usd": 0.0})
+        for slot in _POLICY_SLOTS
+    }
+
+    def collect_event_inference(
+        slot: str, match_id: str, event: dict[str, Any], inference_value: Any,
+    ) -> None:
+        event_inference = inference_value if isinstance(inference_value, dict) else {}
+        event_policy = event.get("policy")
+        event_policy = event_policy if isinstance(event_policy, dict) else {}
+        pricing_snapshot = event_policy.get("pricing_snapshot")
+        if pricing_snapshot is None:
+            pricing_snapshot = policy_metadata[slot].get("pricing_snapshot")
+        estimated_cost, _ = _collect_inference_metrics(
+            decision_metrics[slot], event_inference, pricing_snapshot,
+        )
+        if event_inference.get("provider") in {"chutes", "minimax-api"}:
+            match_cost = cost_by_match[slot][match_id]
+            match_cost["calls"] += 1
+            if estimated_cost is None:
+                match_cost["unpriced_calls"] += 1
+            else:
+                match_cost["priced_calls"] += 1
+                match_cost["cost_usd"] += estimated_cost
     orphan_ledger_matches: set[str] = set()
     for event in events:
         match_id = event.get("match_id")
@@ -442,13 +542,13 @@ def analyze(
         if event_type == "decision":
             metric["decisions"] += 1
             inference = event.get("inference")
-            _collect_inference_metrics(metric, inference)
+            collect_event_inference(slot_by_side[side], match_id, event, inference)
             inference = inference if isinstance(inference, dict) else {}
             if isinstance(inference.get("rationale"), str) and inference["rationale"].strip():
                 metric["rationales"] += 1
         elif event_type == "policy_call_failed":
             metric["policy_call_failures"] += 1
-            _collect_inference_metrics(metric, event.get("inference"))
+            collect_event_inference(slot_by_side[side], match_id, event, event.get("inference"))
         elif event_type == "decision_replanned":
             metric["replans"] += 1
         elif event_type == "decision_interrupted":
@@ -506,9 +606,55 @@ def analyze(
         metric["latency_ms"] = _summarize(latency_ms)
         total_tokens = metric["input_tokens"] + metric["output_tokens"]
         metric["total_observed_input_output_tokens"] = total_tokens
-        metric["cost"] = None
-        metric["cost_note"] = "not computed: no versioned provider price schedule is recorded"
         descriptor = policy_metadata[slot]
+        cost_records = cost_by_match[slot]
+        completed_costs: list[float] = []
+        completed_cost_by_match: dict[str, float | None] = {}
+        for match_id in sorted(results):
+            match_cost = cost_records.get(match_id)
+            if not match_cost or match_cost["calls"] == 0:
+                if descriptor.get("kind") == "hosted_language_model":
+                    completed_costs.append(0.0)
+                    completed_cost_by_match[match_id] = 0.0
+                else:
+                    completed_cost_by_match[match_id] = None
+            elif match_cost["unpriced_calls"] == 0 and match_cost["priced_calls"] == match_cost["calls"]:
+                value = float(match_cost["cost_usd"])
+                completed_costs.append(value)
+                completed_cost_by_match[match_id] = round(value, 10)
+            else:
+                completed_cost_by_match[match_id] = None
+        total_hosted_calls = metric["hosted_inference_calls"]
+        priced_calls = metric["priced_inference_calls"]
+        metric["estimated_token_cost_usd"] = (
+            round(float(metric["estimated_token_cost_usd"]), 10) if priced_calls else None
+        )
+        metric["priced_request_coverage"] = (
+            round(priced_calls / total_hosted_calls, 6) if total_hosted_calls else None
+        )
+        metric["cost_basis_counts"] = dict(sorted(metric["cost_basis_counts"].items()))
+        metric["cost_estimate"] = {
+            "currency": "USD",
+            "method": "provider-reported Chutes token usage multiplied by the frozen public model catalog rates",
+            "observed_priced_requests_total_usd": metric["estimated_token_cost_usd"],
+            "hosted_requests": total_hosted_calls,
+            "priced_requests": priced_calls,
+            "unpriced_requests": metric["unpriced_inference_calls"],
+            "priced_request_coverage": metric["priced_request_coverage"],
+            "completed_matches_with_complete_cost_trace": len(completed_costs),
+            "completed_matches": len(results),
+            "completed_match_cost_coverage": (
+                round(len(completed_costs) / len(results), 6) if results else None
+            ),
+            "completed_match_cost_usd": completed_cost_by_match,
+            "mean_cost_per_completed_match_bootstrap_95": _bootstrap_mean_interval(
+                completed_costs,
+                seed=bootstrap_seed + (10 if slot == "A" else 11),
+                resamples=bootstrap_resamples,
+            ),
+            "basis_counts": metric["cost_basis_counts"],
+            "interpretation": "published-rate estimate, not provider invoice; subscription/quota billing is not converted to per-match USD",
+        }
         slot_summary[slot] = {
             "policy": {
                 "name": descriptor.get("name"),
@@ -519,6 +665,7 @@ def analyze(
                 "prompt_template": descriptor.get("prompt_template"),
                 "prompt_template_sha256": descriptor.get("prompt_template_sha256"),
                 "reasoning_capture": descriptor.get("reasoning_capture"),
+                "pricing_snapshot": descriptor.get("pricing_snapshot"),
             },
             "outcomes": {
                 "wins": record["wins"],
@@ -619,7 +766,7 @@ def analyze(
             "bootstrap_resamples": bootstrap_resamples,
             "bootstrap_seed": bootstrap_seed,
             "hidden_chain_of_thought": "not collected; only constrained visible rationale and provider-reported usage are analyzed",
-            "inference_cost": "not calculated without a versioned provider pricing manifest",
+            "inference_cost": "Chutes uses the frozen public model-catalog USD rates and reported token usage; MiniMax subscription/quota usage is reported in tokens but not converted to per-match USD",
             "privacy": "analysis output contains aggregate metrics and hashes, not prompts, responses, rationales, API keys, screenshots, or machine paths",
         },
     }

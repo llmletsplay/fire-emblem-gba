@@ -807,6 +807,40 @@ def start(args: argparse.Namespace) -> int:
     args.mgba = _find_mgba(args.mgba)
     runtime_provenance = _runtime_provenance(args.mgba)
 
+    pricing_snapshots_by_slot: dict[str, dict[str, Any]] = {}
+    data_dir = Path(args.data_dir).expanduser().resolve()
+    if hosted_slots:
+        for manifest_path in sorted(data_dir.glob("*/session.json")):
+            try:
+                previous = json.loads(manifest_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError) as exc:
+                raise ValueError(f"cannot recover the frozen pricing snapshot from {manifest_path}: {exc}") from None
+            agents_by_seat = previous.get("agents_by_seat") if isinstance(previous, dict) else None
+            if not isinstance(agents_by_seat, dict):
+                continue
+            for metadata in agents_by_seat.values():
+                if not isinstance(metadata, dict):
+                    continue
+                slot = metadata.get("policy_slot")
+                if slot not in hosted_slots:
+                    continue
+                provider, model, _, _ = policy_specs[slot]
+                if metadata.get("provider") != provider or metadata.get("model_requested") != model:
+                    continue
+                snapshot = metadata.get("pricing_snapshot")
+                if not isinstance(snapshot, dict):
+                    raise ValueError(
+                        f"prior hosted match {previous.get('match_id', manifest_path.parent.name)} "
+                        "has no frozen pricing snapshot; use a dedicated fresh DataDir"
+                    )
+                existing = pricing_snapshots_by_slot.get(slot)
+                if existing is not None and existing != snapshot:
+                    raise ValueError(
+                        f"DataDir has inconsistent pricing snapshots for policy slot {slot}; "
+                        "use a dedicated fresh DataDir"
+                    )
+                pricing_snapshots_by_slot[slot] = snapshot
+
     def build_agents(assignment: dict[str, Any]) -> dict[str, MinimaxAgent]:
         configured: dict[str, MinimaxAgent] = {}
         for seat, slot in assignment["policy_slot_by_seat"].items():
@@ -841,7 +875,16 @@ def start(args: argparse.Namespace) -> int:
                 max_completion_tokens=getattr(args, f"max_completion_tokens_{slot.lower()}"),
                 minimax_thinking=minimax_thinking,
                 minimax_reasoning_effort=minimax_reasoning_effort,
+                pricing_snapshot=pricing_snapshots_by_slot.get(slot),
             )
+            if provider == "chutes" and configured[seat].pricing_snapshot.get("status") != "captured":
+                snapshot_status = configured[seat].pricing_snapshot.get("status", "missing")
+                raise ValueError(
+                    f"policy slot {slot} cannot start a Chutes match because the selected model's "
+                    f"public price snapshot is {snapshot_status}; resolve the catalog/pricing "
+                    "issue before collecting benchmark decisions"
+                )
+            pricing_snapshots_by_slot[slot] = configured[seat].pricing_snapshot
         return configured
 
     first_assignment = _seat_assignment_for(
