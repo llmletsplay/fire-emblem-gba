@@ -62,6 +62,7 @@ def audit_ledger(path: Path) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     decision_rows_by_match_side: Counter[str] = Counter()
     models_by_provider: Counter[str] = Counter()
     rows_by_match: Counter[str] = Counter()
+    hosted_decisions_with_visible_rationale = 0
 
     with path.open("rb") as stream:
         for line_number, raw_line in enumerate(stream, start=1):
@@ -131,6 +132,9 @@ def audit_ledger(path: Path) -> tuple[dict[str, Any], list[dict[str, Any]]]:
                 provider = str(inference.get("provider") or "local")
                 model = str(inference.get("model_resolved") or inference.get("model_requested") or inference.get("policy") or "unknown")
                 models_by_provider[f"{provider}/{model}"] += 1
+                rationale = inference.get("rationale")
+                if provider != "local" and isinstance(rationale, str) and rationale.strip():
+                    hosted_decisions_with_visible_rationale += 1
 
     # Check joins after the full scan so events can appear in either order.
     decision_ids = {
@@ -169,7 +173,7 @@ def audit_ledger(path: Path) -> tuple[dict[str, Any], list[dict[str, Any]]]:
         "joined_actions_and_exchanges": dict(sorted(joined_rows.items())),
         "unlinked_actions_and_exchanges": dict(sorted(unlinked_rows.items())),
         "private_reasoning_key_occurrences": hidden_reasoning_fields,
-        "decision_rationales_are_visible_model_outputs": True,
+        "hosted_decisions_with_visible_rationale": hosted_decisions_with_visible_rationale,
     }
     return summary, valid_rows
 
