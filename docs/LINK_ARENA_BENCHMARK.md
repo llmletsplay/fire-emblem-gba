@@ -294,15 +294,16 @@ analysis command takes a lock-consistent ledger snapshot; run it after freezing
 the result series for publication-grade output. Bootstrap intervals are marked
 not estimable when fewer than two independent resampling units are available.
 
-Before public release, separate results from credentials, Twitch identifiers,
-and machine-specific paths. Do not redistribute commercial ROM or save files,
-or copyrighted game graphics/audio, unless distribution rights are confirmed.
-Publish hashes, schemas, code, derived action/outcome data, and reproduction
-instructions where permitted; state exactly which artifacts cannot be shared
-and why. Review the applicable game/emulator/API licenses and provider terms
-before collection or release. Keep live chat out of the research dataset unless
-a separately reviewed protocol obtains appropriate consent and handles
-personal data.
+The preliminary artifact-by-artifact inventory is in
+[`LINK_ARENA_RELEASE_INVENTORY.md`](LINK_ARENA_RELEASE_INVENTORY.md). It records
+which repository assets are already tracked, what rights evidence is present,
+what remains unverified, and the gates for a sanitized release. Root MIT terms
+do not establish rights to bundled game-derived art, screenshots, ROM/save
+files, or fonts. Do not include those materials in a paper archive without
+clearance. Keep raw provider credentials, machine paths, Twitch viewer/chat
+data, and unreviewed provider outputs out of released artifacts. Publish
+hashes, schemas, source, and derived decision/outcome data only after the
+provider, game-content, privacy, and venue checks in the inventory are complete.
 
 ## 6. Limitations and threats to validity
 

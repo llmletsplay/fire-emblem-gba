@@ -120,6 +120,12 @@ rejects `disabled` for models where it is unsupported or ignored. These
 settings freeze the serving configuration that the API exposes; they do not
 make private reasoning observable or part of the decision trace.
 
+Before unattended Chutes use, check the account plan against Chutes' current
+[Terms of Service](https://chutes.ai/terms): they distinguish low-volume API
+use from high-volume or highly automated inference and direct the latter to
+PAYGO. The match cap limits games, not provider billing. Freeze the selected
+plan and dated price schedule in the experiment record before the first call.
+
 `Install-Link-Arena-Stream.ps1` accepts the same `-AgentA`/`-AgentB`, matching
 `-ModelA`/`-ModelB`, per-policy-slot `-MinimaxThinkingA/B`,
 `-MinimaxReasoningEffortA/B`, token ceilings, and a request timeout. It checks
