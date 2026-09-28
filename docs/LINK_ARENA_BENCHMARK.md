@@ -88,14 +88,24 @@ completion is saved because it contains only the required action JSON and a
 brief user-visible rationale. The adapter does not ask the model to reveal
 private reasoning, does not read or persist provider-only `reasoning_content`
 fields, and does not publish hidden chain-of-thought. The MiniMax API documents
-that some models can return a separate `reasoning_content` field and that
-thinking behavior can depend on model defaults; this harness intentionally
-discards that field. It captures the constrained completion and brief rationale
-only. That rationale is an output supplied by the model; it is not a faithful
-or independently verified record of the model's internal reasoning. Malformed
-completions retain their hash and error metadata, not raw text that might
-contain unrequested reasoning. Never record API keys. The append-only ledger is
-a provenance trace, not proof that a provider's model weights are unchanged.
+that some models return a separate `reasoning_content` field. For
+MiniMax-M3.1-Flash-Preview, its current API reference says thinking is always
+on and defaults to maximum reasoning effort; `reasoning_split` controls
+whether that content is separated or embedded in assistant content, but does
+not disable thinking. This adapter ignores `reasoning_content`; if a provider
+mixes non-JSON reasoning into assistant content, strict validation rejects the
+completion and the log keeps only its hash and error metadata. The adapter
+currently omits provider-specific `thinking`, `reasoning_effort`, and
+`reasoning_split` fields, so the request hash documents that omission but does
+not freeze the provider's default behavior. Before any hosted study, choose
+and record each model's explicit reasoning/thinking settings and freeze the
+provider configuration. The adapter captures only the constrained completion
+and brief rationale. That rationale is an output supplied by the model; it is
+not a faithful or independently verified record of the model's internal
+reasoning. Malformed completions retain their hash and error metadata, not raw
+text that might contain unrequested reasoning. Never record API keys. The
+append-only ledger is a provenance trace, not proof that a provider's model
+weights are unchanged. [MiniMax Chat Completions API](https://platform.minimax.io/docs/api-reference/text-chat-openai).
 
 ### Decision-ledger contract (schema version 1)
 
@@ -287,14 +297,48 @@ in Zephyrus' user or machine environment during the readiness check. Provision
 credentials through approved host secret management, choose exact model IDs,
 and record provider plan/configuration before making any hosted calls.
 
+### Exploratory operations checkpoint (2026-09-28)
+
+The unattended local-minimax series has five completed games, all recorded as
+2P wins by synchronized roster elimination; the sixth game started through the
+automatic handoff and was active at the latest checkpoint. This is one
+prepared RAGNAROK team/save, fixed seat roles, and a small, non-random
+operational sample. Treat it only as harness/stream validation: it is not a
+model comparison, an official points result, or a confirmatory estimate. Do not
+pool it into future confirmatory results.
+
+At the end of game four, one read-only capture showed the in-game team panels
+at 564 and 288 while FE7 displayed its “Each unit receives 30 extra pts.”
+transition. The harness did not capture the subsequent ranking screen, so those
+panel values are not reported as final official totals. The capture is retained
+in [`LINK_ARENA_MATCH_REPORT.md`](LINK_ARENA_MATCH_REPORT.md).
+
+After the runner reload, a lock-consistent decision-ledger snapshot contained
+3,331 parseable events across 26 match IDs: 488 policy decisions, 470 submitted
+exchanges, 2,372 verified button actions, and one replan event. The audit found
+zero duplicate event IDs, event-hash mismatches, missing common fields,
+unknown event types, or unlinked accepted actions/exchanges, and no
+provider-private reasoning fields. Two previously absent legacy input events
+were recovered from their retained match logs. One malformed historical line
+(line 2010 in this snapshot) remains in the original source and is reported by
+the auditor; it is not rewritten or silently dropped. The optional valid-row
+export contains the 3,331 parseable events and an audit report, while
+preserving the original ledger separately. All hosted calls remain
+unconfigured, so these traces contain local-policy choices rather than LLM
+completions or rationales.
+
 - [ ] Verify official result-screen parser against multiple independently
   reviewed captures; reconcile points, rank, surviving units, and W–L–D.
-- [ ] Deploy and inspect the series-wide decision ledger on Zephyrus; validate
-  decision IDs join policy choices to every verified input.
+- [x] Deploy and inspect the series-wide decision ledger on Zephyrus; validate
+  decision IDs join policy choices to every verified input. The one malformed
+  historical source line remains explicitly flagged as described above.
 - [ ] Configure Chutes and MiniMax provider adapters with approved model IDs
   and protected credentials; freeze exact model IDs and plan/API configuration.
 - [ ] Define legal action contract, prompt, parsing/repair behavior, timeout,
   retry/fallback, and safe-stop semantics for each agent.
+- [ ] Freeze provider reasoning/thinking configuration as an explicit study
+  condition before hosted evaluation; the adapter excludes private reasoning
+  payloads and records only the validated visible action/rationale.
 - [ ] Freeze team/save manifest; characterize side advantage and RNG reset
   behavior; decide paired seeds/seat swaps.
 - [ ] Run a pilot, estimate variance/latency/cost, perform prospective power or

@@ -50,6 +50,27 @@ observations remain under
 18942/18943 and API port 18716. The result screen is captured above;
 point/rank extraction into a structured API record remains manual.
 
+## Exploratory continuous-series checkpoint
+
+Later on 2026-09-28, the continuous unattended runner completed five
+consecutive local-minimax games and automatically started a sixth. All five
+were recorded as 2P wins from the synchronized survivor state. They used the
+same prepared team/save and fixed seats, so this is operational evidence only,
+not a seat-balanced benchmark result. At the latest checkpoint, match
+`20260928T190355Z-4f984d` was still playing. The active series ledger contains
+the decision and verified-input trace; see the benchmark protocol for its
+audit counts and the one preserved malformed historical row.
+
+At the game-four handoff, the read-only 1P view captured this in-game points
+panel and bonus transition:
+
+![FE7 Link Arena game-four points bonus transition, with the final ranking not yet shown](link_arena_evidence/match4-terminal-points-transition.png)
+
+The panels display 564 and 288 while FE7 says each unit receives 30 extra
+points. This was captured before the final ranking screen, and no verified final
+point total or official rank is inferred from it. The 2P survivor win in the
+series ledger remains distinct from FE7's final numeric score.
+
 ## Reproduction details
 
 - Match ID: `20260927T171244Z-c0eba3`
