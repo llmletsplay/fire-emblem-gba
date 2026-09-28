@@ -26,7 +26,7 @@ prepared save between verified wins and records a persistent series W–L–D
 score. Hosted Chutes/MiniMax policies can be supplied with `-AgentA` or
 `-AgentB` plus the matching `-ModelA`/`-ModelB`; the runner starts them only
 when the corresponding API key is available. The scheduled task supports the
-same provider/model and per-seat MiniMax reasoning settings. Use the encrypted
+same provider/model and per-policy-slot MiniMax reasoning settings. Use the encrypted
 credential prompt documented in [`LINK_ARENA.md`](LINK_ARENA.md#stage-and-start-on-zephyrus)
 to make those keys available to unattended runs. See
 [`LINK_ARENA.md`](LINK_ARENA.md#stage-and-start-on-zephyrus) for examples. The
@@ -90,8 +90,17 @@ $experiment = "$env:LOCALAPPDATA\FE7-Link-Arena\experiments\glm51-vs-minimax-m31
   -AgentA chutes -ModelA 'zai-org/GLM-5.1-TEE' `
   -AgentB minimax-api -ModelB 'MiniMax-M3.1-Flash-Preview' `
   -MinimaxThinkingB adaptive -MinimaxReasoningEffortB low `
+  -AlternateAgentSeats -SeatOrderSeed 20260928 `
   -TwitchChannel llmletsplay
 ```
+
+`-AlternateAgentSeats` makes policy slots A and B swap runner seats across
+successive verified matches, in two-match blocks. The seeded first orientation
+and exact slot assignment are written into each match's `session.json`, so the
+schedule survives a runner restart. Use one dedicated experiment data directory
+per frozen provider/model pairing and seed. This balances seat allocation but
+does not reset or pair FE7 combat RNG; analyses must treat RNG as a remaining
+source of variation and report incomplete matches separately.
 
 Installing without `-RestartNow` updates task registration but leaves running
 processes alone; the new policy takes effect at the next task start/logon. A

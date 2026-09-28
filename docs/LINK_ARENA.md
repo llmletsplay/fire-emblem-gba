@@ -121,7 +121,7 @@ settings freeze the serving configuration that the API exposes; they do not
 make private reasoning observable or part of the decision trace.
 
 `Install-Link-Arena-Stream.ps1` accepts the same `-AgentA`/`-AgentB`, matching
-`-ModelA`/`-ModelB`, per-seat `-MinimaxThinkingA/B`,
+`-ModelA`/`-ModelB`, per-policy-slot `-MinimaxThinkingA/B`,
 `-MinimaxReasoningEffortA/B`, token ceilings, and a request timeout. It checks
 the required encrypted credentials before changing either scheduled task.
 For research, assign each frozen model pairing its own `-DataDir`, so its
@@ -130,6 +130,15 @@ exploratory minimax stream. Updating task registration without `-RestartNow`
 leaves current processes running and applies the new configuration on the
 next task start/logon. Do not use `-RestartNow` in the middle of a match; it
 stops the active isolated game and OBS process.
+
+For a research pairing, `-AgentA`/`-ModelA` and `-AgentB`/`-ModelB` name the
+two policy slots. Add `-AlternateAgentSeats -SeatOrderSeed <integer>` to the
+runner or scheduled-task installer to swap those policy slots between the
+runner's A/1P and B/2P seats in deterministic two-match blocks. The seed and
+exact assignment are persisted in each match's `session.json`; the schedule
+continues from the verified series game count after a runner restart. This
+balances seat placement but does not make game RNG replays deterministic.
+Use a fresh `-DataDir` for every frozen model pairing and seed.
 
 For an unattended series, add `-Continuous`. The runner waits for its
 two-client terminal check, writes the winner to
