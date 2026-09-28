@@ -246,6 +246,8 @@ class MatchSeries:
 class DecisionLedger:
     """Durable, series-wide JSONL trace of policy choices and executed inputs."""
 
+    _LEGACY_PRUNE_MANIFEST = "legacy-backfill-pruned.json"
+
     _EVENT_FIELDS = {
         "decision": (
             "decision_id", "side", "seat", "bridge_side", "attempt", "decision",
@@ -276,11 +278,59 @@ class DecisionLedger:
         self.path = data_dir / "series" / "decisions.jsonl"
         self.lock_path = data_dir / "series" / ".decisions.lock"
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        self._legacy_backfill_excluded_match_ids: set[str] = set()
+        self._legacy_manifest_signature: tuple[int, int] | None = None
+        self._load_legacy_prune_manifest()
         self._lock = threading.RLock()
         with _exclusive_file_lock(self.lock_path):
             self._event_ids, self._event_indexed_size = self._load_event_ids()
         if backfill:
             self.backfill_legacy_matches()
+
+    def _load_legacy_prune_manifest(self) -> set[str]:
+        """Read and verify the archive marker created by the legacy pruner."""
+        manifest_path = self.path.parent / self._LEGACY_PRUNE_MANIFEST
+        try:
+            stat = manifest_path.stat()
+        except FileNotFoundError:
+            self._legacy_manifest_signature = None
+            self._legacy_backfill_excluded_match_ids = set()
+            return set()
+        signature = (stat.st_mtime_ns, stat.st_size)
+        if signature == self._legacy_manifest_signature:
+            return self._legacy_backfill_excluded_match_ids
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise ValueError(f"cannot read legacy backfill manifest {manifest_path}: {exc}") from None
+        if not isinstance(manifest, dict) or manifest.get("schema_version") != 1:
+            raise ValueError(f"invalid legacy backfill manifest: {manifest_path}")
+        match_ids = manifest.get("excluded_match_ids")
+        archive_relpath = manifest.get("archive_relpath")
+        archive_sha256 = manifest.get("archive_sha256")
+        if (
+            not isinstance(match_ids, list)
+            or any(not isinstance(match_id, str) or not match_id for match_id in match_ids)
+            or len(match_ids) != len(set(match_ids))
+            or not isinstance(archive_relpath, str)
+            or not isinstance(archive_sha256, str)
+            or len(archive_sha256) != 64
+            or any(char not in "0123456789abcdef" for char in archive_sha256)
+        ):
+            raise ValueError(f"invalid legacy backfill manifest fields: {manifest_path}")
+        relative = Path(archive_relpath)
+        if relative.is_absolute() or ".." in relative.parts:
+            raise ValueError(f"unsafe archive path in legacy backfill manifest: {manifest_path}")
+        archive_path = self.path.parent / relative
+        try:
+            archive_digest = hashlib.sha256(archive_path.read_bytes()).hexdigest()
+        except OSError as exc:
+            raise ValueError(f"cannot verify legacy ledger archive {archive_path}: {exc}") from None
+        if archive_digest != archive_sha256:
+            raise ValueError(f"legacy ledger archive hash mismatch: {archive_path}")
+        self._legacy_manifest_signature = signature
+        self._legacy_backfill_excluded_match_ids = set(match_ids)
+        return self._legacy_backfill_excluded_match_ids
 
     def _load_event_ids(self, offset: int = 0) -> tuple[set[str], int]:
         event_ids: set[str] = set()
@@ -329,6 +379,10 @@ class DecisionLedger:
         ).encode("utf-8")
         event_id = hashlib.sha256(canonical).hexdigest()
         with self._lock, _exclusive_file_lock(self.lock_path):
+            if trace_origin == "legacy_backfill":
+                excluded = self._load_legacy_prune_manifest()
+                if match_id in excluded:
+                    return False
             # Another runner or a one-off migration can append while this
             # instance is alive, so refresh the dedupe index under the shared
             # process lock before deciding whether this event is new.
@@ -380,6 +434,9 @@ class DecisionLedger:
         are used to join those events; original files remain untouched.
         """
         added = 0
+        excluded = set(self._legacy_backfill_excluded_match_ids)
+        if exclude_match_ids:
+            excluded.update(exclude_match_ids)
         try:
             match_dirs = sorted(
                 path for path in self.data_dir.iterdir()
@@ -396,7 +453,7 @@ class DecisionLedger:
             match_id = session.get("match_id") if isinstance(session, dict) else None
             if not isinstance(match_id, str):
                 continue
-            if exclude_match_ids and match_id in exclude_match_ids:
+            if match_id in excluded:
                 continue
             auto_rows = self._read_jsonl(match_dir / "minimax-autoplay.jsonl")
             input_rows = self._read_jsonl(match_dir / "events.jsonl")

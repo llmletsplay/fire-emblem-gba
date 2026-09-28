@@ -172,6 +172,19 @@ The optional `--export-valid <derived-path.jsonl>` writes only parseable event
 rows to a separate derived file and writes an adjacent `.audit.json` report;
 it never edits the original append-only ledger.
 
+The canonical ledger is append-only during ordinary runs. A one-time
+maintenance tool is available for removing redundant `legacy_backfill` rows:
+`python tools/prune_legacy_link_arena_ledger.py <path-to-decisions.jsonl>` is a
+dry run; add `--apply` only after reviewing its report. Under the same file
+lock as the runner, it archives the exact pre-cleanup bytes (including the
+known malformed fragment), then retains live rows and removes legacy imports
+plus that one fragment only when its byte count and SHA-256 match the audited
+record. A checked manifest prevents the runner from importing those historical
+match IDs again. The tool leaves original per-match logs untouched and refuses
+unexpected corruption or any cleanup that would break live decision/action
+links. Keep the archive with the private raw research data; it is provenance,
+not a publication-ready derivative.
+
 ### Proposed baselines
 
 - Built-in depth-two minimax policy (current baseline; policy estimate is not a
