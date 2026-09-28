@@ -241,6 +241,7 @@ class LinkArenaCoordinator:
                     ),
                     "game_state": parse_game_state(game_state_after),
                     "detail": parsed_detail,
+                    "units": parse_units(units_after),
                     "coherent": coherent,
                     "settled": coherent and not parsed_detail.get("locked", False)
                     and self.status_fingerprint_count[side] >= 2,

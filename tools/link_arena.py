@@ -16,6 +16,7 @@ import socket
 import subprocess
 import sys
 from typing import Any
+from urllib.parse import parse_qs, urlencode, urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -24,10 +25,17 @@ if str(ROOT) not in sys.path:
 from src.link_arena.coordinator import InvalidAction, LinkArenaCoordinator, StaleObservation
 from src.link_arena.bridge import BridgeError
 from src.link_arena.autoplay import MinimaxAutoplay
+from src.link_arena.stream import LinkArenaStreamState
 
 
 DEFAULT_ROM = ROOT / "roms" / "fe7.gba"
 DEFAULT_SAVE = ROOT / "roms" / "fe7-link-arena-maxed.sav"
+
+
+def _twitch_channel(value: str) -> str:
+    if not re.fullmatch(r"[A-Za-z0-9_]{1,25}", value):
+        raise argparse.ArgumentTypeError("Twitch channel must be a channel handle (letters, digits, underscore)")
+    return value.lower()
 
 
 def _default_data_dir() -> Path:
@@ -311,6 +319,7 @@ class _ApiServer(http.server.ThreadingHTTPServer):
     def __init__(self, address: tuple[str, int], coordinator: LinkArenaCoordinator):
         self.coordinator = coordinator
         self.autoplay: MinimaxAutoplay | None = None
+        self.stream_state: LinkArenaStreamState | None = None
         super().__init__(address, _ApiHandler)
 
 
@@ -329,6 +338,29 @@ class _ApiHandler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def _static_file(self, path: str) -> None:
+        filename = {"/stream": "index.html", "/stream.css": "overlay.css", "/stream.js": "overlay.js"}.get(path)
+        if filename is None:
+            self._json(404, {"error": "unknown stream asset"})
+            return
+        source = ROOT / "src" / "link_arena" / "stream_overlay" / filename
+        try:
+            data = source.read_bytes()
+        except OSError:
+            self._json(503, {"error": "stream overlay assets are missing from this deployment"})
+            return
+        content_type = "text/html; charset=utf-8" if filename.endswith(".html") else (
+            "text/css; charset=utf-8" if filename.endswith(".css") else "text/javascript; charset=utf-8"
+        )
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Content-Security-Policy", "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; frame-src https://www.twitch.tv https://*.twitch.tv; frame-ancestors 'self'")
+        self.end_headers()
+        self.wfile.write(data)
+
     def _authorized_side(self) -> str | None:
         scheme, _, token = self.headers.get("Authorization", "").partition(" ")
         if scheme.lower() != "bearer" or not token:
@@ -336,6 +368,24 @@ class _ApiHandler(http.server.BaseHTTPRequestHandler):
         return self.server.coordinator.side_for_token(token)
 
     def do_GET(self) -> None:
+        path = urlsplit(self.path).path
+        if path in {"/stream", "/stream.css", "/stream.js"}:
+            self._static_file(path)
+            return
+        if path in {"/v1/stream", "/v1/stream/frames"}:
+            if self.server.stream_state is None:
+                self._json(503, {"error": "stream telemetry is not available"})
+                return
+            try:
+                if path == "/v1/stream/frames":
+                    self._json(200, self.server.stream_state.frames())
+                    return
+                query = parse_qs(urlsplit(self.path).query)
+                include_frame = query.get("frame", ["1"])[0] != "0"
+                self._json(200, self.server.stream_state.snapshot(include_frame=include_frame))
+            except (BridgeError, OSError, ValueError) as exc:
+                self._json(503, {"error": str(exc)})
+            return
         side = self._authorized_side()
         if side is None:
             self._json(401, {"error": "use this agent side's bearer token"})
@@ -454,7 +504,17 @@ def start(args: argparse.Namespace) -> int:
                 print("Automatic title/setup armed; agent observations and actions unlock when both clients reach the arena map.")
         else:
             print("Manual setup enabled; the agent API will expose the current screen.")
+        server.stream_state = LinkArenaStreamState(
+            coordinator,
+            match_id=session["match_id"],
+            started_at=session["created_at"],
+            autoplay=autoplay,
+        )
         print(f"Agent API: http://127.0.0.1:{args.api_port}/v1/observe")
+        overlay_url = f"http://127.0.0.1:{args.api_port}/stream"
+        if args.twitch_channel:
+            overlay_url += "?" + urlencode({"channel": args.twitch_channel})
+        print(f"OBS Link Arena overlay: {overlay_url}")
         print(f"Side A token file: {match_dir / 'side-a.token'}")
         print(f"Side B token file: {match_dir / 'side-b.token'}")
         print("Press Ctrl-C here to stop the API and close this mGBA session.")
@@ -501,6 +561,8 @@ def build_parser() -> argparse.ArgumentParser:
                         help="seconds between stable-screen checks while minimax autoplay waits")
     parser.add_argument("--auto-settle-timeout", type=float, default=60.0,
                         help="seconds allowed for each one-button transition and FE7 combat animation to settle")
+    parser.add_argument("--twitch-channel", type=_twitch_channel,
+                        help="Twitch channel handle shown in the stream overlay")
     parser.set_defaults(func=start)
     return parser
 

@@ -6,6 +6,7 @@ param(
     [string]$DataDir,
     [string]$Mgba,
     [string]$MgbaLogLevel,
+    [string]$TwitchChannel,
     [switch]$AutoMinimax,
     [switch]$ManualSetup,
     [ValidateRange(0.05, 30)]
@@ -43,6 +44,7 @@ if ($Save) { $Arguments += @('--save', (Resolve-Path $Save).Path) }
 if ($DataDir) { $Arguments += @('--data-dir', $DataDir) }
 if ($Mgba) { $Arguments += @('--mgba', (Resolve-Path $Mgba).Path) }
 if ($MgbaLogLevel) { $Arguments += @('--mgba-log-level', $MgbaLogLevel) }
+if ($TwitchChannel) { $Arguments += @('--twitch-channel', $TwitchChannel) }
 if ($AutoMinimax) { $Arguments += '--auto-minimax' }
 if ($ManualSetup) { $Arguments += '--manual-setup' }
 $Arguments += @('--auto-poll-interval', $AutoPollInterval, '--auto-settle-timeout', $AutoSettleTimeout)

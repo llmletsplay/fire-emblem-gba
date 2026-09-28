@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <title>FE7 Link Arena — Live</title>
+    <link rel="stylesheet" href="/stream.css" />
+  </head>
+  <body>
+    <div class="overlay">
+      <header class="masthead">
+        <div class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 64 64" role="img">
+            <path d="M49 8 35 22l7 7L56 15l2-9-9 2ZM34 25 12 47l-4 9 9-4 22-22M29 30l5 5M22 37l5 5M15 44l5 5" />
+            <path d="m7 7 10 2 7 7-8 8-7-7-2-10Z" />
+          </svg>
+        </div>
+        <div class="title-block">
+          <div class="eyebrow">FIRE EMBLEM · THE BLAZING BLADE</div>
+          <h1>LINK <span>ARENA</span></h1>
+        </div>
+        <div class="match-id"><span class="live-dot"></span><span id="runner-state">CONNECTING</span><b id="match-id">MATCH —</b></div>
+        <div class="runtime"><span>ELAPSED</span><strong id="elapsed">00:00</strong></div>
+      </header>
+
+      <main class="stage">
+        <section class="arena-column">
+          <div class="duel-banner">
+            <div class="side-label blue-side"><span class="crest">Ⅰ</span><div><small>PLAYER ONE · BLUE</small><strong>1P <i id="onep-record">0 KO</i></strong></div></div>
+            <div class="duel-center"><span>LINK BATTLE</span><b>⚔</b><small id="turn-label">TURN — · AWAITING LINK</small></div>
+            <div class="side-label green-side"><span class="crest">Ⅱ</span><div><small>PLAYER TWO · GREEN</small><strong>2P <i id="twop-record">0 KO</i></strong></div></div>
+          </div>
+          <div class="game-frame">
+            <div class="game-screen" id="game-screen">
+              <div class="client-screen blue-client"><div class="client-label">1P · BLUE VIEW</div><img id="game-image-1p" alt="Live FE7 Link Arena player one view" /></div>
+              <div class="client-screen green-client"><div class="client-label">2P · GREEN VIEW</div><img id="game-image-2p" alt="Live FE7 Link Arena player two view" /></div>
+              <div class="screen-placeholder" id="screen-placeholder"><span class="loading-sigil">⚔</span><strong>AWAITING THE ARENA</strong><small>The runner will bring both teams here automatically.</small></div>
+              <div class="frame-corner corner-tl"></div><div class="frame-corner corner-tr"></div>
+              <div class="frame-corner corner-bl"></div><div class="frame-corner corner-br"></div>
+            </div>
+            <div class="screen-caption"><span>LIVE FE7 CAPTURE</span><span id="screen-status">LINKING TWO CORES</span></div>
+          </div>
+          <section class="exchange-panel">
+            <div class="panel-heading"><span class="sword-small">⚔</span><span>RECENT EXCHANGES</span><i></i><small>MINIMAX FIELD NOTES</small></div>
+            <div class="exchange-list" id="exchange-list"><div class="empty-exchange">Waiting for the first agent decision…</div></div>
+          </section>
+        </section>
+
+        <aside class="broadcast-column">
+          <section class="chat-panel">
+            <div class="panel-heading"><span class="chat-live"></span><span>LIVE CHAT</span><i></i><small id="chat-channel-label">TWITCH</small></div>
+            <div class="chat-window" id="chat-window">
+              <iframe id="chat-embed" title="Twitch live chat" hidden allow="autoplay; clipboard-write" referrerpolicy="strict-origin-when-cross-origin"></iframe>
+              <div class="chat-setup" id="chat-setup">
+                <div class="chat-sigil">✦</div>
+                <strong>CHAT JOINS THE BATTLE</strong>
+                <p id="chat-instructions">Set a Twitch channel when launching the Link Arena runner. The chat source will be ready to place in this frame.</p>
+                <a id="chat-popout" href="#" target="_blank" rel="noreferrer" hidden>OPEN TWITCH CHAT ↗</a>
+                <small>OBS chat source · 420 × 540</small>
+              </div>
+            </div>
+            <div class="chat-foot"><span>TWITCH CHAT · LINK ARENA LIVE</span><span class="chat-dot"></span></div>
+          </section>
+
+          <section class="metrics-panel">
+            <div class="panel-heading"><span class="metric-icon">✧</span><span>BATTLE METRICS</span><i></i><small>LIVE MEMORY</small></div>
+            <div class="team-metric-row">
+              <div class="team-metric blue-card"><div class="metric-side"><span>1P</span><small>BLUE</small></div><strong id="onep-alive">—<small> / 5</small></strong><label>STANDING</label><div class="hp-track"><i id="onep-hp"></i></div><div class="hp-note" id="onep-hp-label">HP — / —</div></div>
+              <div class="team-metric green-card"><div class="metric-side"><span>2P</span><small>GREEN</small></div><strong id="twop-alive">—<small> / 5</small></strong><label>STANDING</label><div class="hp-track"><i id="twop-hp"></i></div><div class="hp-note" id="twop-hp-label">HP — / —</div></div>
+            </div>
+            <div class="metric-grid">
+              <div><span>VERIFIED INPUTS</span><strong id="input-count">0 · 0</strong></div>
+              <div><span>EXCHANGES</span><strong id="exchange-count">0 · 0</strong></div>
+              <div><span>LAST EVAL¹</span><strong id="eval-value">—</strong></div>
+              <div><span>ARENA STATE</span><strong id="phase-value">STARTING</strong></div>
+            </div>
+            <div class="metric-legend"><span>¹ Policy estimate, not FE7 points</span><span id="data-health">WAITING FOR LINK</span></div>
+          </section>
+        </aside>
+      </main>
+
+      <footer class="lower-third">
+        <div class="footer-sword">⚔</div>
+        <div class="footer-cell turn-cell"><span>TURN</span><strong id="footer-turn">—</strong></div>
+        <div class="footer-divider"></div>
+        <div class="footer-cell phase-cell"><span>PHASE</span><strong id="footer-phase">LINK SETUP</strong></div>
+        <div class="footer-divider"></div>
+        <div class="footer-cell mode-cell"><span>MODE</span><strong id="footer-mode">MINIMAX DUEL</strong></div>
+        <div class="footer-divider"></div>
+        <div class="footer-cell last-cell"><span>LAST DECISION</span><strong id="footer-decision">Awaiting the opening map…</strong></div>
+        <div class="footer-sword footer-sword-right">⚔</div>
+      </footer>
+      <div class="setup-warning" id="setup-warning" hidden></div>
+    </div>
+    <script src="/stream.js" defer></script>
+  </body>
+</html>
