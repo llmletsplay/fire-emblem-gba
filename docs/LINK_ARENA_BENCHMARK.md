@@ -19,11 +19,12 @@ that decision into verified game inputs, while the game engine resolves combat
 and its random outcomes. The benchmark will compare fixed model and policy
 configurations across seat-balanced matches, report game outcomes alongside
 execution reliability, latency, and inference cost, and preserve decision-level
-traces for audit. The current system is an engineering prototype: its live
-series scoreboard records synchronized elimination outcomes, not FE7's numeric
-Link Arena points or final ranking. We will not report model rankings or
-scientific conclusions until result parsing, experimental controls, sample size,
-and release rights have been validated and preregistered.
+traces for audit. The current system is an engineering prototype. Its live
+series scoreboard records synchronized elimination outcomes, and a fail-closed
+reader is being validated for FE7's numeric Link Arena points and final
+ranking. We will not report model rankings or scientific conclusions until
+paired live result recording, experimental controls, sample size, and release
+rights have been validated and preregistered.
 
 ## 1. Motivation and scope
 
@@ -269,9 +270,13 @@ personal data.
 1. **Narrow environment.** One FE7 version, one prepared team/save, one Link
    Arena map/ruleset, and currently one fixed team composition cannot support
    broad claims about strategy games or general agents.
-2. **Outcome gap.** Current automation records only stable terminal roster
-   elimination. The official FE7 point/rank screen is not yet parsed into the
-   ledger, so the current W–L–D stream metric is not a complete official score.
+2. **Outcome gap.** The result reader recognizes the standard final-rank
+   layout and the shifted view shown by the opposite linked client. Manual
+   calibration fixtures parse 520–346 and 576–288 and reject retained bonus
+   transition panels. The deployed Zephyrus build still lacks that second
+   layout; its live ledger currently contains no persisted official points.
+   Until a paired live result is recorded by the updated runner, W–L–D remains
+   the only live series outcome and is not a complete official score.
 3. **Uncontrolled randomness.** FE7 combat uses RNG. A file-level save hash
    does not prove identical RNG state or reproducible trajectories across
    launches. Pairing and seat balancing mitigate but do not remove this issue.
