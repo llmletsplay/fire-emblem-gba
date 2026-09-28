@@ -94,6 +94,15 @@ verified explanation of the model's internal process. See
 [`LINK_ARENA_BENCHMARK.md`](LINK_ARENA_BENCHMARK.md) for the study protocol and
 current limits on score claims.
 
+MiniMax API requests explicitly set `thinking.type` (default `adaptive`) and
+`reasoning_split: true`; those fields and the completion-token ceiling are
+included in the hashed request metadata. For MiniMax M3.1, pass
+`--minimax-reasoning-effort-a/b` with `low`, `medium`, `high`, `xhigh`, or
+`max`. The harness rejects M3.1 requests without an explicit effort and
+rejects `disabled` for models where it is unsupported or ignored. These
+settings freeze the serving configuration that the API exposes; they do not
+make private reasoning observable or part of the decision trace.
+
 For an unattended series, add `-Continuous`. The runner waits for its
 two-client terminal check, writes the winner to
 `%LOCALAPPDATA%\FE7-Link-Arena\series\results.jsonl`, closes that match, then

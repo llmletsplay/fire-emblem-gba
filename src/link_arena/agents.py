@@ -284,7 +284,9 @@ class OpenAICompatibleAgent(MinimaxAgent):
         api_key_env: str | None = None,
         timeout_seconds: float = 120.0,
         temperature: float = 0.0,
-        max_completion_tokens: int = 256,
+        max_completion_tokens: int = 2048,
+        minimax_thinking: str | None = None,
+        minimax_reasoning_effort: str | None = None,
     ):
         super().__init__(side)
         normalized_provider = provider.strip().lower()
@@ -302,12 +304,50 @@ class OpenAICompatibleAgent(MinimaxAgent):
         self.timeout_seconds = timeout_seconds
         self.temperature = temperature
         self.max_completion_tokens = max_completion_tokens
+        if minimax_thinking not in {None, "adaptive", "disabled"}:
+            raise ValueError("MiniMax thinking mode must be 'adaptive' or 'disabled'")
+        if minimax_reasoning_effort not in {None, "low", "medium", "high", "xhigh", "max"}:
+            raise ValueError("unsupported MiniMax reasoning effort")
+        if self.provider != "minimax-api" and (
+            minimax_thinking is not None or minimax_reasoning_effort is not None
+        ):
+            raise ValueError("MiniMax reasoning options require --agent-a/b minimax-api")
+        self.minimax_thinking: str | None = None
+        self.minimax_reasoning_effort: str | None = None
+        self.reasoning_split: bool | None = None
+        if self.provider == "minimax-api":
+            model_id = self.model.lower()
+            is_m31 = "m3.1" in model_id
+            is_m2 = "m2." in model_id or model_id.endswith("-m2")
+            self.minimax_thinking = minimax_thinking or "adaptive"
+            self.reasoning_split = True
+            if is_m31 and self.minimax_thinking == "disabled":
+                raise ValueError("MiniMax M3.1 always reasons; choose an explicit reasoning effort instead")
+            if is_m2 and self.minimax_thinking == "disabled":
+                raise ValueError("MiniMax M2 models ignore disabled thinking; use adaptive")
+            if is_m31 and minimax_reasoning_effort is None:
+                raise ValueError(
+                    "MiniMax M3.1 requires an explicit --minimax-reasoning-effort-a/b setting"
+                )
+            if not is_m31 and minimax_reasoning_effort is not None:
+                raise ValueError(
+                    "MiniMax reasoning effort is only supported by MiniMax M3.1 models"
+                )
+            self.minimax_reasoning_effort = minimax_reasoning_effort
         self.last_call_metadata: dict[str, Any] = {}
         self._system_prompt_sha256 = hashlib.sha256(
             self._SYSTEM_TEMPLATE.encode("utf-8")
         ).hexdigest()
 
     def benchmark_metadata(self) -> dict[str, Any]:
+        reasoning_settings: dict[str, Any] = {}
+        if self.provider == "minimax-api":
+            reasoning_settings = {
+                "thinking": {"type": self.minimax_thinking},
+                "reasoning_split": self.reasoning_split,
+            }
+            if self.minimax_reasoning_effort is not None:
+                reasoning_settings["reasoning_effort"] = self.minimax_reasoning_effort
         return {
             "kind": "hosted_language_model",
             "name": f"{self.provider}:{self.model}",
@@ -320,8 +360,20 @@ class OpenAICompatibleAgent(MinimaxAgent):
             "system_prompt": self._SYSTEM_TEMPLATE,
             "temperature": self.temperature,
             "max_completion_tokens": self.max_completion_tokens,
+            "reasoning_settings": reasoning_settings,
             "own_team": self.own_team,
         }
+
+    def _provider_request_parameters(self) -> dict[str, Any]:
+        if self.provider != "minimax-api":
+            return {}
+        parameters: dict[str, Any] = {
+            "thinking": {"type": self.minimax_thinking},
+            "reasoning_split": self.reasoning_split,
+        }
+        if self.minimax_reasoning_effort is not None:
+            parameters["reasoning_effort"] = self.minimax_reasoning_effort
+        return parameters
 
     @staticmethod
     def _int_field(value: Any, key: str) -> int:
@@ -363,6 +415,7 @@ class OpenAICompatibleAgent(MinimaxAgent):
                 self.max_completion_tokens,
             "stream": False,
         }
+        body.update(self._provider_request_parameters())
         encoded_body = json.dumps(body, sort_keys=True, separators=(",", ":")).encode("utf-8")
         prompt_text = json.dumps(messages, sort_keys=True, separators=(",", ":"))
         self.last_call_metadata = {
@@ -380,6 +433,7 @@ class OpenAICompatibleAgent(MinimaxAgent):
                 "max_completion_tokens": self.max_completion_tokens,
                 "stream": False,
                 "output_contract": "strict_json_object_validated_client_side",
+                **self._provider_request_parameters(),
             },
         }
         request = Request(
