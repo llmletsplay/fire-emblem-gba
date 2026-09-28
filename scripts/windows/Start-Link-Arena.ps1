@@ -4,6 +4,7 @@ param(
     [string]$Rom,
     [string]$Save,
     [string]$DataDir,
+    [string]$CredentialPath,
     [string]$Mgba,
     [string]$MgbaLogLevel,
     [string]$TwitchChannel = 'llmletsplay',
@@ -13,11 +14,23 @@ param(
     [string]$ModelA,
     [string]$BaseUrlA,
     [string]$ApiKeyEnvA,
+    [ValidateSet('adaptive', 'disabled')]
+    [string]$MinimaxThinkingA,
+    [ValidateSet('low', 'medium', 'high', 'xhigh', 'max')]
+    [string]$MinimaxReasoningEffortA,
+    [ValidateRange(1, 204800)]
+    [int]$MaxCompletionTokensA = 2048,
     [ValidateSet('minimax', 'chutes', 'minimax-api')]
     [string]$AgentB = 'minimax',
     [string]$ModelB,
     [string]$BaseUrlB,
     [string]$ApiKeyEnvB,
+    [ValidateSet('adaptive', 'disabled')]
+    [string]$MinimaxThinkingB,
+    [ValidateSet('low', 'medium', 'high', 'xhigh', 'max')]
+    [string]$MinimaxReasoningEffortB,
+    [ValidateRange(1, 204800)]
+    [int]$MaxCompletionTokensB = 2048,
     [ValidateRange(1, 600)]
     [double]$AgentTimeout = 120,
     [switch]$Continuous,
@@ -58,6 +71,28 @@ New-Item -ItemType Directory -Force -Path $RunnerDataDir | Out-Null
 $RunnerLog = Join-Path $RunnerDataDir 'stream-runner.log'
 $RunnerErrorLog = Join-Path $RunnerDataDir 'stream-runner-errors.log'
 
+$HasHostedAgent = ($AgentA -ne 'minimax' -or $AgentB -ne 'minimax')
+if ($HasHostedAgent) {
+    if (-not $CredentialPath) {
+        $CredentialPath = Join-Path $env:LOCALAPPDATA 'FE7-Link-Arena\secrets\provider-credentials.dpapi.json'
+    }
+    $CredentialImporter = Join-Path $PSScriptRoot 'Import-Link-Arena-Credentials.ps1'
+    if (-not (Test-Path -LiteralPath $CredentialImporter -PathType Leaf)) {
+        throw "Hosted policies require the credential importer: $CredentialImporter"
+    }
+    & $CredentialImporter -CredentialPath $CredentialPath
+    $selectedProviders = @()
+    foreach ($provider in @($AgentA, $AgentB)) {
+        if ($provider -ne 'minimax') { $selectedProviders += $provider }
+    }
+    foreach ($provider in @($selectedProviders | Select-Object -Unique)) {
+        $credentialName = if ($provider -eq 'chutes') { 'CHUTES_API_KEY' } else { 'MINIMAX_API_KEY' }
+        if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($credentialName, 'Process'))) {
+            throw "Hosted policy '$provider' requires a locally saved $credentialName. Run Set-Link-Arena-ProviderCredentials.ps1 as this Windows user."
+        }
+    }
+}
+
 $Python = Get-Command python -ErrorAction SilentlyContinue
 $PythonArgs = @('-u')
 if (-not $Python) {
@@ -79,9 +114,15 @@ if ($AutoMinimax) { $Arguments += '--auto-minimax' }
 if ($AgentA -ne 'minimax') { $Arguments += @('--agent-a', $AgentA, '--model-a', $ModelA) }
 if ($BaseUrlA) { $Arguments += @('--base-url-a', $BaseUrlA) }
 if ($ApiKeyEnvA) { $Arguments += @('--api-key-env-a', $ApiKeyEnvA) }
+if ($MinimaxThinkingA) { $Arguments += @('--minimax-thinking-a', $MinimaxThinkingA) }
+if ($MinimaxReasoningEffortA) { $Arguments += @('--minimax-reasoning-effort-a', $MinimaxReasoningEffortA) }
+$Arguments += @('--max-completion-tokens-a', $MaxCompletionTokensA)
 if ($AgentB -ne 'minimax') { $Arguments += @('--agent-b', $AgentB, '--model-b', $ModelB) }
 if ($BaseUrlB) { $Arguments += @('--base-url-b', $BaseUrlB) }
 if ($ApiKeyEnvB) { $Arguments += @('--api-key-env-b', $ApiKeyEnvB) }
+if ($MinimaxThinkingB) { $Arguments += @('--minimax-thinking-b', $MinimaxThinkingB) }
+if ($MinimaxReasoningEffortB) { $Arguments += @('--minimax-reasoning-effort-b', $MinimaxReasoningEffortB) }
+$Arguments += @('--max-completion-tokens-b', $MaxCompletionTokensB)
 if ($AgentA -ne 'minimax' -or $AgentB -ne 'minimax') { $Arguments += @('--agent-timeout', $AgentTimeout) }
 if ($Continuous) {
     $Arguments += '--continuous'

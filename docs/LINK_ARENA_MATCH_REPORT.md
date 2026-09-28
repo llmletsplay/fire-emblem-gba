@@ -173,6 +173,14 @@ result and was in setup at the latest check. Games twelve and thirteen remain
 without official points; neither is backfilled from a one-sided or late
 capture.
 
+At 21:45:59 UTC, the live stream API showed game fifteen still playing through
+the same continuous runner: match `20260928T214009Z-052371`, turn four,
+three exchanges observed on each bridge, and four of five units alive on each
+side. The current 1P/2P policy labels were both depth-two minimax. This is a
+point-in-time operational heartbeat, not a completed match result or an
+independent game-state audit. The public series still showed fourteen completed
+games and official points from only two verified results.
+
 ## First supervised match reproduction details
 
 - Match ID: `20260927T171244Z-c0eba3`

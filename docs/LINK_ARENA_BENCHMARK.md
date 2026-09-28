@@ -321,9 +321,15 @@ At this protocol revision (2026-09-28), no hosted-model requests or hosted
 benchmark results are included. The unattended Zephyrus stream is running the
 repository's hand-coded depth-two minimax policy on both seats; this is not the
 MiniMax API model. Neither `CHUTES_API_KEY` nor `MINIMAX_API_KEY` was present
-in Zephyrus' user or machine environment during the readiness check. Provision
-credentials through approved host secret management, choose exact model IDs,
-and record provider plan/configuration before making any hosted calls.
+in Zephyrus' user or machine environment during the readiness check. The
+Windows runner now has an interactive provisioning script that encrypts keys
+with current-user DPAPI and loads them only into the task process; the
+scheduled-task installer accepts fixed per-seat hosted provider/model choices
+and fails closed if the selected provider credential is unavailable. This
+changes readiness tooling, not the live task: the current series remains local
+minimax. Choose exact model IDs, record provider plan/configuration, assign a
+separate `DataDir` to each experimental condition, and deliberately deploy a
+hosted condition at a safe match boundary before making inference calls.
 
 ### Exploratory operations checkpoint (2026-09-28)
 

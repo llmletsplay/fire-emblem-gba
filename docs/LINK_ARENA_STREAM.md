@@ -25,7 +25,10 @@ use the same `-TwitchChannel` option. To run an autonomous series, add
 prepared save between verified wins and records a persistent series W–L–D
 score. Hosted Chutes/MiniMax policies can be supplied with `-AgentA` or
 `-AgentB` plus the matching `-ModelA`/`-ModelB`; the runner starts them only
-when the corresponding key environment variable is present. See
+when the corresponding API key is available. The scheduled task supports the
+same provider/model and per-seat MiniMax reasoning settings. Use the encrypted
+credential prompt documented in [`LINK_ARENA.md`](LINK_ARENA.md#stage-and-start-on-zephyrus)
+to make those keys available to unattended runs. See
 [`LINK_ARENA.md`](LINK_ARENA.md#stage-and-start-on-zephyrus) for examples. The
 local URL follows this shape:
 
@@ -61,13 +64,43 @@ for the streaming Windows user:
   -TwitchChannel llmletsplay -RestartNow
 ```
 
-`-RestartNow` replaces the current isolated match and starts the continuous
-minimax series and OBS watchdog immediately. An incomplete match is retained
-in its match data folder but is not added to the series score. Both tasks are
+`-RestartNow` replaces the current isolated match and starts the configured
+continuous policy series and OBS watchdog immediately (local minimax on both
+seats by default). An incomplete match is retained in its match data folder
+but is not added to the series score. Both tasks are
 interactive logon tasks with no 12-hour execution limit. Leave the Zephyrus
 streaming user signed in and keep Windows awake.
 Zephyrus AC sleep and hibernate timeouts are set to **Never** so the logon
 tasks and stream do not pause when the display is idle.
+
+The scheduled installer defaults to the local minimax-vs-minimax stream. It
+can instead be installed with fixed hosted policies. Save credentials once as
+the streaming Windows user, then install the chosen seats/models with a
+separate data directory for that experimental condition. The following IDs
+are illustrative current provider choices, not a frozen confirmatory
+protocol:
+
+```powershell
+$runner = "$env:LOCALAPPDATA\FE7-Link-Arena\runner"
+$experiment = "$env:LOCALAPPDATA\FE7-Link-Arena\experiments\glm51-vs-minimax-m31-low"
+& "$runner\scripts\windows\Install-Link-Arena-Stream.ps1" `
+  -RunnerRoot $runner `
+  -Save "$runner\roms\fe7.sav" `
+  -DataDir $experiment `
+  -AgentA chutes -ModelA 'zai-org/GLM-5.1-TEE' `
+  -AgentB minimax-api -ModelB 'MiniMax-M3.1-Flash-Preview' `
+  -MinimaxThinkingB adaptive -MinimaxReasoningEffortB low `
+  -TwitchChannel llmletsplay
+```
+
+Installing without `-RestartNow` updates task registration but leaves running
+processes alone; the new policy takes effect at the next task start/logon. A
+provider switch in the current stream still requires a controlled
+between-match handoff. `-RestartNow` stops mGBA and OBS immediately, so use it
+only at a verified safe boundary. Hosted calls use the selected provider
+account's quota or balance; confirm model access and budget before a pilot.
+The default public stream remains local minimax until its task is
+intentionally reconfigured.
 
 The runner writes process output to `stream-runner.log` and Python errors to
 `stream-runner-errors.log` in `%LOCALAPPDATA%\FE7-Link-Arena`.
