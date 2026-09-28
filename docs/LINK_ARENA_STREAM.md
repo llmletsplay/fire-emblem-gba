@@ -82,20 +82,24 @@ protocol:
 
 ```powershell
 $runner = "$env:LOCALAPPDATA\FE7-Link-Arena\runner"
-$experiment = "$env:LOCALAPPDATA\FE7-Link-Arena\experiments\glm51-vs-minimax-m31-low"
+$experiment = "$env:LOCALAPPDATA\FE7-Link-Arena\experiments\glm51-vs-minimax-m3"
 & "$runner\scripts\windows\Install-Link-Arena-Stream.ps1" `
   -RunnerRoot $runner `
   -Save "$runner\roms\fe7.sav" `
   -DataDir $experiment `
   -AgentA chutes -ModelA 'zai-org/GLM-5.1-TEE' `
   -MaxCompletionTokensA 512 `
-  -AgentB minimax-api -ModelB 'MiniMax-M3.1-Flash-Preview' `
+  -AgentB minimax-api -ModelB 'MiniMax-M3' `
   -MaxCompletionTokensB 512 `
-  -MinimaxThinkingB adaptive -MinimaxReasoningEffortB low `
+  -MinimaxThinkingB adaptive `
   -AlternateAgentSeats -SeatOrderSeed 20260928 `
   -MaxMatches 2 `
   -TwitchChannel llmletsplay
 ```
+
+The example uses the currently published MiniMax-M3 offering. Verify the
+concrete model ID and resolved model in the API response before freezing a
+pilot; do not assume a preview alias remains available.
 
 For the first hosted pilot, use a new dedicated `$experiment` directory and
 `-MaxMatches 2`. This runs one complete seat-swapped pair, then leaves the
@@ -104,12 +108,20 @@ verified results already in that data directory, so keep it empty before the
 pilot. It bounds the number of games, not dollar spend: the number of requests
 and tokens varies by match, and the runner does not yet enforce a provider
 budget ceiling. Check current pricing and account limits before starting.
-Chutes' [Terms of Service](https://chutes.ai/terms) distinguish low-volume API
-use from high-volume or highly automated inference and direct the latter to
-PAYGO. A two-game cap does not by itself establish plan eligibility. Confirm
-the account's permitted use before any unattended Chutes call; if the planned
-usage requires PAYGO, use that plan. The two 512-token completion ceilings
-reduce per-call output limits but are not a dollar-spend cap.
+Chutes' [Terms of Service](https://chutes.ai/terms) require PAYGO for high-
+concurrency, high-volume, or otherwise highly automated use, and its public
+[inference pricing](https://chutes.ai/pricing) is per token. Treat this
+unattended agent loop as PAYGO unless Chutes confirms otherwise; the two-game
+cap bounds games, not spend. The two 512-token completion ceilings reduce
+per-call output limits but are not a dollar-spend cap.
+
+MiniMax's [Token Plan](https://platform.minimax.io/subscribe/token-plan)
+provides an API key for OpenAI-compatible tools, but usage shares rolling
+five-hour and weekly quotas and may be throttled. MiniMax describes the plan as
+for individual interactive use and recommends pay-as-you-go for production.
+For a bounded engineering pilot, record the plan and before/after quota
+separately from per-request token usage; do not infer per-call USD charges from
+the subscription. Reassess before scaling unattended runs.
 
 `-AlternateAgentSeats` makes policy slots A and B swap runner seats across
 successive verified matches, in two-match blocks. The seeded first orientation

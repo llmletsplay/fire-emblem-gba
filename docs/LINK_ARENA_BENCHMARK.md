@@ -669,6 +669,21 @@ turn 11 with no runner error. The series had 21 completed games (1P 5 wins,
 remain fixed-seat local-minimax harness results, not hosted-model comparisons
 or confirmatory evidence.
 
+At 23:54 UTC, a presence-only check found no encrypted provider credential
+file in Zephyrus' Link Arena secrets directory. No hosted inference has been
+made. The first bounded hosted pilot is therefore not yet operationally
+ready: provision the Chutes key and MiniMax API key through the masked
+Windows credential prompt, verify the MiniMax plan/quota and Chutes PAYGO
+eligibility, then start only in a new two-game seat-swapped experiment
+directory. Current Chutes terms require PAYGO for highly automated usage, and
+public inference is billed per token. MiniMax's Token Plan API has rolling
+five-hour and weekly quota windows, may be throttled, and is described as an
+interactive developer plan; its documentation recommends PAYGO for
+production. These account-level billing constraints must be reported
+separately from logged per-request token usage. See the current
+[Chutes terms](https://chutes.ai/terms), [Chutes pricing](https://chutes.ai/pricing),
+and [MiniMax Token Plan guidance](https://platform.minimax.io/subscribe/token-plan).
+
 - [x] Calibrate the fail-closed reader against archived and live final-result
   screens and reject four captured intermediate bonus panels. The standard
   layout and 12-second paired-read window have three successful live scores.
