@@ -299,33 +299,34 @@ and record provider plan/configuration before making any hosted calls.
 
 ### Exploratory operations checkpoint (2026-09-28)
 
-The unattended local-minimax series has five completed games, all recorded as
-2P wins by synchronized roster elimination; the sixth game started through the
-automatic handoff and was active at the latest checkpoint. This is one
+The unattended local-minimax series has six completed games, all recorded as
+2P wins by synchronized roster elimination; the seventh game began through the
+automatic handoff and was in setup at the latest checkpoint. This is one
 prepared RAGNAROK team/save, fixed seat roles, and a small, non-random
 operational sample. Treat it only as harness/stream validation: it is not a
 model comparison, an official points result, or a confirmatory estimate. Do not
 pool it into future confirmatory results.
 
-At the end of game four, one read-only capture showed the in-game team panels
-at 564 and 288 while FE7 displayed its “Each unit receives 30 extra pts.”
-transition. The harness did not capture the subsequent ranking screen, so those
-panel values are not reported as final official totals. The capture is retained
-in [`LINK_ARENA_MATCH_REPORT.md`](LINK_ARENA_MATCH_REPORT.md).
+At the end of games four and six, read-only captures showed in-game team panels
+at 564/288 and 576/288, respectively, while FE7 displayed its “Each unit
+receives 30 extra pts.” transition. Neither capture includes the subsequent
+ranking screen, so those panel values are not reported as final official
+totals. The captures are retained in
+[`LINK_ARENA_MATCH_REPORT.md`](LINK_ARENA_MATCH_REPORT.md).
 
-After the runner reload, a lock-consistent decision-ledger snapshot contained
-3,331 parseable events across 26 match IDs: 488 policy decisions, 470 submitted
-exchanges, 2,372 verified button actions, and one replan event. The audit found
-zero duplicate event IDs, event-hash mismatches, missing common fields,
-unknown event types, or unlinked accepted actions/exchanges, and no
-provider-private reasoning fields. Two previously absent legacy input events
-were recovered from their retained match logs. One malformed historical line
-(line 2010 in this snapshot) remains in the original source and is reported by
-the auditor; it is not rewritten or silently dropped. The optional valid-row
-export contains the 3,331 parseable events and an audit report, while
-preserving the original ledger separately. All hosted calls remain
-unconfigured, so these traces contain local-policy choices rather than LLM
-completions or rationales.
+After the runner reload, a later lock-consistent decision-ledger snapshot
+contained 3,390 parseable events across 26 match IDs: 496 policy decisions,
+479 submitted exchanges, 2,414 verified button actions, and one replan event.
+The audit found zero duplicate event IDs, event-hash mismatches, missing
+common fields, unknown event types, or unlinked accepted actions/exchanges,
+and no provider-private reasoning fields. Two previously absent legacy input
+events were recovered from their retained match logs. One malformed historical
+line (line 2010 in this snapshot) remains in the original source and is
+reported by the auditor; it is not rewritten or silently dropped. The
+optional valid-row export contains the 3,390 parseable events and an audit
+report, while preserving the original ledger separately. All hosted calls
+remain unconfigured, so these traces contain local-policy choices rather than
+LLM completions or rationales.
 
 - [ ] Verify official result-screen parser against multiple independently
   reviewed captures; reconcile points, rank, surviving units, and W–L–D.
