@@ -149,8 +149,29 @@ restarted the scheduled runner, preserved the 12-game series with its one
 verified official result, and started game thirteen (`20260928T210450Z-175c62`)
 in setup. The game-twelve 1P win raised the survivor record to 1P 4, 2P 8,
 while the official-points tally stayed at 1P 288 / 2P 576 from game eleven.
-The follow-up timeout-window change is 12 seconds; it is not part of PR #18
-and is not yet installed on the live runner.
+At the between-match boundary after game thirteen, merged PR #20's 12-second
+result window was installed on Zephyrus. The deployment backed up the previous
+modules under `deploy\pre-score-window-20260928T212249Z`, kept OBS process
+16960, restarted the scheduled runner, and started game fourteen
+(`20260928T212305Z-aced65`).
+
+Game fourteen completed at 21:40 UTC as a 1P survivor win, with an official
+paired FE7 result of 1P 576–288 2P. Both bridge captures parse as the standard
+layout. Their IDs are `217-A-1288.png` and `217-B-1210.png`; the SHA-256 values
+`813903f9857c520179e9da4d7d89d7c3075b80d01664fcf9a4bd3f1769a58bde` and
+`f7b44e1772008a687105089609d4490e46044c12b2b3c7bd52ec538e81bbc588` match the
+score record and were independently parsed to the same 576–288 result. The
+score was persisted 6.39 seconds after synchronized terminal-roster
+confirmation, within the new 12-second window. The record has two stable
+paired reads, agrees with the terminal winner, and stores
+`layout_by_bridge: {A: standard, B: standard}`.
+
+The live series now has fourteen results: 1P five wins and 2P nine wins. Two
+games have verified FE7 points; cumulative totals are 1P 864 and 2P 864. Game
+fifteen (`20260928T214009Z-052371`) began automatically after the recorded
+result and was in setup at the latest check. Games twelve and thirteen remain
+without official points; neither is backfilled from a one-sided or late
+capture.
 
 ## First supervised match reproduction details
 
