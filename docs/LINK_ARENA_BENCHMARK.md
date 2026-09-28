@@ -85,7 +85,8 @@ include provider, requested and resolved model IDs, API request ID, request
 parameters, system-prompt text and hash, response-text hash, token usage,
 latency, and failure details. For a valid action, the exact assistant
 completion is saved because it contains only the required action JSON and a
-brief user-visible rationale. The adapter does not ask the model to reveal
+brief user-visible rationale. This is the model-authored explanation available
+to the study; it is not private chain-of-thought. The adapter does not ask the model to reveal
 private reasoning, does not read or persist provider-only `reasoning_content`
 fields, and does not publish hidden chain-of-thought. The MiniMax API documents
 that some models return a separate `reasoning_content` field. For
@@ -210,16 +211,21 @@ for every agent/seat cell.
 
 The intended primary endpoint is FE7's official Link Arena final point total
 and rank, parsed from the actual result screen and independently checked
-against captured evidence. Until that parser is implemented and validated, the
-only automated series outcome is a synchronized terminal-roster winner/draw.
-That survivor result is a proxy and must not be described as the numeric FE7
-score, official ranking, or tournament points.
+against captured evidence. The current reader is calibrated against the two
+archived final-result screens and rejects the terminal 30-point award panel.
+In unattended play it advances only that recognized panel and persists a
+score only when both clients agree with the terminal-roster winner across
+repeated paired reads. This runtime path still requires live Zephyrus
+validation. The current reader withholds scores containing uncalibrated glyphs
+1 or 9, and does not infer results from intermediate panels. Until the runtime
+path and full digit coverage are validated, report the synchronized
+terminal-roster winner separately and do not treat it as FE7 points or rank.
 
 ### Secondary outcomes
 
 - Match win/loss/draw, with seat-specific and paired seat-swapped summaries.
-- Official point difference and final rank, once verified structured parsing is
-  available.
+- Official point difference and final rank, only from verified structured
+  result-screen records; report missing/unreadable screens and score conflicts.
 - Match completion rate; safe-stop, invalid-action, and recovery rates.
 - Accepted and rejected actions, replans, turns, exchanges, and verified
   controller inputs.
@@ -325,22 +331,33 @@ ranking screen, so those panel values are not reported as final official
 totals. The captures are retained in
 [`LINK_ARENA_MATCH_REPORT.md`](LINK_ARENA_MATCH_REPORT.md).
 
-After the runner reload, a later lock-consistent decision-ledger snapshot
-contained 3,390 parseable events across 26 match IDs: 496 policy decisions,
-479 submitted exchanges, 2,414 verified button actions, and one replan event.
+At 19:52 UTC on 2026-09-28, a lock-consistent decision-ledger snapshot
+contained 3,851 parseable events across 28 match IDs: 554 policy decisions,
+536 submitted exchanges, 2,760 verified button actions, and one replan event.
 The audit found zero duplicate event IDs, event-hash mismatches, missing
-common fields, unknown event types, or unlinked accepted actions/exchanges,
-and no provider-private reasoning fields. Two previously absent legacy input
-events were recovered from their retained match logs. One malformed historical
-line (line 2010 in this snapshot) remains in the original source and is
-reported by the auditor; it is not rewritten or silently dropped. The
-optional valid-row export contains the 3,390 parseable events and an audit
-report, while preserving the original ledger separately. All hosted calls
-remain unconfigured, so these traces contain local-policy choices rather than
-LLM completions or rationales.
+common fields, unknown event types, unlinked accepted actions/exchanges, or
+provider-private reasoning fields. Of the valid rows, 1,974 came from legacy
+backfill and 1,877 were live writes. All 554 decisions are attributed to
+`local/unknown`: these are hand-coded minimax policy choices, not LLM requests,
+completions, or rationales. One malformed historical line (line 2010 in this
+snapshot, 39 bytes) remains in the original source and is reported by the
+auditor; it is not rewritten or silently dropped. The audit command therefore
+returns nonzero for this preserved malformed line. Its optional valid-row
+export contains the 3,851 parseable events and an audit report, while
+preserving the original ledger separately.
 
-- [ ] Verify official result-screen parser against multiple independently
-  reviewed captures; reconcile points, rank, surviving units, and W–L–D.
+The continuous series had eight completed games at 19:55 UTC: 1P had two wins
+and 2P had six. The first six were 2P survivor wins; games seven and eight
+were 1P survivor wins. Match `20260928T195429Z-ed9dda` had entered automatic
+setup for game nine at that checkpoint. This remains a fixed-seat,
+single-roster operational sample, not a model comparison or confirmatory
+result. The verified FE7 final-screen score reader described above was being
+prepared but was not yet deployed to the live runner at this checkpoint.
+
+- [x] Calibrate the fail-closed result reader against two archived final-result
+  screens and reject four captured intermediate bonus panels; live runner
+  deployment, complete 0–9 glyph coverage, and broader independent validation
+  remain open before official-score analysis.
 - [x] Deploy and inspect the series-wide decision ledger on Zephyrus; validate
   decision IDs join policy choices to every verified input. The one malformed
   historical source line remains explicitly flagged as described above.

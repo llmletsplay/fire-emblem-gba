@@ -240,9 +240,11 @@ enters every turn.
    combat, including RNG and casualties. Raw API actions do not enforce the
    built-in controller's expected one-step cursor/menu delta checks; external
    clients that need that guarantee should use `VerifiedInputController`.
-5. Continue turns in FE7 and read the final ranking/result screen. The API logs
-   evidence, but it does not yet translate the ranking screen into a structured
-   winner/result object. Ctrl-C stops the local API and mGBA process.
+5. Continue turns in FE7 and read the final ranking/result screen. The
+   unattended runner recognizes the terminal 30-point award panel, advances
+   only from that exact screen, and records a score only when both final result
+   screens agree with the synchronized survivor winner. Supervised external
+   agents still need to read the result screen themselves.
 
 The first live match used two minimax policies for decisions, while an operator
 handled setup, cursor/menu input, and transitions. One early grouped cursor move
@@ -349,9 +351,14 @@ rosters for at least four paired reads over three seconds. This covers the
 temporary fighter removal in FE7's weapon/battle panels and the delay before a
 casualty reaches the other core. The event log records `terminal_waiting_for_peer`
 and `terminal_roster_confirmed` when relevant. The runner records the winning
-1P/2P agent from FE7's global roster counts and configured player order, but it
-does not parse the result screen's points or ranking table; those still need
-visual review.
+1P/2P agent from FE7's global roster counts and configured player order. It
+then advances the fixed FE7 30-point award panel and parses the final result
+screen only when both clients agree on the same first/second place, point
+totals, and terminal winner across repeated paired reads. It does not infer a
+score from the intermediate points panels. Unrecognized screens, differing
+linked results, or uncalibrated score glyphs leave the official score blank;
+the current exact glyph templates cover 0 and 2–8, so a score containing 1 or
+9 is withheld pending calibration.
 
 ## Policy limits and automation boundary
 
@@ -369,7 +376,7 @@ forecast/RNG remains authoritative.
 | Isolated match folder, ROM/save copies, linked mGBA launch, title/menu setup, link handshake, and 1P-first setup | With no `-AutoMinimax`, operator or external policy chooses and enters turns |
 | Side-token observe/status/action API, stable observations, stale-action rejection | Unsupported or unexpected screens reported by autoplay |
 | Title, Extras, Link Arena, RAGNAROK, link handshake, 1P-first, minimax matchup/weapon selection, verified one-input cursor/menu control, and terminal winner detection | Watching for fail-closed stops and reading the final points/ranking screen |
-| Per-match hashes, screenshots, observations, accepted-action log, and terminal roster evidence | Save-state replay and structured final score parsing |
+| Per-match hashes, screenshots, observations, accepted-action log, terminal roster evidence, and verified FE7 result scores when readable | Save-state replay and result screens the fail-closed reader cannot recognize |
 
 In autoplay mode, setup is seamless from launching the runner to the first
 battle-map decision. The full unattended path completed on Zephyrus on

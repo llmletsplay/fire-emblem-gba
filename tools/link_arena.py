@@ -685,6 +685,7 @@ def start(args: argparse.Namespace) -> int:
             result = {key: status.get(key) for key in (
                 "winner", "players_alive", "npcs_alive",
             )}
+            result["official_score"] = status.get("official_score")
             try:
                 recorded = series.record(current.session["match_id"], result)
             except ValueError as exc:
