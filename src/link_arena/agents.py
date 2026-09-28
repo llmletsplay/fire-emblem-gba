@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+from datetime import datetime, timezone
 import hashlib
 import json
+import math
 import os
 import time
 from typing import Any
@@ -287,6 +289,7 @@ class OpenAICompatibleAgent(MinimaxAgent):
         max_completion_tokens: int = 2048,
         minimax_thinking: str | None = None,
         minimax_reasoning_effort: str | None = None,
+        pricing_snapshot: dict[str, Any] | None = None,
     ):
         super().__init__(side)
         normalized_provider = provider.strip().lower()
@@ -338,6 +341,106 @@ class OpenAICompatibleAgent(MinimaxAgent):
         self._system_prompt_sha256 = hashlib.sha256(
             self._SYSTEM_TEMPLATE.encode("utf-8")
         ).hexdigest()
+        self.pricing_snapshot = (
+            pricing_snapshot if isinstance(pricing_snapshot, dict)
+            else self._capture_pricing_snapshot()
+        )
+
+    def _capture_pricing_snapshot(self) -> dict[str, Any]:
+        """Freeze public Chutes list rates without making an inference request.
+
+        MiniMax Token Plan charges are account-subscription/quota based, so
+        token usage is recorded but not converted into a fabricated per-token
+        dollar rate here.
+        """
+        captured_at = datetime.now(timezone.utc).isoformat()
+        if self.provider != "chutes":
+            return {
+                "status": "account_billing_not_snapshotted",
+                "provider": self.provider,
+                "captured_at": captured_at,
+                "note": "Per-request USD cost is unavailable from the shared model adapter; retain usage and account billing separately.",
+            }
+
+        source_url = "https://llm.chutes.ai/v1/models"
+        try:
+            request = Request(source_url, headers={"Accept": "application/json"})
+            with urlopen(request, timeout=10.0) as response:
+                raw_catalog = response.read()
+            catalog = json.loads(raw_catalog.decode("utf-8"))
+        except (HTTPError, URLError, TimeoutError, OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            return {
+                "status": "unavailable",
+                "provider": self.provider,
+                "model_id": self.model,
+                "source_url": source_url,
+                "captured_at": captured_at,
+                "error_type": type(exc).__name__,
+            }
+
+        entries = catalog.get("data") if isinstance(catalog, dict) else None
+        model_entry = next((entry for entry in entries if isinstance(entry, dict)
+                            and entry.get("id") == self.model), None) if isinstance(entries, list) else None
+        if model_entry is None:
+            return {
+                "status": "model_not_listed",
+                "provider": self.provider,
+                "model_id": self.model,
+                "source_url": source_url,
+                "captured_at": captured_at,
+                "catalog_sha256": hashlib.sha256(raw_catalog).hexdigest(),
+            }
+
+        price = model_entry.get("price")
+        price = price if isinstance(price, dict) else {}
+
+        def usd_rate(value: Any) -> float | None:
+            usd = value.get("usd") if isinstance(value, dict) else None
+            if isinstance(usd, bool) or not isinstance(usd, (int, float)):
+                return None
+            parsed = float(usd)
+            return parsed if math.isfinite(parsed) and parsed >= 0 else None
+
+        input_rate = usd_rate(price.get("input"))
+        output_rate = usd_rate(price.get("output"))
+        if input_rate is None or output_rate is None:
+            return {
+                "status": "price_fields_missing",
+                "provider": self.provider,
+                "model_id": self.model,
+                "source_url": source_url,
+                "captured_at": captured_at,
+                "model_record_sha256": hashlib.sha256(json.dumps(
+                    model_entry, sort_keys=True, separators=(",", ":"),
+                ).encode("utf-8")).hexdigest(),
+            }
+
+        selected_record = {
+            "id": model_entry.get("id"),
+            "root": model_entry.get("root"),
+            "price": price,
+            "confidential_compute": model_entry.get("confidential_compute"),
+            "chute_id": model_entry.get("chute_id"),
+        }
+        return {
+            "status": "captured",
+            "provider": self.provider,
+            "model_id": self.model,
+            "source_url": source_url,
+            "captured_at": captured_at,
+            "currency": "USD",
+            "rates_per_million_tokens": {
+                "input": input_rate,
+                "output": output_rate,
+                "cached_input": usd_rate(price.get("input_cache_read")),
+            },
+            "confidential_compute": model_entry.get("confidential_compute"),
+            "chute_id": model_entry.get("chute_id"),
+            "model_record_sha256": hashlib.sha256(json.dumps(
+                selected_record, sort_keys=True, separators=(",", ":"),
+            ).encode("utf-8")).hexdigest(),
+            "catalog_sha256": hashlib.sha256(raw_catalog).hexdigest(),
+        }
 
     def benchmark_metadata(self) -> dict[str, Any]:
         reasoning_settings: dict[str, Any] = {}
@@ -361,6 +464,7 @@ class OpenAICompatibleAgent(MinimaxAgent):
             "temperature": self.temperature,
             "max_completion_tokens": self.max_completion_tokens,
             "reasoning_settings": reasoning_settings,
+            "pricing_snapshot": self.pricing_snapshot,
             "reasoning_capture": {
                 "mode": "brief_user_visible_rationale_only",
                 "provider_private_reasoning_content": "not_read_or_persisted",
