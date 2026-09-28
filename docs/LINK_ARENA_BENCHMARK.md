@@ -616,6 +616,23 @@ in this operational sample. The account plan and hosted credentials remain
 unconfirmed. Keep this checkpoint as operational harness evidence only, not
 as an LLM comparison or confirmatory result.
 
+At 23:37 UTC, another audit found 7,617 valid events across 41 match IDs:
+1,237 decisions, 1,219 submitted exchanges, 5,160 verified button actions,
+and one replan. The trace contained 1,974 legacy-backfill and 5,643 live
+rows. Every decision was still `local/unknown`. The audit reported zero
+duplicate IDs, event-hash mismatches, missing common fields, unknown event
+types, unlinked actions/exchanges, provider-private reasoning fields, hosted
+rationales, or hosted calls missing the rationale-only capture policy. The
+same malformed 39-byte legacy line 2010 remains the sole audit defect
+(SHA-256 `1aad963f1b81decd4988583e25fbbc3ba2839f05bac8df529d4329770f7686af`);
+it was not repaired or removed.
+
+At 23:38 UTC, match twenty-one (`20260928T232202Z-55009f`) was still running
+at turn 15 with no runner error. The series remained at 20 completed results
+(1P 5 wins, 2P 15), eight with official FE7 scores, totaling 1P 2,592 / 2P
+4,320. This is continued unattended harness operation; no new hosted-model
+evidence or completed match was added at this checkpoint.
+
 - [x] Calibrate the fail-closed reader against archived and live final-result
   screens and reject four captured intermediate bonus panels. The standard
   layout and 12-second paired-read window have three successful live scores.
