@@ -144,6 +144,12 @@ rewritten.
   failure, and sanitized error type/status. Provider response bodies and
   credentials are excluded.
 
+The frozen hosted-policy metadata also records a `reasoning_capture` policy:
+only the constrained, model-visible rationale is retained; provider-private
+reasoning content is excluded; numeric reasoning-token counts are analyzed
+only when the provider includes them in its usage object. This makes the
+measurement boundary explicit in every `session.json`.
+
 Hosted `inference` fields include request/prompt/response hashes, the exact
 system prompt and structured input, start time, request ID, requested/resolved
 model, latency, and token-usage object. The exact assistant `content` is saved
@@ -159,6 +165,9 @@ match-relative paths or omit them while retaining hashes.
 
 Run `python tools/audit_link_arena_ledger.py <path-to-decisions.jsonl>` before
 analysis or release. It reports malformed rows and integrity/linkage issues.
+For hosted decisions and failed hosted calls, it also requires the frozen rationale-only capture
+policy; missing or altered policy metadata fails the audit. The analysis JSON
+repeats that policy beside each agent's outcome and usage summaries.
 The optional `--export-valid <derived-path.jsonl>` writes only parseable event
 rows to a separate derived file and writes an adjacent `.audit.json` report;
 it never edits the original append-only ledger.

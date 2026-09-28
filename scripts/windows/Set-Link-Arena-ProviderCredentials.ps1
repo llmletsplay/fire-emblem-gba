@@ -39,7 +39,7 @@ if (-not $ClearChutes) {
     $secret.Dispose()
 }
 if (-not $ClearMiniMax) {
-    $secret = Read-Host 'MiniMax API key (press Enter to keep the saved key)' -AsSecureString
+    $secret = Read-Host 'MiniMax API / Token Plan key (not Code login; Enter keeps saved key)' -AsSecureString
     if ($secret.Length -gt 0) {
         $values.MINIMAX_API_KEY = ConvertFrom-SecureString -SecureString $secret
     }

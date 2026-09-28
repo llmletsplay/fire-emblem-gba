@@ -518,6 +518,7 @@ def analyze(
                 "base_url": descriptor.get("base_url"),
                 "prompt_template": descriptor.get("prompt_template"),
                 "prompt_template_sha256": descriptor.get("prompt_template_sha256"),
+                "reasoning_capture": descriptor.get("reasoning_capture"),
             },
             "outcomes": {
                 "wins": record["wins"],
@@ -552,6 +553,10 @@ def analyze(
         "unlinked_actions_and_exchanges": audit["unlinked_actions_and_exchanges"],
         "private_reasoning_key_occurrences": audit["private_reasoning_key_occurrences"],
         "hosted_decisions_with_visible_rationale": audit["hosted_decisions_with_visible_rationale"],
+        "hosted_reasoning_capture_policies": audit["hosted_reasoning_capture_policies"],
+        "hosted_policy_events_missing_reasoning_capture_policy": audit[
+            "hosted_policy_events_missing_reasoning_capture_policy"
+        ],
     }
     incomplete_match_ids = sorted(session_ids - result_ids)
     return {

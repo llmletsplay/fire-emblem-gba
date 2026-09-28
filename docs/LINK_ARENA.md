@@ -87,8 +87,9 @@ Leave a provider prompt blank to keep its previously saved key. Use
 defaults to
 `%LOCALAPPDATA%\FE7-Link-Arena\secrets\provider-credentials.dpapi.json`;
 it is tied to the Windows user who encrypted it and must not be copied to a
-different account or machine. A MiniMax Token Plan still needs its API key;
-the interactive MiniMax Code login alone is not an API credential.
+different account or machine. A MiniMax Token Plan still needs its
+Subscription Key (the API key issued for that plan); the interactive MiniMax
+Code login alone is not an API credential.
 
 Then pass concrete provider model IDs. For an unattended series, add
 `-Continuous`:

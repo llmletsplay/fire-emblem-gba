@@ -49,6 +49,16 @@ def _find_private_reasoning_keys(value: Any, path: str = "") -> list[str]:
     return found
 
 
+def _has_reasoning_capture_policy(row: dict[str, Any]) -> bool:
+    policy = row.get("policy")
+    capture = policy.get("reasoning_capture") if isinstance(policy, dict) else None
+    return isinstance(capture, dict) and (
+        capture.get("mode") == "brief_user_visible_rationale_only"
+        and capture.get("provider_private_reasoning_content") == "not_read_or_persisted"
+        and capture.get("reasoning_token_counts") == "provider_usage_only_when_reported"
+    )
+
+
 def audit_ledger(path: Path) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     valid_rows: list[dict[str, Any]] = []
     malformed: list[dict[str, Any]] = []
@@ -63,6 +73,8 @@ def audit_ledger(path: Path) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     models_by_provider: Counter[str] = Counter()
     rows_by_match: Counter[str] = Counter()
     hosted_decisions_with_visible_rationale = 0
+    hosted_reasoning_capture_policies: Counter[str] = Counter()
+    hosted_policy_events_missing_reasoning_capture: list[int] = []
 
     with path.open("rb") as stream:
         for line_number, raw_line in enumerate(stream, start=1):
@@ -135,6 +147,23 @@ def audit_ledger(path: Path) -> tuple[dict[str, Any], list[dict[str, Any]]]:
                 rationale = inference.get("rationale")
                 if provider != "local" and isinstance(rationale, str) and rationale.strip():
                     hosted_decisions_with_visible_rationale += 1
+                if provider != "local":
+                    if not _has_reasoning_capture_policy(row):
+                        hosted_policy_events_missing_reasoning_capture.append(line_number)
+                    else:
+                        hosted_reasoning_capture_policies[
+                            "brief_user_visible_rationale_only"
+                        ] += 1
+            elif event_type == "policy_call_failed":
+                inference = row.get("inference")
+                provider = inference.get("provider") if isinstance(inference, dict) else None
+                if isinstance(provider, str) and provider != "local":
+                    if not _has_reasoning_capture_policy(row):
+                        hosted_policy_events_missing_reasoning_capture.append(line_number)
+                    else:
+                        hosted_reasoning_capture_policies[
+                            "brief_user_visible_rationale_only"
+                        ] += 1
 
     # Check joins after the full scan so events can appear in either order.
     decision_ids = {
@@ -174,6 +203,8 @@ def audit_ledger(path: Path) -> tuple[dict[str, Any], list[dict[str, Any]]]:
         "unlinked_actions_and_exchanges": dict(sorted(unlinked_rows.items())),
         "private_reasoning_key_occurrences": hidden_reasoning_fields,
         "hosted_decisions_with_visible_rationale": hosted_decisions_with_visible_rationale,
+        "hosted_reasoning_capture_policies": dict(sorted(hosted_reasoning_capture_policies.items())),
+        "hosted_policy_events_missing_reasoning_capture_policy": hosted_policy_events_missing_reasoning_capture,
     }
     return summary, valid_rows
 
@@ -208,6 +239,7 @@ def main() -> int:
         summary["unknown_event_types"],
         summary["unlinked_actions_and_exchanges"],
         summary["private_reasoning_key_occurrences"],
+        summary["hosted_policy_events_missing_reasoning_capture_policy"],
     ))
     return 1 if has_integrity_issues else 0
 
