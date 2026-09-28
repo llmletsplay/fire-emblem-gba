@@ -52,14 +52,14 @@ point/rank extraction into a structured API record remains manual.
 
 ## Exploratory continuous-series checkpoint
 
-Later on 2026-09-28, the continuous unattended runner completed five
-consecutive local-minimax games and automatically started a sixth. All five
+Later on 2026-09-28, the continuous unattended runner completed six
+consecutive local-minimax games and automatically started a seventh. All six
 were recorded as 2P wins from the synchronized survivor state. They used the
 same prepared team/save and fixed seats, so this is operational evidence only,
 not a seat-balanced benchmark result. At the latest checkpoint, match
-`20260928T190355Z-4f984d` was still playing. The active series ledger contains
-the decision and verified-input trace; see the benchmark protocol for its
-audit counts and the one preserved malformed historical row.
+`20260928T192054Z-d5ed2e` was in automatic Link Arena setup. The active series
+ledger contains the decision and verified-input trace; see the benchmark
+protocol for its audit counts and the one preserved malformed historical row.
 
 At the game-four handoff, the read-only 1P view captured this in-game points
 panel and bonus transition:
@@ -70,6 +70,14 @@ The panels display 564 and 288 while FE7 says each unit receives 30 extra
 points. This was captured before the final ranking screen, and no verified final
 point total or official rank is inferred from it. The 2P survivor win in the
 series ledger remains distinct from FE7's final numeric score.
+
+The sixth match produced a second single-core transition capture. The 1P view
+showed 576 and 288 while the same bonus message was displayed; the other core
+had already moved to a different screen by its sequential capture. This is
+therefore not a synchronized pair or a final-rank capture, and the displayed
+values are retained only as intermediate game evidence:
+
+![FE7 Link Arena game-six single-core points bonus transition](link_arena_evidence/match6-terminal-points-transition.png)
 
 ## Reproduction details
 
