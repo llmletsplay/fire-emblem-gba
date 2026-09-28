@@ -71,10 +71,27 @@ To let both built-in minimax agents play as well, add `-AutoMinimax`:
 
 Hosted benchmark agents can replace either seat. They use the same observed
 state contract and verified controller; the runner validates selected units
-and weapons before moving a cursor. Set `CHUTES_API_KEY` or `MINIMAX_API_KEY`
-in the runner process environment using the host's secret management, then
-pass concrete provider model IDs. Never put credentials in command-line
-arguments, source, or logs:
+and weapons before moving a cursor. On Zephyrus, save provider keys once with
+the interactive prompt below. It encrypts each entered key with Windows
+current-user DPAPI and restricts the file ACL; the scheduled task decrypts it
+in memory when launching the runner. Use the same Windows account that owns the
+interactive Link Arena task. Key values never appear in command-line
+arguments or logs:
+
+```powershell
+& "$env:LOCALAPPDATA\FE7-Link-Arena\runner\scripts\windows\Set-Link-Arena-ProviderCredentials.ps1"
+```
+
+Leave a provider prompt blank to keep its previously saved key. Use
+`-ClearChutes` or `-ClearMiniMax` to remove a saved key. The encrypted file
+defaults to
+`%LOCALAPPDATA%\FE7-Link-Arena\secrets\provider-credentials.dpapi.json`;
+it is tied to the Windows user who encrypted it and must not be copied to a
+different account or machine. A MiniMax Token Plan still needs its API key;
+the interactive MiniMax Code login alone is not an API credential.
+
+Then pass concrete provider model IDs. For an unattended series, add
+`-Continuous`:
 
 ```powershell
 & "$env:LOCALAPPDATA\FE7-Link-Arena\runner\scripts\windows\Start-Link-Arena.ps1" `
@@ -102,6 +119,17 @@ included in the hashed request metadata. For MiniMax M3.1, pass
 rejects `disabled` for models where it is unsupported or ignored. These
 settings freeze the serving configuration that the API exposes; they do not
 make private reasoning observable or part of the decision trace.
+
+`Install-Link-Arena-Stream.ps1` accepts the same `-AgentA`/`-AgentB`, matching
+`-ModelA`/`-ModelB`, per-seat `-MinimaxThinkingA/B`,
+`-MinimaxReasoningEffortA/B`, token ceilings, and a request timeout. It checks
+the required encrypted credentials before changing either scheduled task.
+For research, assign each frozen model pairing its own `-DataDir`, so its
+series totals and append-only decision ledger do not mix with the public
+exploratory minimax stream. Updating task registration without `-RestartNow`
+leaves current processes running and applies the new configuration on the
+next task start/logon. Do not use `-RestartNow` in the middle of a match; it
+stops the active isolated game and OBS process.
 
 For an unattended series, add `-Continuous`. The runner waits for its
 two-client terminal check, writes the winner to

@@ -3,9 +3,30 @@ param(
     [string]$RunnerRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path,
     [string]$Save,
     [string]$DataDir = (Join-Path $env:LOCALAPPDATA 'FE7-Link-Arena'),
+    [string]$CredentialPath = (Join-Path $env:LOCALAPPDATA 'FE7-Link-Arena\secrets\provider-credentials.dpapi.json'),
     [string]$ObsPath = 'C:\Program Files\obs-studio\bin\64bit\obs64.exe',
     [ValidatePattern('^[A-Za-z0-9_]{1,25}$')]
     [string]$TwitchChannel = 'llmletsplay',
+    [ValidateSet('minimax', 'chutes', 'minimax-api')]
+    [string]$AgentA = 'minimax',
+    [string]$ModelA,
+    [ValidateSet('adaptive', 'disabled')]
+    [string]$MinimaxThinkingA,
+    [ValidateSet('low', 'medium', 'high', 'xhigh', 'max')]
+    [string]$MinimaxReasoningEffortA,
+    [ValidateRange(1, 204800)]
+    [int]$MaxCompletionTokensA = 2048,
+    [ValidateSet('minimax', 'chutes', 'minimax-api')]
+    [string]$AgentB = 'minimax',
+    [string]$ModelB,
+    [ValidateSet('adaptive', 'disabled')]
+    [string]$MinimaxThinkingB,
+    [ValidateSet('low', 'medium', 'high', 'xhigh', 'max')]
+    [string]$MinimaxReasoningEffortB,
+    [ValidateRange(1, 204800)]
+    [int]$MaxCompletionTokensB = 2048,
+    [ValidateRange(1, 600)]
+    [double]$AgentTimeout = 120,
     [switch]$RestartNow
 )
 
@@ -16,10 +37,45 @@ $Save = (Resolve-Path $Save).Path
 $ObsPath = (Resolve-Path $ObsPath).Path
 $runnerScript = Join-Path $RunnerRoot 'scripts\windows\Start-Link-Arena.ps1'
 $obsSupervisor = Join-Path $PSScriptRoot 'Start-OBS-Link-Arena.ps1'
+$credentialImporter = Join-Path $PSScriptRoot 'Import-Link-Arena-Credentials.ps1'
 $sceneCollection = Join-Path $env:APPDATA 'obs-studio\basic\scenes\FE7 Link Arena.json'
 foreach ($path in @($runnerScript, $obsSupervisor, $Save, $sceneCollection)) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
         throw "Required Link Arena stream file not found: $path"
+    }
+}
+
+foreach ($side in @('A', 'B')) {
+    $agent = if ($side -eq 'A') { $AgentA } else { $AgentB }
+    $model = if ($side -eq 'A') { $ModelA } else { $ModelB }
+    $thinking = if ($side -eq 'A') { $MinimaxThinkingA } else { $MinimaxThinkingB }
+    $effort = if ($side -eq 'A') { $MinimaxReasoningEffortA } else { $MinimaxReasoningEffortB }
+    if ($agent -ne 'minimax' -and [string]::IsNullOrWhiteSpace($model)) {
+        throw "-Model$side is required when -Agent$side is '$agent'."
+    }
+    if ($agent -ne 'minimax-api' -and ($thinking -or $effort)) {
+        throw "MiniMax thinking options for seat $side require -Agent$side minimax-api."
+    }
+    if ($agent -eq 'minimax-api' -and $model -match '(?i)m3\.1' -and -not $effort) {
+        throw "MiniMax M3.1 requires -MinimaxReasoningEffort$side with an explicit effort."
+    }
+}
+
+$hostedProviders = @()
+foreach ($provider in @($AgentA, $AgentB)) {
+    if ($provider -ne 'minimax') { $hostedProviders += $provider }
+}
+$hostedProviders = @($hostedProviders | Select-Object -Unique)
+if ($hostedProviders.Count -gt 0) {
+    if (-not (Test-Path -LiteralPath $credentialImporter -PathType Leaf)) {
+        throw "Hosted policies require the credential importer: $credentialImporter"
+    }
+    & $credentialImporter -CredentialPath $CredentialPath
+    foreach ($provider in $hostedProviders) {
+        $credentialName = if ($provider -eq 'chutes') { 'CHUTES_API_KEY' } else { 'MINIMAX_API_KEY' }
+        if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($credentialName, 'Process'))) {
+            throw "Hosted policy '$provider' requires a locally saved $credentialName. Run Set-Link-Arena-ProviderCredentials.ps1 as this Windows user."
+        }
     }
 }
 
@@ -58,12 +114,21 @@ $obsArguments = @(
 $obsAction = New-ScheduledTaskAction -Execute $powerShellPath `
     -Argument $obsArguments -WorkingDirectory (Split-Path -Parent $ObsPath)
 
-$runnerArguments = @(
+$runnerArgumentParts = @(
     '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ('"{0}"' -f $runnerScript),
     '-RepoRoot', ('"{0}"' -f $RunnerRoot), '-Save', ('"{0}"' -f $Save),
-    '-DataDir', ('"{0}"' -f $DataDir), '-TwitchChannel', $TwitchChannel,
-    '-AutoMinimax', '-Continuous'
-) -join ' '
+    '-DataDir', ('"{0}"' -f $DataDir), '-CredentialPath', ('"{0}"' -f $CredentialPath), '-TwitchChannel', $TwitchChannel,
+    '-AutoMinimax', '-Continuous', '-AgentA', $AgentA, '-MaxCompletionTokensA', "$MaxCompletionTokensA",
+    '-AgentB', $AgentB, '-MaxCompletionTokensB', "$MaxCompletionTokensB",
+    '-AgentTimeout', "$AgentTimeout"
+)
+if ($ModelA) { $runnerArgumentParts += @('-ModelA', ('"{0}"' -f $ModelA)) }
+if ($MinimaxThinkingA) { $runnerArgumentParts += @('-MinimaxThinkingA', $MinimaxThinkingA) }
+if ($MinimaxReasoningEffortA) { $runnerArgumentParts += @('-MinimaxReasoningEffortA', $MinimaxReasoningEffortA) }
+if ($ModelB) { $runnerArgumentParts += @('-ModelB', ('"{0}"' -f $ModelB)) }
+if ($MinimaxThinkingB) { $runnerArgumentParts += @('-MinimaxThinkingB', $MinimaxThinkingB) }
+if ($MinimaxReasoningEffortB) { $runnerArgumentParts += @('-MinimaxReasoningEffortB', $MinimaxReasoningEffortB) }
+$runnerArguments = $runnerArgumentParts -join ' '
 $runnerAction = New-ScheduledTaskAction -Execute $powerShellPath `
     -Argument $runnerArguments -WorkingDirectory $RunnerRoot
 
@@ -104,7 +169,7 @@ Register-ScheduledTask -TaskName 'FE7-Link-Arena-OBS-Watchdog' `
     -Force | Out-Null
 Register-ScheduledTask -TaskName 'FE7-Link-Arena-Continuous-Runner' `
     -Action $runnerAction -Trigger $trigger -Settings $settings -Principal $principal `
-    -Description 'Runs verified minimax FE7 Link Arena matches continuously and keeps the series score.' `
+    -Description "Runs verified FE7 Link Arena matches continuously (1P: $AgentA; 2P: $AgentB) and keeps the series score." `
     -Force | Out-Null
 
 if ($RestartNow) {
