@@ -554,6 +554,25 @@ history is not eligible for the new frozen-study analysis. No missing fields
 were synthesized. New hosted experiments must use a fresh data directory and
 current manifests.
 
+At approximately 23:10 UTC, a lock-consistent audit found 7,206 valid ledger
+rows across 40 match IDs: 1,184 decisions, 1,167 submitted exchanges, 4,854
+verified button actions, and one replan. The trace contained 1,974
+legacy-backfill rows and 5,232 live rows. Every decision was still
+`local/unknown`; there were zero hosted rationales or provider-private
+reasoning fields, and no duplicate IDs, event-hash mismatches, missing common
+fields, unknown event types, or unlinked actions/exchanges. The new auditor
+also found no hosted call missing the frozen reasoning-capture policy. The
+preserved malformed 39-byte legacy line 2010 remains the only audit defect
+(SHA-256 `1aad963f1b81decd4988583e25fbbc3ba2839f05bac8df529d4329770f7686af`).
+
+At the 23:09 UTC stream snapshot, the series had 19 verified results (1P 5
+wins, 2P 14), seven with official FE7 points totaling 1P 2,304 / 2P 3,744.
+Match twenty (`20260928T230504Z-ecd991`) had started automatically after match
+nineteen; it had reached player-phase turn 3 with 1P 4/5 units and 2P 5/5,
+and the runner reported no error. This confirms the unattended handoff and
+continued play at the checkpoint, not the completion of match twenty. No
+hosted LLM decisions or rationales have yet been collected.
+
 - [x] Calibrate the fail-closed reader against archived and live final-result
   screens and reject four captured intermediate bonus panels. The standard
   layout and 12-second paired-read window have three successful live scores.
