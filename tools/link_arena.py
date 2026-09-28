@@ -12,6 +12,7 @@ import http.server
 import json
 import os
 from pathlib import Path
+import platform
 import re
 import secrets
 import shutil
@@ -90,6 +91,7 @@ def _validate_frozen_series(
     *,
     agents: dict[str, MinimaxAgent],
     assignment: dict[str, Any],
+    runtime_provenance: dict[str, Any],
     rom_sha256: str,
     save_sha256: str,
     games_played: int,
@@ -133,6 +135,11 @@ def _validate_frozen_series(
                 f"prior match {previous.get('match_id', path.parent.name)} uses a different ROM or save; "
                 "use a dedicated --data-dir"
             )
+        if previous.get("runtime_provenance") != runtime_provenance:
+            raise ValueError(
+                f"prior match {previous.get('match_id', path.parent.name)} used a different "
+                "runner/emulator build; use a dedicated --data-dir"
+            )
         previous_agents = previous.get("agents_by_seat")
         if not isinstance(previous_agents, dict):
             raise ValueError(
@@ -144,7 +151,7 @@ def _validate_frozen_series(
             if not isinstance(policy, dict):
                 continue
             slot = policy.get("policy_slot")
-            if slot not in {"A", "B"}:
+            if not isinstance(slot, str) or slot not in {"A", "B"}:
                 continue
             clean_policy = {key: value for key, value in policy.items() if key != "policy_slot"}
             policies_by_slot[slot] = clean_policy
@@ -177,6 +184,54 @@ def _sha256(path: Path) -> str:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _runtime_provenance(mgba_path: str) -> dict[str, Any]:
+    source_paths = (
+        "tools/link_arena.py",
+        "src/link_arena/__init__.py",
+        "src/link_arena/agents.py",
+        "src/link_arena/autoplay.py",
+        "src/link_arena/bridge.py",
+        "src/link_arena/control.py",
+        "src/link_arena/coordinator.py",
+        "src/link_arena/minimax.py",
+        "src/link_arena/scores.py",
+        "src/link_arena/series.py",
+        "src/link_arena/setup.py",
+        "src/link_arena/stream.py",
+        "src/link_arena/stream_overlay/index.html",
+        "src/link_arena/stream_overlay/overlay.css",
+        "src/link_arena/stream_overlay/overlay.js",
+        "lua/fe7_memory.lua",
+        "lua/socketserver.lua",
+    )
+    source_hashes = {relative: _sha256(ROOT / relative) for relative in source_paths}
+    tree_digest = hashlib.sha256()
+    for relative, digest in sorted(source_hashes.items()):
+        tree_digest.update(relative.encode("utf-8"))
+        tree_digest.update(b"\0")
+        tree_digest.update(digest.encode("ascii"))
+        tree_digest.update(b"\n")
+    try:
+        revision = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=ROOT,
+            check=True, capture_output=True, text=True, timeout=2,
+        ).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        revision = None
+    emulator_hash = _sha256(Path(mgba_path).expanduser().resolve())
+    return {
+        "git_commit": revision or None,
+        "source_files_sha256": source_hashes,
+        "source_tree_sha256": tree_digest.hexdigest(),
+        "python_implementation": platform.python_implementation(),
+        "python_version": platform.python_version(),
+        "os": platform.system(),
+        "os_release": platform.release(),
+        "architecture": platform.machine(),
+        "mgba_binary_sha256": emulator_hash,
+    }
 
 
 def _available_port(port: int) -> bool:
@@ -423,6 +478,7 @@ end"""
         "created_at": datetime.now(timezone.utc).isoformat(),
         "rom_sha256": _sha256(rom),
         "seed_save_sha256": _sha256(save),
+        "bridge_script_sha256": _sha256(bridge_path),
         "mgba_lua_trace": "mgba-lua-trace.log",
         "bridge_ports": {"A": args.base_port, "B": args.base_port + 1},
         "api": {"host": "127.0.0.1", "port": args.api_port},
@@ -449,10 +505,12 @@ def _start_match(
     decision_ledger: DecisionLedger | None = None,
     agents: dict[str, MinimaxAgent] | None = None,
     seat_assignment: dict[str, Any] | None = None,
+    runtime_provenance: dict[str, Any] | None = None,
 ) -> _RunningMatch:
     """Create fresh isolated save copies and start one linked mGBA match."""
     mgba = _find_mgba(args.mgba)
     match_dir, session, tokens = _new_match(args, check_api_port=check_api_port)
+    session["runtime_provenance"] = runtime_provenance or _runtime_provenance(mgba)
     if agents is not None:
         policy_slots = (seat_assignment or {}).get("policy_slot_by_seat", {})
         session["agents_by_seat"] = {}
@@ -735,12 +793,19 @@ def start(args: argparse.Namespace) -> int:
         raise ValueError("--continuous requires --auto-minimax or at least one configured hosted model agent")
     if args.alternate_agent_seats and not args.continuous:
         raise ValueError("--alternate-agent-seats requires --continuous so each paired seat swap can run")
+    if args.max_matches is not None and (args.max_matches < 1 or not args.continuous):
+        raise ValueError("--max-matches requires --continuous and a positive match count")
     if not 0 <= args.between_matches_seconds <= 600:
         raise ValueError("--between-matches-seconds must be between 0 and 600")
     args.auto_minimax = auto_policy
 
     series = MatchSeries(Path(args.data_dir).expanduser().resolve())
+    if args.max_matches is not None and series.snapshot()["games_played"] >= args.max_matches:
+        print(f"Configured match cap {args.max_matches} has already been reached; no game started.")
+        return 0
     decision_ledger = DecisionLedger(Path(args.data_dir).expanduser().resolve())
+    args.mgba = _find_mgba(args.mgba)
+    runtime_provenance = _runtime_provenance(args.mgba)
 
     def build_agents(assignment: dict[str, Any]) -> dict[str, MinimaxAgent]:
         configured: dict[str, MinimaxAgent] = {}
@@ -791,6 +856,7 @@ def start(args: argparse.Namespace) -> int:
             data_dir,
             agents=agents,
             assignment=first_assignment,
+            runtime_provenance=runtime_provenance,
             rom_sha256=_sha256(Path(args.rom).expanduser().resolve()),
             save_sha256=_sha256(Path(args.save).expanduser().resolve()),
             games_played=series.snapshot()["games_played"],
@@ -798,6 +864,7 @@ def start(args: argparse.Namespace) -> int:
     runtime = _start_match(
         args, check_api_port=True, decision_ledger=decision_ledger,
         agents=agents, seat_assignment=first_assignment,
+        runtime_provenance=runtime_provenance,
     )
     server = _ApiServer(("127.0.0.1", args.api_port), runtime.coordinator)
     server.autoplay = runtime.autoplay
@@ -845,6 +912,15 @@ def start(args: argparse.Namespace) -> int:
             if recorded:
                 print(f"Match {current.session['match_id']} complete: {result['winner']} wins; "
                       f"series {series.snapshot()['wins']}")
+            if args.max_matches is not None and series.snapshot()["games_played"] >= args.max_matches:
+                server.series_state = {
+                    "state": "complete",
+                    "reason": "configured_match_cap_reached",
+                    "games_played": series.snapshot()["games_played"],
+                    "max_matches": args.max_matches,
+                }
+                print(f"Configured match cap {args.max_matches} reached; leaving the final result on screen.")
+                return
             if not args.continuous:
                 server.series_state = {"state": "complete"}
                 return
@@ -875,6 +951,7 @@ def start(args: argparse.Namespace) -> int:
                     next_match = _start_match(
                         args, check_api_port=False, decision_ledger=decision_ledger,
                         agents=next_agents, seat_assignment=next_assignment,
+                        runtime_provenance=runtime_provenance,
                     )
                     break
                 except Exception as exc:
@@ -973,6 +1050,8 @@ def build_parser() -> argparse.ArgumentParser:
                         help="per-call timeout for Chutes/MiniMax hosted policies")
     parser.add_argument("--continuous", action="store_true",
                         help="after each verified result, restart from a fresh save and keep a persistent series score")
+    parser.add_argument("--max-matches", type=int,
+                        help="stop starting games after this many verified results in the DataDir")
     parser.add_argument("--alternate-agent-seats", action="store_true",
                         help="run deterministic paired matches with the two configured policy slots swapping physical seats")
     parser.add_argument("--seat-order-seed", type=int, default=0,

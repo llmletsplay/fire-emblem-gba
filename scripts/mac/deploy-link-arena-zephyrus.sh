@@ -21,11 +21,14 @@ ssh "$REMOTE" "cmd /c \"if not exist $REMOTE_ROOT\\src\\link_arena\\stream_overl
 
 echo '== copy Link Arena-only runtime files =='
 scp "$ROOT/tools/link_arena.py" "$REMOTE:$REMOTE_ROOT\\tools\\link_arena.py"
+scp "$ROOT/tools/audit_link_arena_ledger.py" "$REMOTE:$REMOTE_ROOT\\tools\\audit_link_arena_ledger.py"
+scp "$ROOT/tools/analyze_link_arena_benchmark.py" "$REMOTE:$REMOTE_ROOT\\tools\\analyze_link_arena_benchmark.py"
 scp "$ROOT/src/link_arena/__init__.py" "$REMOTE:$REMOTE_ROOT\\src\\link_arena\\__init__.py"
 scp "$ROOT/src/link_arena/bridge.py" "$REMOTE:$REMOTE_ROOT\\src\\link_arena\\bridge.py"
 scp "$ROOT/src/link_arena/coordinator.py" "$REMOTE:$REMOTE_ROOT\\src\\link_arena\\coordinator.py"
 scp "$ROOT/src/link_arena/minimax.py" "$REMOTE:$REMOTE_ROOT\\src\\link_arena\\minimax.py"
 scp "$ROOT/src/link_arena/agents.py" "$REMOTE:$REMOTE_ROOT\\src\\link_arena\\agents.py"
+scp "$ROOT/src/link_arena/scores.py" "$REMOTE:$REMOTE_ROOT\\src\\link_arena\\scores.py"
 scp "$ROOT/src/link_arena/control.py" "$REMOTE:$REMOTE_ROOT\\src\\link_arena\\control.py"
 scp "$ROOT/src/link_arena/autoplay.py" "$REMOTE:$REMOTE_ROOT\\src\\link_arena\\autoplay.py"
 scp "$ROOT/src/link_arena/setup.py" "$REMOTE:$REMOTE_ROOT\\src\\link_arena\\setup.py"

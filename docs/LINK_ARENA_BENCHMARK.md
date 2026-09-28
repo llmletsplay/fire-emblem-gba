@@ -109,9 +109,9 @@ setting. These controls can be frozen per configured policy slot with
 adapter captures only the constrained completion and brief rationale. That
 rationale is an output supplied by the model; it is not a faithful or
 independently verified record of the model's internal reasoning. Provider
-usage objects are retained as reported; whether they include separate
-reasoning-token totals is provider-specific and is not inferred by this
-benchmark. Malformed completions retain their hash and error metadata, not raw
+usage objects are retained as reported. If a provider explicitly reports a
+separate reasoning-token count, the analysis summary reports that number;
+missing reasoning usage is never inferred. Malformed completions retain their hash and error metadata, not raw
 text that might contain unrequested reasoning. Never record API keys. The
 append-only ledger is a provenance trace, not proof that a provider's model
 weights are unchanged. [MiniMax Chat Completions API](https://platform.minimax.io/docs/api-reference/text-chat-openai).
@@ -192,12 +192,23 @@ whether slots were swapped, and the model/policy metadata assigned to each
 runner side. Use dedicated data directories for each frozen model pairing.
 Before the first match in a hosted or seat-balanced run, the runner checks
 prior session manifests and refuses to mix different models, settings, ROM/save
-hashes, seat-schedule modes, or seeds in that data directory.
+hashes, runtime/emulator fingerprints, seat-schedule modes, or seeds in that
+data directory.
 This controls seat allocation; it does not reset or pair FE7's combat RNG. If
 the RNG state cannot be reliably reset or observed, record that limitation,
 randomize run order, and do not call nominally identical launches deterministic
 replays. Incomplete games remain excluded from the completed-game ordinal and
 must be reported separately.
+
+For the initial hosted engineering pilot, use a new dedicated data directory,
+`--continuous --alternate-agent-seats --max-matches 2`, and a frozen seat-order
+seed. This completes one two-game seat-swapped block, then stops starting
+matches while keeping the final result visible. The cap counts all verified
+results already present in that directory, so it must be empty at pilot start.
+It bounds game count, not API spend or token use; per-game requests vary and
+the runner has no provider-dollar budget control. A two-game pilot validates
+the operational path only and is not confirmatory evidence or an adequate
+sample for model ranking. Record any supervision stop or incomplete game.
 
 Run all agents in a round-robin schedule against common baselines, rather than
 only comparing a model to itself. Freeze prompt, model ID, provider, sampling
@@ -256,16 +267,32 @@ No statistical significance or model ranking is claimed in this draft.
 
 ## 5. Provenance and data release
 
-Each match should have a manifest linking its match ID to the ROM/save hashes,
-runtime and emulator versions, team and seat assignment, provider/model
-configuration, start/end state, and result-verification evidence. Decision
-traces should be JSONL with schema versioning, stable IDs, timestamps, and
+Each match manifest links its match ID to ROM/save hashes, the Git revision
+when available, a deterministic hash of the behavior-relevant runtime source
+files, generated bridge-script hash, Python/platform versions, the mGBA binary hash, team and seat
+assignment, provider/model configuration, start/end state, and
+result-verification evidence. Decision traces should be JSONL with schema
+versioning, stable IDs, timestamps, and
 explicit missing/error fields. The per-match `events.jsonl`,
 `minimax-autoplay.jsonl`, screenshots, `session.json`, series result ledger,
 and series-wide `series/decisions.jsonl` provide decision and execution
 provenance. Chutes and MiniMax adapters are implemented but require configured
 model IDs and credentials before hosted calls occur. Run analysis should
 consume exported decision/result records, not scrape the Twitch overlay.
+
+The initial reproducible summary command is
+`python tools/analyze_link_arena_benchmark.py <DataDir> --output <summary.json>`.
+It verifies frozen session conditions and the decision-ledger audit, then
+reports decisive win rates with Wilson intervals, official points with
+match-level bootstrap intervals, seat-paired win score and official-point
+difference intervals, decision reliability, latency, and provider-reported
+token counts.
+Bootstrap seed and resample count are recorded in the output. It does not
+estimate cost without a versioned provider price schedule, and it does not
+generate manuscript plots or support confirmatory claims by itself. The
+analysis command takes a lock-consistent ledger snapshot; run it after freezing
+the result series for publication-grade output. Bootstrap intervals are marked
+not estimable when fewer than two independent resampling units are available.
 
 Before public release, separate results from credentials, Twitch identifiers,
 and machine-specific paths. Do not redistribute commercial ROM or save files,
@@ -463,6 +490,17 @@ FE7 points 1P 1,440 / 2P 2,016. Game seventeen
 (`20260928T221409Z-505f8b`) had started automatically; at the capture it was
 on player phase, turn 1, with 4/5 and 5/5 units alive. These remain exploratory
 fixed-seat minimax results, not hosted-model evaluations or confirmatory data.
+At 22:21:53 UTC, the same game was still progressing normally at player-phase
+turn 6, with 3/5 1P units and 4/5 2P units alive. Game seventeen later
+completed as a 2P survivor win with paired FE7 points 2P 576–288 1P. Both
+bridges agreed across two stable reads, matched the terminal roster, and used
+the standard layout; screenshot hashes are
+`6ffbf27a16ef72114576b0991f0dc3ff25a643a546271d565d15b3d5081be0b2` and
+`413f7431ec241f4bf159f543407f6b85d5c9a7d6b12b2419ca7187ff5068db81`. The
+series reached seventeen results (1P 5 wins, 2P 12), five with verified FE7
+points totaling 1P 1,728 / 2P 2,592. Game eighteen
+(`20260928T223105Z-e65f8a`) began automatically. At 22:34:39 UTC it was in
+player-phase turn 2 with all five units alive on both sides and no runner error.
 
 The 22:16:57 UTC decision-ledger audit found 6,456 valid events across 37
 matches: 1,090 decisions, 1,072 submitted exchanges, and 4,293 verified button
@@ -473,6 +511,15 @@ event types, or unlinked actions/exchanges. The same preserved malformed
 39-byte legacy line 2010 remains, so the audit still exits nonzero; no source
 line was rewritten. The live 24/7 stream is therefore gathering controller
 and minimax benchmark traces, but not LLM thoughts or rationales yet.
+
+A second lock-consistent audit at 22:34:39 UTC, after game seventeen and early
+game-eighteen decisions, found 6,695 valid events across 38 match IDs: 1,120
+decisions, 1,102 submitted exchanges, and 4,472 verified button actions. The
+1,974 legacy-backfill and 4,721 live rows all remained `local/unknown`; hosted
+rationales and provider-private reasoning fields were both zero. No duplicate
+IDs, hash mismatches, missing common fields, unknown events, or unlinked
+accepted actions/exchanges were found. Only the preserved malformed legacy
+line 2010 remains; the audit exits nonzero for that line.
 
 - [x] Calibrate the fail-closed reader against archived and live final-result
   screens and reject four captured intermediate bonus panels. The standard
@@ -496,8 +543,11 @@ and minimax benchmark traces, but not LLM thoughts or rationales yet.
   side advantage and RNG reset behavior. Seat pairing does not control FE7 RNG.
 - [ ] Run a pilot, estimate variance/latency/cost, perform prospective power or
   precision analysis, then preregister confirmatory hypotheses and exclusions.
-- [ ] Create an analysis script that checks ledger consistency, produces
-  confidence intervals, and reproduces all tables/figures from released data.
+- [x] Add an initial analysis script that checks ledger consistency, frozen
+  conditions, seat-swap completeness, and confidence intervals from one study
+  directory.
+- [ ] Generate manuscript tables/figures from a completed hosted pilot, add a
+  versioned cost schedule, and validate every output against released data.
 - [x] Add a ledger audit/export command that verifies event hashes, duplicate
   IDs, action/exchange joins, malformed lines, and private-reasoning-key absence.
 - [ ] Complete a venue-specific reproducibility, ethics, authorship, and
