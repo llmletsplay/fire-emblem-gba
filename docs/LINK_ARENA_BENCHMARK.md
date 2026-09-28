@@ -273,10 +273,12 @@ personal data.
 2. **Outcome gap.** The result reader recognizes the standard final-rank
    layout and the shifted view shown by the opposite linked client. Manual
    calibration fixtures parse 520–346 and 576–288 and reject retained bonus
-   transition panels. The deployed Zephyrus build still lacks that second
-   layout; its live ledger currently contains no persisted official points.
-   Until a paired live result is recorded by the updated runner, W–L–D remains
-   the only live series outcome and is not a complete official score.
+   transition panels. The deployed Zephyrus build recognizes the standard
+   layout and recorded its first paired live result in game eleven (2P
+   576–288 1P). Game ten's shifted 1P view was not recognized by that build.
+   Merged PR #18 adds that layout, but it is staged for deployment rather than
+   live. At 20:46 UTC, only one of eleven completed results had official
+   points; W–L–D is therefore not a complete official-score record.
 3. **Uncontrolled randomness.** FE7 combat uses RNG. A file-level save hash
    does not prove identical RNG state or reproducible trajectories across
    launches. Pairing and seat balancing mitigate but do not remove this issue.
@@ -360,10 +362,32 @@ single-roster operational sample, not a model comparison or confirmatory
 result. The verified FE7 final-screen score reader described above was being
 prepared but was not yet deployed to the live runner at this checkpoint.
 
-- [x] Calibrate the fail-closed result reader against two archived final-result
-  screens and reject four captured intermediate bonus panels; live runner
-  deployment, complete 0–9 glyph coverage, and broader independent validation
-  remain open before official-score analysis.
+At 20:44 UTC, the live decision-ledger audit contained 4,885 valid rows across
+31 match IDs: 800 decisions, 782 submitted exchanges, 3,302 accepted input
+actions, and one replan. It found no duplicate IDs, event-hash mismatches,
+missing common fields, unknown event types, unlinked actions/exchanges, or
+provider-private reasoning keys. All 800 decisions remain `local/unknown`
+hand-coded minimax decisions, with zero hosted model completions or visible
+rationales. There were 1,974 legacy-backfill rows and 2,911 live rows. The same
+39-byte malformed historical line 2010 (SHA-256
+`1aad963f1b81decd4988583e25fbbc3ba2839f05bac8df529d4329770f7686af`) remains
+preserved and makes the audit exit nonzero; the 4,885 valid rows are reported
+without rewriting or dropping the original source.
+
+At 20:46 UTC, game eleven (`20260928T202914Z-979bda`) completed as a 2P
+survivor win and also produced the first official paired FE7 result in the live
+series: 2P 576–288 1P. The reader observed two stable paired reads and verified
+that the 2P screen winner matched the terminal roster winner. The series then
+showed 11 games, 1P 3 wins, 2P 8 wins, one scored game, and official point totals
+of 1P 288 and 2P 576. The two bridge screenshot hashes are retained in its
+score record. Game twelve (`20260928T204610Z-822535`) began automatically
+afterward.
+
+- [x] Calibrate the fail-closed reader against archived and live final-result
+  screens and reject four captured intermediate bonus panels. The standard
+  layout has one successful paired live score; merged shifted-layout support
+  still needs live deployment and validation. Complete 0–9 glyph coverage and
+  broader independent validation remain open.
 - [x] Deploy and inspect the series-wide decision ledger on Zephyrus; validate
   decision IDs join policy choices to every verified input. The one malformed
   historical source line remains explicitly flagged as described above.
