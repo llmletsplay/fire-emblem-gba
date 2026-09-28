@@ -591,6 +591,31 @@ and the runner reported no error. This confirms the unattended handoff and
 continued play at the checkpoint, not the completion of match twenty. No
 hosted LLM decisions or rationales have yet been collected.
 
+At 23:28 UTC, a fresh audit of the series ledger found 7,463 valid events
+across 41 match IDs: 1,217 decisions, 1,199 submitted exchanges, 5,046
+verified button actions, and one replan. There were 1,974 legacy-backfill and
+5,489 live rows. Every decision remained `local/unknown`; no hosted request,
+visible hosted rationale, or provider-private reasoning field was present.
+The audit found no duplicate event IDs, hash mismatches, missing common
+fields, unknown event types, unlinked actions/exchanges, or hosted calls
+missing the frozen rationale-only policy. It continues to report the same
+preserved malformed 39-byte legacy line 2010 (SHA-256
+`1aad963f1b81decd4988583e25fbbc3ba2839f05bac8df529d4329770f7686af`); the
+auditor exits nonzero for that line and leaves the source untouched.
+
+At 23:29 UTC, the series had 20 verified results (1P 5 wins, 2P 15), eight
+with official FE7 scores and cumulative points of 1P 2,592 / 2P 4,320. The
+latest score was 1P 288–576 2P. Match twenty-one
+(`20260928T232202Z-55009f`) was live at turn 6; the stream API reported no
+runner error, and the decision ledger was receiving new events. The Python
+runner and OBS process stayed running while the merged cost-accounting files
+were staged for a future runner launch; the active match was not restarted.
+PR #30 adds read-only Chutes catalog-rate snapshots and request-cost
+estimates, but no inference calls were made and no hosted pilot is represented
+in this operational sample. The account plan and hosted credentials remain
+unconfirmed. Keep this checkpoint as operational harness evidence only, not
+as an LLM comparison or confirmatory result.
+
 - [x] Calibrate the fail-closed reader against archived and live final-result
   screens and reject four captured intermediate bonus panels. The standard
   layout and 12-second paired-read window have three successful live scores.
