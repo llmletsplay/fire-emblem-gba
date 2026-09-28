@@ -339,7 +339,8 @@ common fields, unknown event types, unlinked accepted actions/exchanges, or
 provider-private reasoning fields. Of the valid rows, 1,974 came from legacy
 backfill and 1,877 were live writes. All 554 decisions are attributed to
 `local/unknown`: these are hand-coded minimax policy choices, not LLM requests,
-completions, or rationales. One malformed historical line (line 2010 in this
+completions, or rationales. The audit therefore reports zero hosted decisions
+with a visible rationale. One malformed historical line (line 2010 in this
 snapshot, 39 bytes) remains in the original source and is reported by the
 auditor; it is not rewritten or silently dropped. The audit command therefore
 returns nonzero for this preserved malformed line. Its optional valid-row
