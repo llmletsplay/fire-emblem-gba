@@ -117,8 +117,10 @@ chat URL](https://dev.twitch.tv/docs/embed/chat/)).
 
 ## What the live metrics mean
 
-- **Turn / phase** comes from FE7's live turn and phase bytes. The player phase
-  is labeled 1P; the NPC phase is labeled 2P.
+- **Turn / phase** labels the player phase 1P and the NPC phase 2P. When FE7's
+  chapter-65 turn field is zero or unavailable, the overlay shows a benchmark
+  round based on paired 1P/2P exchanges; it is not presented as FE7's internal
+  turn byte.
 - **Standing / HP / KO** are derived from the FE7 player and NPC rosters. KO
   count is total roster size minus surviving units.
 - **Verified inputs** counts completed controller button pulses recorded by
