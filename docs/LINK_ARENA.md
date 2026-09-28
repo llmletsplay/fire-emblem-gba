@@ -140,6 +140,12 @@ continues from the verified series game count after a runner restart. This
 balances seat placement but does not make game RNG replays deterministic.
 Use a fresh `-DataDir` for every frozen model pairing and seed.
 
+For an initial hosted pilot on a fresh data directory, set `-MaxMatches 2`
+with `-Continuous -AlternateAgentSeats`. It stops after two verified games,
+completing one seat-swapped pair, and leaves the final result on screen. The
+cap counts the directory's total verified results; it limits games, not API
+cost or token usage.
+
 For an unattended series, add `-Continuous`. The runner waits for its
 two-client terminal check, writes the winner to
 `%LOCALAPPDATA%\FE7-Link-Arena\series\results.jsonl`, closes that match, then

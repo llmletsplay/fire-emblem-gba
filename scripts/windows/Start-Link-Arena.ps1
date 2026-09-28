@@ -34,6 +34,8 @@ param(
     [ValidateRange(1, 600)]
     [double]$AgentTimeout = 120,
     [switch]$Continuous,
+    [ValidateRange(0, 100000)]
+    [int]$MaxMatches = 0,
     [switch]$AlternateAgentSeats,
     [int]$SeatOrderSeed = 0,
     [switch]$ManualSetup,
@@ -54,6 +56,9 @@ param(
 $ErrorActionPreference = 'Stop'
 if ($Continuous -and -not ($AutoMinimax -or $AgentA -ne 'minimax' -or $AgentB -ne 'minimax')) {
     throw 'Continuous mode requires -AutoMinimax or at least one hosted model policy.'
+}
+if ($MaxMatches -gt 0 -and -not $Continuous) {
+    throw '-MaxMatches requires -Continuous.'
 }
 if (($AutoMinimax -or $AgentA -ne 'minimax' -or $AgentB -ne 'minimax') -and $ManualSetup) {
     throw 'Autonomous policies cannot be combined with -ManualSetup.'
@@ -130,6 +135,7 @@ if ($Continuous) {
     $Arguments += '--continuous'
     $Arguments += @('--between-matches-seconds', $BetweenMatchesSeconds)
 }
+if ($MaxMatches -gt 0) { $Arguments += @('--max-matches', $MaxMatches) }
 if ($AlternateAgentSeats) {
     $Arguments += '--alternate-agent-seats'
     $Arguments += @('--seat-order-seed', $SeatOrderSeed)

@@ -793,11 +793,16 @@ def start(args: argparse.Namespace) -> int:
         raise ValueError("--continuous requires --auto-minimax or at least one configured hosted model agent")
     if args.alternate_agent_seats and not args.continuous:
         raise ValueError("--alternate-agent-seats requires --continuous so each paired seat swap can run")
+    if args.max_matches is not None and (args.max_matches < 1 or not args.continuous):
+        raise ValueError("--max-matches requires --continuous and a positive match count")
     if not 0 <= args.between_matches_seconds <= 600:
         raise ValueError("--between-matches-seconds must be between 0 and 600")
     args.auto_minimax = auto_policy
 
     series = MatchSeries(Path(args.data_dir).expanduser().resolve())
+    if args.max_matches is not None and series.snapshot()["games_played"] >= args.max_matches:
+        print(f"Configured match cap {args.max_matches} has already been reached; no game started.")
+        return 0
     decision_ledger = DecisionLedger(Path(args.data_dir).expanduser().resolve())
     args.mgba = _find_mgba(args.mgba)
     runtime_provenance = _runtime_provenance(args.mgba)
@@ -907,6 +912,15 @@ def start(args: argparse.Namespace) -> int:
             if recorded:
                 print(f"Match {current.session['match_id']} complete: {result['winner']} wins; "
                       f"series {series.snapshot()['wins']}")
+            if args.max_matches is not None and series.snapshot()["games_played"] >= args.max_matches:
+                server.series_state = {
+                    "state": "complete",
+                    "reason": "configured_match_cap_reached",
+                    "games_played": series.snapshot()["games_played"],
+                    "max_matches": args.max_matches,
+                }
+                print(f"Configured match cap {args.max_matches} reached; leaving the final result on screen.")
+                return
             if not args.continuous:
                 server.series_state = {"state": "complete"}
                 return
@@ -1036,6 +1050,8 @@ def build_parser() -> argparse.ArgumentParser:
                         help="per-call timeout for Chutes/MiniMax hosted policies")
     parser.add_argument("--continuous", action="store_true",
                         help="after each verified result, restart from a fresh save and keep a persistent series score")
+    parser.add_argument("--max-matches", type=int,
+                        help="stop starting games after this many verified results in the DataDir")
     parser.add_argument("--alternate-agent-seats", action="store_true",
                         help="run deterministic paired matches with the two configured policy slots swapping physical seats")
     parser.add_argument("--seat-order-seed", type=int, default=0,

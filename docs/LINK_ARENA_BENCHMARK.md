@@ -200,6 +200,16 @@ randomize run order, and do not call nominally identical launches deterministic
 replays. Incomplete games remain excluded from the completed-game ordinal and
 must be reported separately.
 
+For the initial hosted engineering pilot, use a new dedicated data directory,
+`--continuous --alternate-agent-seats --max-matches 2`, and a frozen seat-order
+seed. This completes one two-game seat-swapped block, then stops starting
+matches while keeping the final result visible. The cap counts all verified
+results already present in that directory, so it must be empty at pilot start.
+It bounds game count, not API spend or token use; per-game requests vary and
+the runner has no provider-dollar budget control. A two-game pilot validates
+the operational path only and is not confirmatory evidence or an adequate
+sample for model ranking. Record any supervision stop or incomplete game.
+
 Run all agents in a round-robin schedule against common baselines, rather than
 only comparing a model to itself. Freeze prompt, model ID, provider, sampling
 parameters, retry policy, context policy, and tool/controller version before
