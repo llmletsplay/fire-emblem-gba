@@ -88,7 +88,9 @@ $experiment = "$env:LOCALAPPDATA\FE7-Link-Arena\experiments\glm51-vs-minimax-m31
   -Save "$runner\roms\fe7.sav" `
   -DataDir $experiment `
   -AgentA chutes -ModelA 'zai-org/GLM-5.1-TEE' `
+  -MaxCompletionTokensA 512 `
   -AgentB minimax-api -ModelB 'MiniMax-M3.1-Flash-Preview' `
+  -MaxCompletionTokensB 512 `
   -MinimaxThinkingB adaptive -MinimaxReasoningEffortB low `
   -AlternateAgentSeats -SeatOrderSeed 20260928 `
   -MaxMatches 2 `
@@ -102,6 +104,12 @@ verified results already in that data directory, so keep it empty before the
 pilot. It bounds the number of games, not dollar spend: the number of requests
 and tokens varies by match, and the runner does not yet enforce a provider
 budget ceiling. Check current pricing and account limits before starting.
+Chutes' [Terms of Service](https://chutes.ai/terms) distinguish low-volume API
+use from high-volume or highly automated inference and direct the latter to
+PAYGO. A two-game cap does not by itself establish plan eligibility. Confirm
+the account's permitted use before any unattended Chutes call; if the planned
+usage requires PAYGO, use that plan. The two 512-token completion ceilings
+reduce per-call output limits but are not a dollar-spend cap.
 
 `-AlternateAgentSeats` makes policy slots A and B swap runner seats across
 successive verified matches, in two-match blocks. The seeded first orientation
