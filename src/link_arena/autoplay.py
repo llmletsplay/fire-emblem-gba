@@ -219,7 +219,10 @@ class MinimaxAutoplay:
         award panel is visible on that client. Any unrecognized page is left
         untouched and the match still completes with its roster result.
         """
-        deadline = time.monotonic() + 4.5
+        # FE7 can take several seconds after synchronized elimination to
+        # finish its points transition and expose the final ranking screen.
+        # Keep sampling long enough to collect two paired reads after it does.
+        deadline = time.monotonic() + 12.0
         acknowledged: set[str] = set()
         previous_signature: tuple[Any, ...] | None = None
         stable_reads = 0
