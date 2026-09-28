@@ -30,12 +30,15 @@ scp "$ROOT/src/link_arena/control.py" "$REMOTE:$REMOTE_ROOT\\src\\link_arena\\co
 scp "$ROOT/src/link_arena/autoplay.py" "$REMOTE:$REMOTE_ROOT\\src\\link_arena\\autoplay.py"
 scp "$ROOT/src/link_arena/setup.py" "$REMOTE:$REMOTE_ROOT\\src\\link_arena\\setup.py"
 scp "$ROOT/src/link_arena/stream.py" "$REMOTE:$REMOTE_ROOT\\src\\link_arena\\stream.py"
+scp "$ROOT/src/link_arena/series.py" "$REMOTE:$REMOTE_ROOT\\src\\link_arena\\series.py"
 scp "$ROOT/src/link_arena/stream_overlay/index.html" "$REMOTE:$REMOTE_ROOT\\src\\link_arena\\stream_overlay\\index.html"
 scp "$ROOT/src/link_arena/stream_overlay/overlay.css" "$REMOTE:$REMOTE_ROOT\\src\\link_arena\\stream_overlay\\overlay.css"
 scp "$ROOT/src/link_arena/stream_overlay/overlay.js" "$REMOTE:$REMOTE_ROOT\\src\\link_arena\\stream_overlay\\overlay.js"
 scp "$ROOT/lua/socketserver.lua" "$REMOTE:$REMOTE_ROOT\\lua\\socketserver.lua"
 scp "$ROOT/lua/fe7_memory.lua" "$REMOTE:$REMOTE_ROOT\\lua\\fe7_memory.lua"
 scp "$ROOT/scripts/windows/Start-Link-Arena.ps1" "$REMOTE:$REMOTE_ROOT\\scripts\\windows\\Start-Link-Arena.ps1"
+scp "$ROOT/scripts/windows/Start-OBS-Link-Arena.ps1" "$REMOTE:$REMOTE_ROOT\\scripts\\windows\\Start-OBS-Link-Arena.ps1"
+scp "$ROOT/scripts/windows/Install-Link-Arena-Stream.ps1" "$REMOTE:$REMOTE_ROOT\\scripts\\windows\\Install-Link-Arena-Stream.ps1"
 scp "$XPS" "$REMOTE:$REMOTE_ROOT\\roms\\fe7-link-arena-maxed.xps"
 
 if [[ -f "$UNVERIFIED_SAV" ]]; then
