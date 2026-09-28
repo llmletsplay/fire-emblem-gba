@@ -7,12 +7,49 @@ import json
 import os
 import threading
 import time
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 
 _WINNER_LABEL = {"A": "1P", "B": "2P", "draw": "DRAW"}
+
+
+@contextmanager
+def _exclusive_file_lock(path: Path) -> Iterator[None]:
+    """Serialize ledger appends across runner and migration processes."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor = os.open(path, os.O_CREAT | os.O_RDWR, 0o600)
+    locked = False
+    try:
+        if os.name == "nt":
+            import msvcrt
+
+            if os.fstat(descriptor).st_size == 0:
+                os.write(descriptor, b"\0")
+                os.fsync(descriptor)
+            os.lseek(descriptor, 0, os.SEEK_SET)
+            msvcrt.locking(descriptor, msvcrt.LK_LOCK, 1)
+            locked = True
+        else:
+            import fcntl
+
+            fcntl.flock(descriptor, fcntl.LOCK_EX)
+            locked = True
+        yield
+    finally:
+        if locked:
+            if os.name == "nt":
+                import msvcrt
+
+                os.lseek(descriptor, 0, os.SEEK_SET)
+                msvcrt.locking(descriptor, msvcrt.LK_UNLCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(descriptor, fcntl.LOCK_UN)
+        os.close(descriptor)
 
 
 class MatchSeries:
@@ -147,26 +184,32 @@ class DecisionLedger:
     def __init__(self, data_dir: Path, *, backfill: bool = True):
         self.data_dir = data_dir
         self.path = data_dir / "series" / "decisions.jsonl"
+        self.lock_path = data_dir / "series" / ".decisions.lock"
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.RLock()
-        self._event_ids = self._load_event_ids()
+        with _exclusive_file_lock(self.lock_path):
+            self._event_ids, self._event_indexed_size = self._load_event_ids()
         if backfill:
             self.backfill_legacy_matches()
 
-    def _load_event_ids(self) -> set[str]:
+    def _load_event_ids(self, offset: int = 0) -> tuple[set[str], int]:
         event_ids: set[str] = set()
         try:
-            with self.path.open("r", encoding="utf-8") as stream:
+            with self.path.open("rb") as stream:
+                size = os.fstat(stream.fileno()).st_size
+                if offset > size:
+                    offset = 0
+                stream.seek(offset)
                 for line in stream:
                     try:
                         value = json.loads(line)
-                    except json.JSONDecodeError:
+                    except (json.JSONDecodeError, UnicodeDecodeError):
                         continue
                     if isinstance(value, dict) and isinstance(value.get("event_id"), str):
                         event_ids.add(value["event_id"])
         except OSError:
-            pass
-        return event_ids
+            return event_ids, 0
+        return event_ids, size
 
     def record(
         self,
@@ -195,7 +238,15 @@ class DecisionLedger:
             entry, sort_keys=True, separators=(",", ":"), allow_nan=False,
         ).encode("utf-8")
         event_id = hashlib.sha256(canonical).hexdigest()
-        with self._lock:
+        with self._lock, _exclusive_file_lock(self.lock_path):
+            # Another runner or a one-off migration can append while this
+            # instance is alive, so refresh the dedupe index under the shared
+            # process lock before deciding whether this event is new.
+            new_ids, indexed_size = self._load_event_ids(self._event_indexed_size)
+            if indexed_size < self._event_indexed_size:
+                new_ids, indexed_size = self._load_event_ids()
+            self._event_ids.update(new_ids)
+            self._event_indexed_size = indexed_size
             if event_id in self._event_ids:
                 return False
             entry["event_id"] = event_id
@@ -211,6 +262,7 @@ class DecisionLedger:
                 stream.write(line)
                 stream.flush()
                 os.fsync(stream.fileno())
+                self._event_indexed_size = stream.tell()
             self._event_ids.add(event_id)
         return True
 

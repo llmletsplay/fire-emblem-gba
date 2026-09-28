@@ -103,6 +103,9 @@ a provenance trace, not proof that a provider's model weights are unchanged.
 Every row has `schema_version`, `event_type`, `match_id`, Unix-second
 `timestamp`, `trace_origin`, and an `event_id`. The event ID is SHA-256 over a
 canonical compact, key-sorted encoding of the row before `event_id` is added.
+The writer uses a process-shared file lock and refreshes its event-ID index
+under that lock before each append, so a runner and a backfill process cannot
+interleave ledger writes or append the same event concurrently.
 The `policy_input_sha256` is SHA-256 over the same canonical JSON encoding of
 the exact structured user input sent to a hosted model (or the documented
 `own_team`/`units` input for minimax). Legacy event imports retain their source
@@ -134,6 +137,12 @@ hash and validation error but not the raw content. This preserves a checkable
 record without collecting hidden reasoning. Screenshot files remain local
 artifacts; released traces must convert machine-specific paths to stable
 match-relative paths or omit them while retaining hashes.
+
+Run `python tools/audit_link_arena_ledger.py <path-to-decisions.jsonl>` before
+analysis or release. It reports malformed rows and integrity/linkage issues.
+The optional `--export-valid <derived-path.jsonl>` writes only parseable event
+rows to a separate derived file and writes an adjacent `.audit.json` report;
+it never edits the original append-only ledger.
 
 ### Proposed baselines
 
@@ -292,6 +301,8 @@ and record provider plan/configuration before making any hosted calls.
   precision analysis, then preregister confirmatory hypotheses and exclusions.
 - [ ] Create an analysis script that checks ledger consistency, produces
   confidence intervals, and reproduces all tables/figures from released data.
+- [x] Add a ledger audit/export command that verifies event hashes, duplicate
+  IDs, action/exchange joins, malformed lines, and private-reasoning-key absence.
 - [ ] Complete a venue-specific reproducibility, ethics, authorship, and
   third-party-asset/license checklist before public submission.
 

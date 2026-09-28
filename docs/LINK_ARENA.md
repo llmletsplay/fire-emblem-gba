@@ -166,7 +166,10 @@ series ledger imports those traces on the next runner start without rewriting
 the evidence files. The ledger excludes bearer tokens, screenshots themselves,
 and hidden model reasoning. See
 [`LINK_ARENA_BENCHMARK.md`](LINK_ARENA_BENCHMARK.md) for the research protocol
-and its current score/result limitations.
+and its current score/result limitations. Before analysis or release, run
+`python tools/audit_link_arena_ledger.py <path-to-decisions.jsonl>`; its optional
+export writes a separate valid-row derivative and audit report, leaving the
+source ledger untouched.
 
 ### Observation fields
 
