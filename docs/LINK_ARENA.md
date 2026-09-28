@@ -223,6 +223,12 @@ and its current score/result limitations. Before analysis or release, run
 export writes a separate valid-row derivative and audit report, leaving the
 source ledger untouched.
 
+The long-running public minimax stream is exploratory and its early match
+manifests predate the frozen policy and runtime-provenance fields required by
+the benchmark analyzer. The analyzer therefore rejects that mixed historical
+`DataDir`; do not fill in missing historical metadata by inference. Start each
+research pairing in a new dedicated data directory using the current runner.
+
 ### Observation fields
 
 `GET /v1/observe` returns an observation tied to a side and generation:
