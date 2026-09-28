@@ -521,6 +521,29 @@ IDs, hash mismatches, missing common fields, unknown events, or unlinked
 accepted actions/exchanges were found. Only the preserved malformed legacy
 line 2010 remains; the audit exits nonzero for that line.
 
+At approximately 22:46 UTC, a further live audit contained 6,891 valid events
+across the same 38 match IDs: 1,146 decisions, 1,128 submitted exchanges,
+4,616 verified button actions, and one replan. The 1,974 legacy-backfill and
+4,917 live rows remained `local/unknown`; hosted decisions with visible
+rationales and provider-private reasoning fields were both zero. There were no
+duplicate IDs, event-hash mismatches, missing common fields, unknown event
+types, or unlinked actions/exchanges. The preserved malformed 39-byte line
+2010 remains the sole reported audit defect, with SHA-256
+`1aad963f1b81decd4988583e25fbbc3ba2839f05bac8df529d4329770f7686af`; no
+source evidence was rewritten.
+
+At 22:47:11 UTC, game eighteen was still active in the public minimax stream
+(`20260928T223105Z-e65f8a`), at turn 15 with one 2P survivor and no observed
+winner. The series still had seventeen verified results (1P 5 wins, 2P 12),
+five verified official scores, and totals of 1P 1,728 / 2P 2,592. The strict
+benchmark analyzer was also run read-only against this historical public
+`DataDir`; it correctly stopped at match `20260927T151504Z-570000`, whose
+manifest lacks frozen seat/policy metadata. Thus the public minimax score and
+decision history remain auditable operational evidence, but the full mixed
+history is not eligible for the new frozen-study analysis. No missing fields
+were synthesized. New hosted experiments must use a fresh data directory and
+current manifests.
+
 - [x] Calibrate the fail-closed reader against archived and live final-result
   screens and reject four captured intermediate bonus panels. The standard
   layout and 12-second paired-read window have three successful live scores.
