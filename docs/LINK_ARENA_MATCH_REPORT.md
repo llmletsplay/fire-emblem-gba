@@ -114,14 +114,22 @@ both captures independently parse as 2P 576, 1P 288. The screenshots remain in
 the match-local Zephyrus capture directory rather than being added as new
 redistributed game-art assets.
 
-The shifted-view change has passed bytecode compilation and manual fixture
-checks against the 520–346 and 576–288 final-rank captures, the newly retained
-game-ten captures, and the archived bonus transitions. The transition screens
-still do not parse as final results. This code has not yet been deployed, so it
-has not produced an official-points ledger entry. At 20:40 UTC, game eleven
-(`20260928T202914Z-979bda`) was running unattended at turn 9 with 1P/2P
-exchange counts 9/8. Its in-progress state is not included in the ten
-completed-game record.
+The shifted-view change (PR #18, merged at 20:43 UTC) passed bytecode
+compilation and manual fixture checks against the 520–346 and 576–288 final-rank
+captures, the newly retained game-ten captures, and the archived bonus
+transitions. The transition screens still do not parse as final results. This
+alternate-layout code is staged but not yet installed on Zephyrus.
+
+Game eleven (`20260928T202914Z-979bda`) completed at about 20:46 UTC as a 2P
+survivor win. The currently deployed standard-layout reader recorded its first
+official paired score: 2P 576–288 1P. It required two stable paired reads, and
+the 2P first-place label agreed with the synchronized terminal-roster winner.
+The series ledger now has eleven results (1P 3 wins, 2P 8), one scored game,
+and official points of 1P 288 / 2P 576. The stored bridge screen hashes are
+`8be0f9f92ecf47e061d6b411c12dbf2832023aa47a8d6d8e4fe1c2beaa3b471f` and
+`413f7431ec241f4bf159f543407f6b85d5c9a7d6b12b2419ca7187ff5068db81`.
+Game twelve (`20260928T204610Z-822535`) began automatically in the same
+continuous runner.
 
 ## First supervised match reproduction details
 
