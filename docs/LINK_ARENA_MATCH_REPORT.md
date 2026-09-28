@@ -47,8 +47,9 @@ single transient count.
 The run used the separate Zephyrus ROM/save copies. Its match logs and PNG
 observations remain under
 `%LOCALAPPDATA%\FE7-Link-Arena\20260928T153714Z-75c7b5`. It used bridge ports
-18942/18943 and API port 18716. The result screen is captured above;
-point/rank extraction into a structured API record remains manual.
+18942/18943 and API port 18716. At the time of this match, point/rank
+extraction into a structured API record remained manual; the later score-reader
+deployment and its validation are tracked below.
 
 ## Exploratory continuous-series checkpoint
 
@@ -84,12 +85,43 @@ At the end of game seven, both linked views captured the same 30-point bonus
 transition, but the intermediate panels showed different totals (1P capture
 546/288, 2P capture 543/288). These are paired transition evidence, not the
 final ranking screen; no official points or rank are inferred from either
-panel. The score feature is being made fail-closed so such disagreement cannot
-be written as a result.
+panel. The score feature was then made fail-closed so such disagreement could
+not be written as a result.
 
 ![Game-seven 1P points-bonus transition; not the final ranking](link_arena_evidence/match7-terminal-bonus-1p.png)
 
 ![Game-seven 2P points-bonus transition; not the final ranking](link_arena_evidence/match7-terminal-bonus-2p.png)
+
+## Score-reader rollout and shifted-view calibration
+
+The continuous series completed game nine (`20260928T195429Z-ed9dda`, 1P
+survivor win) and game ten (`20260928T201141Z-2a1583`, 2P survivor win). The
+series ledger now has ten results: 1P 3 wins, 2P 7 wins, no draws. Game ten
+used 16/15 exchanges. It ended on the then-deployed score-reader build, which
+recognized only the standard client result layout; the official score was left
+null and the live official-points counter remained 0 rather than accepting an
+unverified one-sided result.
+
+The retained terminal screenshots from game ten show the same final result in
+two client layouts. The B/2P screenshot (`217-B-1153.png`, SHA-256
+`6f2dd575e9b217c7aaf2762e0db03ed88dee931e4b5c94dfa34f547c7dcba20f`) parses
+as 2P 576, 1P 288 in the standard layout. The A/1P screenshot
+(`217-A-1188.png`, SHA-256
+`8746548e4357c4b836866edcbfb14c748714b901fb51806bdef317e2c884b6a9`) contains
+the same exact digit masks but moves the first row to the upper-left and clips
+the lower row at the bottom. The working-tree reader recognizes both layouts;
+both captures independently parse as 2P 576, 1P 288. The screenshots remain in
+the match-local Zephyrus capture directory rather than being added as new
+redistributed game-art assets.
+
+The shifted-view change has passed bytecode compilation and manual fixture
+checks against the 520–346 and 576–288 final-rank captures, the newly retained
+game-ten captures, and the archived bonus transitions. The transition screens
+still do not parse as final results. This code has not yet been deployed, so it
+has not produced an official-points ledger entry. At 20:40 UTC, game eleven
+(`20260928T202914Z-979bda`) was running unattended at turn 9 with 1P/2P
+exchange counts 9/8. Its in-progress state is not included in the ten
+completed-game record.
 
 ## First supervised match reproduction details
 

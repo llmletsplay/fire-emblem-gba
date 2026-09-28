@@ -271,6 +271,10 @@ class MinimaxAutoplay:
                             "A": first["screen_sha256"],
                             "B": second["screen_sha256"],
                         },
+                        "layout_by_bridge": {
+                            "A": first["layout"],
+                            "B": second["layout"],
+                        },
                         "stable_paired_reads": stable_reads,
                         "winner_matches_terminal_roster": True,
                     }

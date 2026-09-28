@@ -23,6 +23,7 @@ def _validated_official_score(value: Any, *, winner: str) -> dict[str, Any] | No
     first = value.get("first_place")
     second = value.get("second_place")
     hashes = value.get("screen_sha256_by_bridge")
+    layouts = value.get("layout_by_bridge")
     if (
         not isinstance(points, dict)
         or set(points) != {"1P", "2P"}
@@ -48,9 +49,15 @@ def _validated_official_score(value: Any, *, winner: str) -> dict[str, Any] | No
         or any(not isinstance(digest, str) or len(digest) != 64
                or any(char not in "0123456789abcdef" for char in digest)
                for digest in hashes.values())
+        or (layouts is not None and (
+            not isinstance(layouts, dict)
+            or set(layouts) != {"A", "B"}
+            or any(layout not in {"standard", "shifted_client_view"}
+                   for layout in layouts.values())
+        ))
     ):
         return None
-    return {
+    result = {
         "source": value["source"],
         "points_by_seat": {seat: points[seat] for seat in ("1P", "2P")},
         "first_place": dict(first),
@@ -59,6 +66,9 @@ def _validated_official_score(value: Any, *, winner: str) -> dict[str, Any] | No
         "stable_paired_reads": value["stable_paired_reads"],
         "winner_matches_terminal_roster": True,
     }
+    if layouts is not None:
+        result["layout_by_bridge"] = dict(layouts)
+    return result
 
 
 @contextmanager

@@ -8,9 +8,9 @@ from typing import Any
 from .bridge import _decode_native_png
 
 
-# Calibrated from the two archived FE7 result screens. Each digit is the
-# 6x8 cyan-ink mask rendered by the score font after the screen palette has
-# been applied. Unknown glyphs are rejected rather than guessed.
+# Calibrated from archived FE7 result screens and a retained live terminal
+# capture. Each digit is the 6x8 cyan-ink mask rendered by the score font
+# after the screen palette has been applied. Unknown glyphs are rejected.
 _DIGIT_MASKS: dict[str, tuple[str, ...]] = {
     "0": (
         "..###.", ".#..##", "##..##", "##..##", "##..##", "##..##", "##..#.", ".###..",
@@ -62,12 +62,12 @@ def is_points_bonus_transition(png: bytes) -> bool:
 
 
 def _cyan_components(
-    pixels: bytes, *, y_start: int, y_stop: int,
+    pixels: bytes, *, x_start: int, x_stop: int, y_start: int, y_stop: int,
 ) -> list[tuple[int, int, int, int, tuple[bool, ...]]]:
     points = {
         (x, y)
         for y in range(y_start, y_stop)
-        for x in range(73, 95)
+        for x in range(x_start, x_stop)
         for red, green, blue in (_pixel(pixels, x, y),)
         if red > 150 and green > 220 and blue > 220
     }
@@ -101,8 +101,12 @@ def _cyan_components(
     return sorted(components, key=lambda value: value[0])
 
 
-def _read_score_row(pixels: bytes, *, y_start: int, y_stop: int) -> int | None:
-    components = _cyan_components(pixels, y_start=y_start, y_stop=y_stop)
+def _read_score_row(
+    pixels: bytes, *, x_start: int, x_stop: int, y_start: int, y_stop: int,
+) -> int | None:
+    components = _cyan_components(
+        pixels, x_start=x_start, x_stop=x_stop, y_start=y_start, y_stop=y_stop,
+    )
     if len(components) != 3:
         return None
     digits: list[str] = []
@@ -120,10 +124,12 @@ def _read_score_row(pixels: bytes, *, y_start: int, y_stop: int) -> int | None:
     return score if score >= 0 else None
 
 
-def _seat_badge(pixels: bytes, *, y_start: int, y_stop: int) -> str | None:
+def _seat_badge(
+    pixels: bytes, *, x_start: int, x_stop: int, y_start: int, y_stop: int,
+) -> str | None:
     blue = green = 0
     for y in range(y_start, y_stop):
-        for x in range(72, 109):
+        for x in range(x_start, x_stop):
             red, channel_green, channel_blue = _pixel(pixels, x, y)
             if channel_blue > red + 25 and channel_blue > channel_green + 10:
                 blue += 1
@@ -136,20 +142,15 @@ def _seat_badge(pixels: bytes, *, y_start: int, y_stop: int) -> str | None:
     return None
 
 
-def read_final_result_screen(png: bytes) -> dict[str, Any] | None:
-    """Parse the FE7 first/second-place screen; return ``None`` if uncertain.
-
-    Only the visible final result screen is accepted. Intermediate points
-    panels, including the terminal 30-point award transition, are not results.
-    """
-    pixels = _decode_native_png(png)
-    if pixels is None:
-        return None
-
-    first_seat = _seat_badge(pixels, y_start=53, y_stop=68)
-    second_seat = _seat_badge(pixels, y_start=101, y_stop=116)
-    first_points = _read_score_row(pixels, y_start=69, y_stop=79)
-    second_points = _read_score_row(pixels, y_start=117, y_stop=127)
+def _result(
+    png: bytes,
+    *,
+    first_seat: str | None,
+    second_seat: str | None,
+    first_points: int | None,
+    second_points: int | None,
+    layout: str,
+) -> dict[str, Any] | None:
     if (
         first_seat is None
         or second_seat is None
@@ -162,7 +163,52 @@ def read_final_result_screen(png: bytes) -> dict[str, Any] | None:
     return {
         "source": "fe7_final_result_screen",
         "screen_sha256": hashlib.sha256(png).hexdigest(),
+        "layout": layout,
         "first_place": {"seat": first_seat, "points": first_points},
         "second_place": {"seat": second_seat, "points": second_points},
         "points_by_seat": {first_seat: first_points, second_seat: second_points},
     }
+
+
+def read_final_result_screen(png: bytes) -> dict[str, Any] | None:
+    """Parse the FE7 first/second-place screen; return ``None`` if uncertain.
+
+    Only the visible final result screen is accepted. Intermediate points
+    panels, including the terminal 30-point award transition, are not results.
+    """
+    pixels = _decode_native_png(png)
+    if pixels is None:
+        return None
+
+    # Standard result page as seen by one link client.
+    standard = _result(
+        png,
+        first_seat=_seat_badge(pixels, x_start=72, x_stop=109, y_start=53, y_stop=68),
+        second_seat=_seat_badge(pixels, x_start=72, x_stop=109, y_start=101, y_stop=116),
+        first_points=_read_score_row(
+            pixels, x_start=73, x_stop=95, y_start=69, y_stop=79,
+        ),
+        second_points=_read_score_row(
+            pixels, x_start=73, x_stop=95, y_start=117, y_stop=127,
+        ),
+        layout="standard",
+    )
+    if standard is not None:
+        return standard
+
+    # The other client can display the same paired result with its upper row
+    # shifted to the top-left and its lower row clipped at the bottom. Keep
+    # the separately calibrated boxes exact; do not search arbitrary screen
+    # regions for digits, which could accept unrelated UI text.
+    return _result(
+        png,
+        first_seat=_seat_badge(pixels, x_start=33, x_stop=61, y_start=5, y_stop=20),
+        second_seat=_seat_badge(pixels, x_start=72, x_stop=104, y_start=52, y_stop=68),
+        first_points=_read_score_row(
+            pixels, x_start=31, x_stop=55, y_start=24, y_stop=33,
+        ),
+        second_points=_read_score_row(
+            pixels, x_start=73, x_stop=95, y_start=72, y_stop=80,
+        ),
+        layout="shifted_client_view",
+    )
