@@ -30,6 +30,18 @@ The API port changes if the runner uses a non-default `-ApiPort`; use the URL
 printed by that runner. Open it in OBS on the same computer as mGBA. The API
 binds to `127.0.0.1`; keep it local and do not forward the port to the internet.
 
+## Ready-made OBS scene collection
+
+The repository includes [FE7 Link Arena.json](../assets/obs/FE7%20Link%20Arena.json),
+a 1920×1080 OBS scene collection with a full-screen Link Arena Browser Source
+and a separate Twitch chat Browser Source. Copy it to
+`%APPDATA%\obs-studio\basic\scenes\FE7 Link Arena.json` while OBS is closed.
+On the next launch, select **FE7 Link Arena** from OBS's Scene Collection menu.
+The screen source uses screenshot preview mode, so it displays both linked FE7
+views and live metrics as soon as the runner starts. The chat source is placed
+over the overlay's chat panel. Its source URL and placement are already set for
+`@llmletsplay`.
+
 ## OBS scene
 
 Set the OBS canvas to **1920×1080**. Add the sources in this order, from bottom
