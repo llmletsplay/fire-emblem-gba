@@ -270,6 +270,14 @@ personal data.
 
 ## 7. Status before a confirmatory study
 
+At this protocol revision (2026-09-28), no hosted-model requests or hosted
+benchmark results are included. The unattended Zephyrus stream is running the
+repository's hand-coded depth-two minimax policy on both seats; this is not the
+MiniMax API model. Neither `CHUTES_API_KEY` nor `MINIMAX_API_KEY` was present
+in Zephyrus' user or machine environment during the readiness check. Provision
+credentials through approved host secret management, choose exact model IDs,
+and record provider plan/configuration before making any hosted calls.
+
 - [ ] Verify official result-screen parser against multiple independently
   reviewed captures; reconcile points, rank, surviving units, and W–L–D.
 - [ ] Deploy and inspect the series-wide decision ledger on Zephyrus; validate
