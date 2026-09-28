@@ -10,32 +10,32 @@
 --     mGBA --script socketserver.lua <rom>
 -- modified from https://github.com/mgba-emu/mgba/blob/master/res/scripts/socketserver.lua
 
--- Load FE7 memory reading functions
-local fe7_ok, fe7_err = pcall(function()
-    dofile("lua/fe7_memory.lua")
-end)
-if fe7_ok then
-    console:log("[INFO] FE7 Memory functions loaded successfully!")
-else
-    console:log("[WARN] FE7 Memory functions not loaded: " .. tostring(fe7_err))
-end
-
--- Load FE8 memory reading functions
-local fe8_ok, fe8_err = pcall(function()
-    dofile("lua/fe8_memory.lua")
-end)
-if fe8_ok then
-    console:log("[INFO] FE8 Memory functions loaded successfully!")
-else
-    console:log("[WARN] FE8 Memory functions not loaded: " .. tostring(fe8_err))
-end
-
--- Determine which game is running (try both, one will succeed)
+-- Detect the ROM before loading a memory helper.  FE7 and FE8 helpers use
+-- shared global Lua function names (readUnit, getGamePhase, sendUnits, ...),
+-- so loading both files makes the second file silently overwrite the first.
+-- That is especially dangerous for GAMESTATE/UNITS diagnostics: Python may be
+-- reading FE7 while Lua reports FE8 addresses.  Load exactly one namespace.
 local game_id = "unknown"
-if fe7_ok then
+local rom_code = emu and emu:readRange(0x080000AC, 4) or nil
+if rom_code == "AE7E" then
     game_id = "fe7"
-elseif fe8_ok then
+elseif rom_code == "BE8E" then
     game_id = "fe8"
+end
+
+local memory_ok, memory_err = false, nil
+if game_id == "fe7" then
+    memory_ok, memory_err = pcall(function() dofile("lua/fe7_memory.lua") end)
+elseif game_id == "fe8" then
+    memory_ok, memory_err = pcall(function() dofile("lua/fe8_memory.lua") end)
+else
+    memory_err = "unsupported or unavailable ROM code: " .. tostring(rom_code)
+end
+
+if memory_ok then
+    console:log("[INFO] " .. string.upper(game_id) .. " Memory functions loaded successfully!")
+else
+    console:log("[WARN] Game memory functions not loaded: " .. tostring(memory_err))
 end
 
 --------------------------------------------------------------------------
@@ -247,11 +247,8 @@ end
 local function getState()
    console:log("[DEBUG] getState: Checking state...")
    
-   -- First check for UI states that override phase
-   if isInBattle() then
-      console:log("[DEBUG] getState: In battle")
-      return "battle"
-   end
+   -- Menus and dialogue are more specific than the old battle byte. In FE7
+   -- that byte can remain set on the title screen and Link Arena map.
    if isInMenu() then
       local menu_sel = getMenuSelection()
       local menu_type = getMenuType()
@@ -287,6 +284,20 @@ local function getState()
    if unit_ptr and #unit_ptr >= 4 then
       local b1, b2, b3, b4 = string.byte(unit_ptr, 1, 4)
       has_units = (b1 + b2 + b3 + b4) > 0
+   end
+
+   -- D057 is not a reliable FE7 map-vs-combat discriminator: it can stay
+   -- nonzero during chapter 65's Link Arena hub and map. FE7's battle-map
+   -- lock is authoritative for the combat animation; otherwise let the
+   -- chapter phase below identify the arena turn. Other FE7 chapters and
+   -- FE8 retain the legacy battle flag behavior.
+   if isInBattle() then
+      local chapter = game == "fe7" and emu:read8(FE7_ADDR.CURRENT_CHAPTER) or -1
+      local map_locked = game == "fe7" and emu:read8(FE7_ADDR.BM_LOCK) ~= 0
+      if game ~= "fe7" or chapter ~= 65 or map_locked then
+         console:log("[DEBUG] getState: In battle")
+         return "battle"
+      end
    end
 
    if not has_units and turn_val == 0 then
@@ -360,6 +371,10 @@ local function applyHeldKeys()
       emu:setKeys(m)
    end
 end
+-- mGBA exposes a dedicated hook immediately before the game samples its
+-- keypad state. Reasserting here avoids UI input polling replacing keys set
+-- from the end-of-frame callback.
+callbacks:add("keysRead", applyHeldKeys)
 
 local function stepAutoRelease()
    if next(hold) then
@@ -388,11 +403,12 @@ local function stepAutoRelease()
          console:log("[DEBUG] stepAutoRelease: Queue ready for next input (framesUntilNext <= 0).")
          local i = inputQueue.idx
          if i <= #inputQueue.tokens then
-            local key = inputQueue.tokens[i]
-            console:log("[DEBUG] stepAutoRelease: Queue executing index " .. i .. ", token: '" .. key .. "' (Mask: " .. KEY_MASK[key] .. ")")
-            hold[key] = HOLD_FRAMES
+            local token = inputQueue.tokens[i]
+            local key, frames = token.key, token.frames
+            console:log("[DEBUG] stepAutoRelease: Queue executing index " .. i .. ", token: '" .. key .. "@" .. frames .. "' (Mask: " .. KEY_MASK[key] .. ")")
+            hold[key] = frames
             applyHeldKeys()
-            console:log("[DEBUG] stepAutoRelease: Added key '" .. key .. "' to hold for " .. HOLD_FRAMES .. " frames. New hold: " .. table_to_string(hold))
+            console:log("[DEBUG] stepAutoRelease: Added key '" .. key .. "' to hold for " .. frames .. " frames. New hold: " .. table_to_string(hold))
             inputQueue.idx = i + 1
             inputQueue.framesUntilNext = QUEUE_SPACING
             console:log("[DEBUG] stepAutoRelease: Queue index advanced to " .. inputQueue.idx .. ". Next input in " .. inputQueue.framesUntilNext .. " frames.")
@@ -511,12 +527,24 @@ local function parse(line, sock, sockId)
       for tok in line:gmatch("([^;]+)") do
          tok = tok:match("^%s*(.-)%s*$")
          if tok ~= "" then
-            local ctok = canonical(tok)
-            if not KEY_MASK[ctok] then
-               return nil, "Unknown key '" .. tok .. "' (canonical: '" .. ctok .. "') in queue"
+            local key_text, frames_text = tok:match("^([^@]+)@(%d+)$")
+            local frames = HOLD_FRAMES
+            if key_text then
+               frames = tonumber(frames_text)
+            elseif tok:find("@", 1, true) then
+               return nil, "Invalid hold duration in queue token '" .. tok .. "'"
+            else
+               key_text = tok
             end
-            toks[#toks+1] = ctok
-            console:log("[DEBUG] parse: Added token '" .. ctok .. "' to queue.")
+            if not frames or frames < 1 or frames > HOLD_FRAMES then
+               return nil, "Queue hold duration must be between 1 and " .. HOLD_FRAMES .. " frames"
+            end
+            local ctok = canonical(key_text)
+            if not KEY_MASK[ctok] then
+               return nil, "Unknown key '" .. key_text .. "' (canonical: '" .. ctok .. "') in queue"
+            end
+            toks[#toks+1] = { key=ctok, frames=frames }
+            console:log("[DEBUG] parse: Added token '" .. ctok .. "' with " .. frames .. " frames to queue.")
          end
       end
       if #toks > MAX_QUEUE_SIZE then
@@ -682,6 +710,7 @@ local function parse(line, sock, sockId)
       emu:setKeys(m)
       console:log("[DEBUG] parse: Clearing hold table due to SET command.")
       hold = {}
+      sock:send("INPUT_SET\n")
       return
    end
 
@@ -718,6 +747,7 @@ local function parse(line, sock, sockId)
       console:log("[DEBUG] parse: Applying add mask via setKeys hold: " .. add)
       applyHeldKeys()
    end
+   sock:send("INPUT_SET\n")
    console:log("[DEBUG] parse: Finished processing keys. Current hold: " .. table_to_string(hold))
    return
 end

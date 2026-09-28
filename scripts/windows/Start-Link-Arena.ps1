@@ -6,6 +6,16 @@ param(
     [string]$DataDir,
     [string]$Mgba,
     [string]$MgbaLogLevel,
+    [switch]$AutoMinimax,
+    [switch]$ManualSetup,
+    [ValidateRange(0.05, 30)]
+    [double]$AutoPollInterval = 0.5,
+    [ValidateRange(0.5, 120)]
+    [double]$AutoSettleTimeout = 60,
+    [ValidateRange(1024, 65532)]
+    [int]$BasePort = 18888,
+    [ValidateRange(1, 65535)]
+    [int]$ApiPort = 18700,
     [ValidateRange(1, 120)]
     [int]$StartupTimeout = 20
 )
@@ -33,6 +43,10 @@ if ($Save) { $Arguments += @('--save', (Resolve-Path $Save).Path) }
 if ($DataDir) { $Arguments += @('--data-dir', $DataDir) }
 if ($Mgba) { $Arguments += @('--mgba', (Resolve-Path $Mgba).Path) }
 if ($MgbaLogLevel) { $Arguments += @('--mgba-log-level', $MgbaLogLevel) }
+if ($AutoMinimax) { $Arguments += '--auto-minimax' }
+if ($ManualSetup) { $Arguments += '--manual-setup' }
+$Arguments += @('--auto-poll-interval', $AutoPollInterval, '--auto-settle-timeout', $AutoSettleTimeout)
+$Arguments += @('--base-port', $BasePort, '--api-port', $ApiPort)
 $Arguments += @('--startup-timeout', $StartupTimeout)
 
 Push-Location $RepoRoot

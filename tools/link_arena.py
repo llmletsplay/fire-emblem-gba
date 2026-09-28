@@ -23,6 +23,7 @@ if str(ROOT) not in sys.path:
 
 from src.link_arena.coordinator import InvalidAction, LinkArenaCoordinator, StaleObservation
 from src.link_arena.bridge import BridgeError
+from src.link_arena.autoplay import MinimaxAutoplay
 
 
 DEFAULT_ROM = ROOT / "roms" / "fe7.gba"
@@ -68,6 +69,13 @@ def _find_mgba(requested: str | None) -> str:
     env_path = os.environ.get("MGBA_PATH")
     if env_path:
         return env_path
+    portable = ROOT / "mgba-portable" / "mGBA.exe"
+    if portable.is_file():
+        # Keep the isolated runner on the tested portable build. On Windows,
+        # the installed Qt build can close the Lua bridge during FE7's serial
+        # team handshake; fall back to the system install only when the runner
+        # does not carry its portable emulator.
+        return str(portable)
     for candidate in DEFAULT_MGBA_CANDIDATES:
         if candidate.is_file():
             return str(candidate)
@@ -88,8 +96,8 @@ def _new_match(args: argparse.Namespace) -> tuple[Path, dict[str, Any], dict[str
         raise FileNotFoundError(
             f"converted FE7 battery save not found: {save}\n"
             "Import roms/fe7-link-arena-maxed.xps into an isolated FE7 copy in mGBA, "
-            "confirm Continue/Extras and the Link Arena roster in-game, then pass "
-            "that copy's .sav with --save."
+            "save the prepared RAGNAROK roster to an isolated .sav, then pass that "
+            "copy with --save. The runner handles title and Link Arena setup."
         )
     if not source_script.is_file():
         raise FileNotFoundError(f"mGBA Lua bridge not found: {source_script}")
@@ -302,6 +310,7 @@ class _ApiServer(http.server.ThreadingHTTPServer):
 
     def __init__(self, address: tuple[str, int], coordinator: LinkArenaCoordinator):
         self.coordinator = coordinator
+        self.autoplay: MinimaxAutoplay | None = None
         super().__init__(address, _ApiHandler)
 
 
@@ -333,11 +342,23 @@ class _ApiHandler(http.server.BaseHTTPRequestHandler):
             return
         try:
             if self.path == "/v1/observe":
+                autoplay = self.server.autoplay
+                if autoplay is not None and autoplay.status.get("state") not in {"ready", "playing", "complete"}:
+                    self._json(503, {"error": "Link Arena setup is not ready for agent observations",
+                                     "autoplay": autoplay.status})
+                    return
                 self._json(200, self.server.coordinator.observe(side))
             elif self.path == "/v1/status":
+                autoplay = self.server.autoplay
+                if autoplay is not None and autoplay.status.get("state") not in {"ready", "playing", "complete"}:
+                    self._json(200, {"side": side, "autoplay": autoplay.status})
+                    return
                 status = self.server.coordinator.status()
-                self._json(200, {"generation": status["generation"], "side": side,
-                                 "game_state": status["sides"][side]})
+                response = {"generation": status["generation"], "side": side,
+                            **status["sides"][side]}
+                if autoplay is not None:
+                    response["autoplay"] = autoplay.status
+                self._json(200, response)
             else:
                 self._json(404, {"error": "unknown endpoint"})
         except (BridgeError, OSError) as exc:
@@ -352,6 +373,14 @@ class _ApiHandler(http.server.BaseHTTPRequestHandler):
             self._json(404, {"error": "unknown endpoint"})
             return
         try:
+            autoplay = self.server.autoplay
+            if autoplay is not None and autoplay.status.get("state") not in {"ready", "playing", "complete"}:
+                self._json(503, {"error": "Link Arena setup is not ready for agent actions",
+                                 "autoplay": autoplay.status})
+                return
+            if autoplay is not None and autoplay.play_minimax:
+                self._json(409, {"error": "the built-in minimax runner currently owns both sides"})
+                return
             length = int(self.headers.get("Content-Length", "0"))
             if not 0 < length <= 8192:
                 raise InvalidAction("request body must be between 1 and 8192 bytes")
@@ -369,6 +398,8 @@ class _ApiHandler(http.server.BaseHTTPRequestHandler):
 
 
 def start(args: argparse.Namespace) -> int:
+    if args.auto_minimax and args.manual_setup:
+        raise ValueError("--auto-minimax requires the default automatic title and Link Arena setup")
     mgba = _find_mgba(args.mgba)
     match_dir, session, tokens = _new_match(args)
     side_a = match_dir / "side-a" / "FE7.gba"
@@ -406,6 +437,23 @@ def start(args: argparse.Namespace) -> int:
             session["bridge_ports"], tokens, match_dir, bridges=bridges
         )
         server = _ApiServer(("127.0.0.1", args.api_port), coordinator)
+        autoplay = None
+        if not args.manual_setup:
+            autoplay = MinimaxAutoplay(
+                coordinator,
+                match_dir,
+                play_minimax=args.auto_minimax,
+                poll_interval=args.auto_poll_interval,
+                settle_timeout=args.auto_settle_timeout,
+            )
+            server.autoplay = autoplay
+            autoplay.start()
+            if args.auto_minimax:
+                print("Automatic title/setup and minimax armed; the runner will take both clients to the arena map and play.")
+            else:
+                print("Automatic title/setup armed; agent observations and actions unlock when both clients reach the arena map.")
+        else:
+            print("Manual setup enabled; the agent API will expose the current screen.")
         print(f"Agent API: http://127.0.0.1:{args.api_port}/v1/observe")
         print(f"Side A token file: {match_dir / 'side-a.token'}")
         print(f"Side B token file: {match_dir / 'side-b.token'}")
@@ -414,6 +462,8 @@ def start(args: argparse.Namespace) -> int:
             server.serve_forever(poll_interval=0.5)
         finally:
             server.server_close()
+            if autoplay is not None:
+                autoplay.stop()
     except KeyboardInterrupt:
         pass
     finally:
@@ -443,6 +493,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--base-port", type=int, default=18888, help="first side bridge port (next port is side B)")
     parser.add_argument("--api-port", type=int, default=18700, help="loopback agent API port")
     parser.add_argument("--startup-timeout", type=float, default=20.0)
+    parser.add_argument("--auto-minimax", action="store_true",
+                        help="automate title/link setup and play both sides with minimax")
+    parser.add_argument("--manual-setup", action="store_true",
+                        help="leave title and Link Arena menus under operator control")
+    parser.add_argument("--auto-poll-interval", type=float, default=0.5,
+                        help="seconds between stable-screen checks while minimax autoplay waits")
+    parser.add_argument("--auto-settle-timeout", type=float, default=60.0,
+                        help="seconds allowed for each one-button transition and FE7 combat animation to settle")
     parser.set_defaults(func=start)
     return parser
 

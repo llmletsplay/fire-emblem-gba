@@ -17,6 +17,39 @@ and the ranking screen are saved from the Zephyrus API captures:
 
 ![FE7 Link Arena ranking screen](link_arena_evidence/ranking.png)
 
+## Unattended runner validation
+
+On 2026-09-28, match `20260928T153714Z-75c7b5` completed on Zephyrus with
+`--auto-minimax`. The runner navigated both clients from the title screen,
+confirmed the saved RAGNAROK teams, completed the link handshake, mapped the
+1P-first core, and played 31 exchanges with two built-in minimax agents. No
+operator supplied gameplay inputs.
+
+FE7's own final ranking screen declared green 2P RAGNAROK the winner:
+
+| Place | Side | Team label | Points |
+| --- | --- | --- | ---: |
+| 1st | 2P, green | RAGNAROK | 576 |
+| 2nd | 1P, blue | RAGNAROK | 288 |
+
+![Unattended FE7 Link Arena final ranking: 2P wins 576 to 288](link_arena_evidence/unattended-final-ranking.png)
+
+The startup and every exchange used the verified one-input controller: it
+checked cursor coordinates and menu rows after each button, confirmed the
+weapon/status-card gates, and waited for synchronized rosters before either
+agent acted again. At the end, both cores confirmed the same terminal roster
+across four paired reads spanning 4.7 seconds. During the run, one core briefly
+reported zero players while its peer still showed one; the runner logged
+`terminal_waiting_for_peer` and continued until the linked views agreed. This
+is why the terminal check requires both settled maps instead of trusting a
+single transient count.
+
+The run used the separate Zephyrus ROM/save copies. Its match logs and PNG
+observations remain under
+`%LOCALAPPDATA%\FE7-Link-Arena\20260928T153714Z-75c7b5`. It used bridge ports
+18942/18943 and API port 18716. The result screen is captured above;
+point/rank extraction into a structured API record remains manual.
+
 ## Reproduction details
 
 - Match ID: `20260927T171244Z-c0eba3`
