@@ -120,11 +120,33 @@ function renderSeries(series) {
   text("series-score", `SERIES · 1P ${onep}–${twop} 2P · ${games}G`);
   const recent = Array.isArray(series?.recent_games) ? series.recent_games : [];
   const history = recent.length
-    ? recent.map((game) => `${game.winner || "?"}${Number.isInteger(game.game_number) ? ` G${game.game_number}` : ""}`).join(" · ")
+    ? recent.map((game) => {
+        const score = game.official_score?.points_by_seat;
+        const result = score && Number.isInteger(score["1P"]) && Number.isInteger(score["2P"])
+          ? ` ${score["1P"]}–${score["2P"]}` : "";
+        return `${game.winner || "?"}${Number.isInteger(game.game_number) ? ` G${game.game_number}` : ""}${result}`;
+      }).join(" · ")
     : "NO COMPLETED GAMES";
   text("series-history", `${history}${draws ? ` · ${draws} DRAW${draws === 1 ? "" : "S"}` : ""}`);
   const historyNode = $("series-history");
   if (historyNode) historyNode.title = `1P wins: ${onep}; 2P wins: ${twop}; draws: ${draws}; games: ${games}`;
+
+  const points = series?.official_points;
+  const scored = count(points?.games_scored) ?? 0;
+  const totals = points?.totals || {};
+  const onepPoints = count(totals["1P"]);
+  const twopPoints = count(totals["2P"]);
+  const official = onepPoints !== null && twopPoints !== null && scored > 0
+    ? `1P ${onepPoints}–${twopPoints} 2P · ${scored} SCORED G`
+    : `NO VERIFIED SCORES · ${scored}/${games} G`;
+  text("official-score", official);
+  const officialNode = $("official-score");
+  if (officialNode) {
+    const latest = points?.most_recent?.points_by_seat;
+    officialNode.title = latest && Number.isInteger(latest["1P"]) && Number.isInteger(latest["2P"])
+      ? `Most recent verified FE7 result: 1P ${latest["1P"]} – ${latest["2P"]} 2P`
+      : "Only synchronized, recognized FE7 final result screens are included.";
+  }
 }
 
 function runnerLabel(match) {

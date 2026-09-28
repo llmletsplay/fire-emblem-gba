@@ -133,11 +133,12 @@ chat URL](https://dev.twitch.tv/docs/embed/chat/)).
   estimate when available. It does not display provider-private reasoning.
   Unit IDs are shown because the Link Arena memory bridge does not yet expose
   localized character names.
-- **Series record** shows 1P and 2P wins, draws, games played, and the latest
-  results. Completed outcomes are appended to `series/results.jsonl` in the
-  runner data directory, so the record survives process restarts. The runner
-  records a result only after both linked clients agree on a stable terminal
-  roster. These are match wins, not FE7's numeric Link Arena points table.
+- **Series record** shows 1P and 2P wins, draws, games played, latest results,
+  and cumulative FE7 points from verified result screens. Outcomes and score
+  evidence are appended to `series/results.jsonl`, so they survive restarts.
+  Scores remain blank when either linked result is missing, disagreeing, or
+  unrecognized; blank is not zero. FE7 point totals remain distinct from the
+  W–L–D record and minimax evaluation.
 - **Decision history** is persisted in `series/decisions.jsonl`. Policy choices
   include each side's structured observation and input hash; hosted choices
   also retain the exact structured prompt input, validated visible completion,

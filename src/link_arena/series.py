@@ -16,6 +16,51 @@ from typing import Any, Iterator
 _WINNER_LABEL = {"A": "1P", "B": "2P", "draw": "DRAW"}
 
 
+def _validated_official_score(value: Any, *, winner: str) -> dict[str, Any] | None:
+    if not isinstance(value, dict) or value.get("source") != "fe7_final_result_screen":
+        return None
+    points = value.get("points_by_seat")
+    first = value.get("first_place")
+    second = value.get("second_place")
+    hashes = value.get("screen_sha256_by_bridge")
+    if (
+        not isinstance(points, dict)
+        or set(points) != {"1P", "2P"}
+        or any(isinstance(points.get(seat), bool) or not isinstance(points.get(seat), int)
+               or not 0 <= points[seat] <= 9999 for seat in ("1P", "2P"))
+        or not isinstance(first, dict)
+        or not isinstance(second, dict)
+        or first.get("seat") != _WINNER_LABEL.get(winner)
+        or second.get("seat") not in {"1P", "2P"}
+        or second.get("seat") == first.get("seat")
+        or first.get("points") != points.get(first.get("seat"))
+        or second.get("points") != points.get(second.get("seat"))
+        or isinstance(first.get("points"), bool)
+        or not isinstance(first.get("points"), int)
+        or isinstance(second.get("points"), bool)
+        or not isinstance(second.get("points"), int)
+        or first["points"] <= second["points"]
+        or value.get("winner_matches_terminal_roster") is not True
+        or not isinstance(value.get("stable_paired_reads"), int)
+        or value["stable_paired_reads"] < 2
+        or not isinstance(hashes, dict)
+        or set(hashes) != {"A", "B"}
+        or any(not isinstance(digest, str) or len(digest) != 64
+               or any(char not in "0123456789abcdef" for char in digest)
+               for digest in hashes.values())
+    ):
+        return None
+    return {
+        "source": value["source"],
+        "points_by_seat": {seat: points[seat] for seat in ("1P", "2P")},
+        "first_place": dict(first),
+        "second_place": dict(second),
+        "screen_sha256_by_bridge": dict(hashes),
+        "stable_paired_reads": value["stable_paired_reads"],
+        "winner_matches_terminal_roster": True,
+    }
+
+
 @contextmanager
 def _exclusive_file_lock(path: Path) -> Iterator[None]:
     """Serialize ledger appends across runner and migration processes."""
@@ -86,6 +131,15 @@ class MatchSeries:
                         or match_id in seen
                     ):
                         continue
+                    official_score = _validated_official_score(
+                        value.get("official_score"), winner=winner,
+                    )
+                    value = dict(value)
+                    value["official_score_status"] = "verified" if official_score else "unavailable"
+                    if official_score is None:
+                        value.pop("official_score", None)
+                    else:
+                        value["official_score"] = official_score
                     seen.add(match_id)
                     results.append(value)
         except OSError:
@@ -112,6 +166,12 @@ class MatchSeries:
                 "players_alive": result.get("players_alive"),
                 "npcs_alive": result.get("npcs_alive"),
             }
+            official_score = _validated_official_score(
+                result.get("official_score"), winner=winner,
+            )
+            entry["official_score_status"] = "verified" if official_score else "unavailable"
+            if official_score is not None:
+                entry["official_score"] = official_score
             line = (json.dumps(entry, sort_keys=True) + "\n").encode("utf-8")
             with self.path.open("a+b") as stream:
                 stream.seek(0, os.SEEK_END)
@@ -131,17 +191,29 @@ class MatchSeries:
         with self._lock:
             wins = {"1P": 0, "2P": 0}
             draws = 0
+            point_totals = {"1P": 0, "2P": 0}
+            scored_games = 0
             for result in self._results:
                 label = _WINNER_LABEL.get(result.get("winner"))
                 if label == "DRAW":
                     draws += 1
                 elif label in wins:
                     wins[label] += 1
+                official_score = result.get("official_score")
+                points = official_score.get("points_by_seat") if isinstance(official_score, dict) else None
+                if isinstance(points, dict) and all(
+                    isinstance(points.get(seat), int) and not isinstance(points.get(seat), bool)
+                    for seat in ("1P", "2P")
+                ):
+                    point_totals["1P"] += points["1P"]
+                    point_totals["2P"] += points["2P"]
+                    scored_games += 1
             recent = [
                 {
                     "game_number": result.get("game_number"),
                     "match_id": result.get("match_id"),
                     "winner": _WINNER_LABEL[result["winner"]],
+                    "official_score": result.get("official_score"),
                 }
                 for result in reversed(self._results[-5:])
             ]
@@ -150,6 +222,14 @@ class MatchSeries:
                 "wins": wins,
                 "draws": draws,
                 "recent_games": recent,
+                "official_points": {
+                    "games_scored": scored_games,
+                    "totals": point_totals,
+                    "most_recent": next((
+                        result.get("official_score") for result in reversed(self._results)
+                        if isinstance(result.get("official_score"), dict)
+                    ), None),
+                },
             }
 
 

@@ -8,6 +8,7 @@ supervision before it sends another input.
 
 from __future__ import annotations
 
+import base64
 import json
 import hashlib
 import threading
@@ -27,6 +28,7 @@ from .control import (
     _ui,
 )
 from .setup import ArenaSetup
+from .scores import is_points_bonus_transition, read_final_result_screen
 
 
 class MinimaxAutoplay:
@@ -198,6 +200,130 @@ class MinimaxAutoplay:
         if cls._roster_fingerprint(first) != cls._roster_fingerprint(second):
             return None
         return first_result
+
+    @staticmethod
+    def _screenshot_bytes(observation: dict[str, Any]) -> bytes | None:
+        value = observation.get("screenshot")
+        if not isinstance(value, str) or not value.startswith("data:image/png;base64,"):
+            return None
+        try:
+            return base64.b64decode(value.split(",", 1)[1], validate=True)
+        except (ValueError, TypeError):
+            return None
+
+    def _read_official_result(self, terminal: dict[str, Any]) -> dict[str, Any] | None:
+        """Advance only the recognized FE7 points prompt and read its result page.
+
+        This runs after synchronized elimination is already confirmed. It sends
+        at most one A pulse per linked client, and only while the exact 30-point
+        award panel is visible on that client. Any unrecognized page is left
+        untouched and the match still completes with its roster result.
+        """
+        deadline = time.monotonic() + 4.5
+        acknowledged: set[str] = set()
+        previous_signature: tuple[Any, ...] | None = None
+        stable_reads = 0
+        winner_label = {"A": "1P", "B": "2P"}.get(terminal.get("winner"))
+        self.controller.set_decision_context(None)
+
+        while time.monotonic() < deadline and not self.stop_event.is_set():
+            try:
+                observations = {
+                    side: self.coordinator.observe(side)
+                    for side in ("A", "B")
+                }
+            except Exception as exc:
+                self._log({"type": "official_score_capture_failed", "error": type(exc).__name__})
+                return None
+
+            results: dict[str, dict[str, Any]] = {}
+            for side, observation in observations.items():
+                png = self._screenshot_bytes(observation)
+                parsed = read_final_result_screen(png) if png is not None else None
+                if parsed is not None:
+                    results[side] = parsed
+
+            first = results.get("A")
+            second = results.get("B")
+            if first is not None and second is not None:
+                first_places = first["points_by_seat"]
+                second_places = second["points_by_seat"]
+                signature = (
+                    first["first_place"]["seat"],
+                    first_places.get("1P"), first_places.get("2P"),
+                    second["first_place"]["seat"],
+                    second_places.get("1P"), second_places.get("2P"),
+                )
+                agrees = (
+                    first_places == second_places
+                    and first["first_place"]["seat"] == second["first_place"]["seat"]
+                    and first["first_place"]["seat"] == winner_label
+                )
+                stable_reads = stable_reads + 1 if signature == previous_signature else 1
+                previous_signature = signature
+                if agrees and stable_reads >= 2:
+                    score = {
+                        "source": "fe7_final_result_screen",
+                        "points_by_seat": first_places,
+                        "first_place": first["first_place"],
+                        "second_place": first["second_place"],
+                        "screen_sha256_by_bridge": {
+                            "A": first["screen_sha256"],
+                            "B": second["screen_sha256"],
+                        },
+                        "stable_paired_reads": stable_reads,
+                        "winner_matches_terminal_roster": True,
+                    }
+                    self._log({"type": "official_score_recorded", "score": score})
+                    return score
+            else:
+                stable_reads = 0
+                previous_signature = None
+
+            # A shared, terminal 30-point award panel was captured on both
+            # cores in the verified pilot. Use only this fixed FE7 screen as
+            # the acknowledgement gate; never tap through an unknown menu.
+            if (
+                not acknowledged
+                and self._terminal_pair(observations) is not None
+                and all(
+                    (png := self._screenshot_bytes(observation)) is not None
+                    and is_points_bonus_transition(png)
+                    for observation in observations.values()
+                )
+            ):
+                for side in ("A", "B"):
+                    if side in acknowledged:
+                        continue
+                    observation = self.coordinator.observe(side)
+                    png = self._screenshot_bytes(observation)
+                    if (
+                        self._terminal(observation) != terminal
+                        or png is None
+                        or not is_points_bonus_transition(png)
+                    ):
+                        continue
+                    try:
+                        self.coordinator.act(side, {
+                            "observation_id": observation["observation_id"],
+                            "buttons": ["A"],
+                            "hold_frames": 3,
+                        })
+                    except Exception as exc:
+                        self._log({"type": "official_result_ack_failed", "side": side,
+                                   "error": type(exc).__name__})
+                        continue
+                    acknowledged.add(side)
+                    self._log({"type": "official_result_prompt_acknowledged", "side": side,
+                               "prompt_sha256": hashlib.sha256(png).hexdigest()})
+                    time.sleep(0.15)
+
+            time.sleep(0.2)
+
+        self._log({"type": "official_score_unavailable",
+                   "reason": "final result screen was not recognized and agreed by both clients",
+                   "acknowledged_sides": sorted(acknowledged)})
+        return None
 
     @staticmethod
     def _phase_raw(observation: dict[str, Any]) -> int | None:
@@ -753,6 +879,8 @@ class MinimaxAutoplay:
                 self._wait_for_turn_boundary(phase_raw_before=phase_raw_before)
             except StopIteration as exc:
                 terminal = exc.value or {"terminal": True}
+                if terminal.get("terminal"):
+                    terminal["official_score"] = self._read_official_result(terminal)
                 self.status = {"state": "complete", **terminal}
                 self._log({"type": "match_complete", **terminal})
                 return

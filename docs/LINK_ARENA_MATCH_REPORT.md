@@ -52,14 +52,15 @@ point/rank extraction into a structured API record remains manual.
 
 ## Exploratory continuous-series checkpoint
 
-Later on 2026-09-28, the continuous unattended runner completed six
-consecutive local-minimax games and automatically started a seventh. All six
-were recorded as 2P wins from the synchronized survivor state. They used the
+Later on 2026-09-28, the continuous unattended runner completed eight
+consecutive local-minimax games. The first six were recorded as 2P wins and
+the next two as 1P wins from the synchronized survivor state. They used the
 same prepared team/save and fixed seats, so this is operational evidence only,
-not a seat-balanced benchmark result. At the latest checkpoint, match
-`20260928T192054Z-d5ed2e` was in automatic Link Arena setup. The active series
-ledger contains the decision and verified-input trace; see the benchmark
-protocol for its audit counts and the one preserved malformed historical row.
+not a seat-balanced benchmark result. At 19:55 UTC, match
+`20260928T195429Z-ed9dda` had automatically entered game-nine setup at
+`open_linked_battle`. The live series record showed 8 completed games, 1P 2
+wins, and 2P 6. The lock-consistent decision-ledger audit and its preserved
+malformed historical line are documented in the benchmark protocol.
 
 At the game-four handoff, the read-only 1P view captured this in-game points
 panel and bonus transition:
@@ -79,7 +80,18 @@ values are retained only as intermediate game evidence:
 
 ![FE7 Link Arena game-six single-core points bonus transition](link_arena_evidence/match6-terminal-points-transition.png)
 
-## Reproduction details
+At the end of game seven, both linked views captured the same 30-point bonus
+transition, but the intermediate panels showed different totals (1P capture
+546/288, 2P capture 543/288). These are paired transition evidence, not the
+final ranking screen; no official points or rank are inferred from either
+panel. The score feature is being made fail-closed so such disagreement cannot
+be written as a result.
+
+![Game-seven 1P points-bonus transition; not the final ranking](link_arena_evidence/match7-terminal-bonus-1p.png)
+
+![Game-seven 2P points-bonus transition; not the final ranking](link_arena_evidence/match7-terminal-bonus-2p.png)
+
+## First supervised match reproduction details
 
 - Match ID: `20260927T171244Z-c0eba3`
 - Host: Zephyrus, Windows, mGBA 0.11 development portable build
