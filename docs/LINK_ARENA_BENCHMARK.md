@@ -844,9 +844,14 @@ possible file-access interaction, but does not establish causality. The match
 has no verified result and is not in the 26-game series score; its raw files
 are retained. The local-minimax task was restarted without stopping OBS, and
 replacement match `20260929T012518Z-f433ea` was initializing at the next
-inspection. Treat the interrupted attempt as an operational incident, not a
-policy outcome. Until the Windows file-access behavior is resolved, perform
-full ledger audits only on a quiesced ledger or a verified offline snapshot.
+inspection. At the next verified result boundary, that match completed and the
+series reached 27; the runner and emulator were restarted at that boundary to
+load PR #45's merged handoff code. OBS was left running, and new match
+`20260929T014338Z-4228a9` entered setup with no runner error. No live-ledger
+audit was run during this reload. Treat the interrupted attempt as an
+operational incident, not a policy outcome. Until the Windows file-access
+behavior is resolved, perform full ledger audits only on a quiesced ledger or
+a verified offline snapshot.
 
 The formal analysis command was also tried against this live root and refused
 it at historical match `20260927T151504Z-570000`, whose manifest lacks the
