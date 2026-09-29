@@ -397,12 +397,12 @@ provider, game-content, privacy, and venue checks in the inventory are complete.
 
 ## 7. Status before a confirmatory study
 
-At this protocol revision (2026-09-28), no hosted-model requests or hosted
+At this protocol revision (2026-09-29), no hosted-model requests or hosted
 benchmark results are included. The unattended Zephyrus stream is running the
 repository's hand-coded depth-two minimax policy on both seats; this is not the
-MiniMax API model. Neither `CHUTES_API_KEY` nor `MINIMAX_API_KEY` was present
-in Zephyrus' user or machine environment during the readiness check. The
-Windows runner now has an interactive provisioning script that encrypts keys
+MiniMax API model. A 2026-09-29 presence-only check found no DPAPI provider
+credential file in Zephyrus' Link Arena secrets directory. The Windows runner
+has an interactive provisioning script that encrypts keys
 with current-user DPAPI and loads them only into the task process; the
 scheduled-task installer accepts fixed per-seat hosted provider/model choices
 and fails closed if the selected provider credential is unavailable. This
