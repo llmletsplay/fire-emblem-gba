@@ -268,8 +268,8 @@ class OpenAICompatibleAgent(MinimaxAgent):
     _SYSTEM_TEMPLATE = (
         "Choose one FE7 Link Arena attack from the supplied structured state. "
         "Return exactly one JSON object with integer fields attacker_id, "
-        "defender_id, and weapon_id, and a rationale string of at most two "
-        "sentences. Select a living unit from own_units, a living unit from "
+        "defender_id, and weapon_id, and a non-empty rationale string of at most "
+        "400 characters. Select a living unit from own_units, a living unit from "
         "opposing_units, and a usable weapon in the attacker's inventory. Give "
         "only a concise user-visible explanation based on the supplied state; "
         "do not provide hidden chain-of-thought. Do not return movement, buttons, "
@@ -458,11 +458,39 @@ class OpenAICompatibleAgent(MinimaxAgent):
             "model_requested": self.model,
             "base_url": self.base_url,
             "api_key_env": self.api_key_env,
-            "prompt_template": "fe7-link-arena-choice-v1",
+            "prompt_template": "fe7-link-arena-choice-v2",
             "prompt_template_sha256": self._system_prompt_sha256,
             "system_prompt": self._SYSTEM_TEMPLATE,
             "temperature": self.temperature,
             "max_completion_tokens": self.max_completion_tokens,
+            "client_transport_timeout_seconds": self.timeout_seconds,
+            "action_contract": {
+                "schema_id": "fe7-link-arena-matchup-v1",
+                "required_fields": [
+                    "attacker_id", "defender_id", "weapon_id", "rationale",
+                ],
+                "additional_fields_allowed": False,
+                "id_fields_must_be_integers": True,
+                "rationale_non_empty": True,
+                "rationale_max_characters": 400,
+                "json_parse_repairs": 0,
+                "legal_roster_and_weapon_validation": "client_side_fail_closed",
+            },
+            "execution_policy": {
+                "transport_timeout_seconds": self.timeout_seconds,
+                "transport_timeout_scope": (
+                    "urllib blocking operations; not an end_to_end wall_clock deadline"
+                ),
+                "api_retries": 0,
+                "format_repair_attempts": 0,
+                "invalid_response_fallback": "none",
+                "stale_state_replans": {
+                    "maximum_policy_calls_per_exchange": 6,
+                    "trigger": "selected defender disappears or has zero HP during verified selection",
+                    "counts_as_api_retry": False,
+                },
+                "failure_action": "stop_for_supervision_without_further_game_inputs",
+            },
             "reasoning_settings": reasoning_settings,
             "pricing_snapshot": self.pricing_snapshot,
             "reasoning_capture": {
@@ -532,7 +560,7 @@ class OpenAICompatibleAgent(MinimaxAgent):
             "model_requested": self.model,
             "base_url": self.base_url,
             "api_key_env": self.api_key_env,
-            "prompt_template": "fe7-link-arena-choice-v1",
+            "prompt_template": "fe7-link-arena-choice-v2",
             "system_prompt": self._SYSTEM_TEMPLATE,
             "policy_input": user_state,
             "prompt_sha256": hashlib.sha256(prompt_text.encode("utf-8")).hexdigest(),
@@ -540,6 +568,7 @@ class OpenAICompatibleAgent(MinimaxAgent):
             "request_parameters": {
                 "temperature": self.temperature,
                 "max_completion_tokens": self.max_completion_tokens,
+                "client_transport_timeout_seconds": self.timeout_seconds,
                 "stream": False,
                 "output_contract": "strict_json_object_validated_client_side",
                 **self._provider_request_parameters(),

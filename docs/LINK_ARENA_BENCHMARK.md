@@ -1,7 +1,7 @@
 # FE7 Link Arena Bench: working paper and study protocol
 
 **Status:** protocol draft; no confirmatory benchmark results are reported here.
-**Version:** 0.1, 2026-09-28
+**Version:** 0.2, 2026-09-29
 **Authors:** to be completed by the human research team before circulation.
 
 ## Working title
@@ -116,6 +116,21 @@ text that might contain unrequested reasoning. Never record API keys. The
 append-only ledger is a provenance trace, not proof that a provider's model
 weights are unchanged. [MiniMax Chat Completions API](https://platform.minimax.io/docs/api-reference/text-chat-openai).
 
+The hosted action contract is frozen in each policy descriptor. Prompt template
+`fe7-link-arena-choice-v2` requests one JSON object with exactly three integer
+IDs and a non-empty rationale of at most 400 characters; the client rejects
+extra/missing fields, malformed JSON, non-integer IDs, and actions outside the
+current living rosters or usable inventory. There is no JSON repair, automatic
+API retry, or fallback action. The actual client transport timeout is included
+in the session and decision metadata. Python's `urllib.request.urlopen` timeout
+applies to blocking operations such as connection attempts; it is not a strict
+end-to-end wall-clock deadline ([Python documentation](https://docs.python.org/3/library/urllib.request.html#urllib.request.urlopen)).
+Any provider, parse, schema, legality, or timeout failure stops autoplay for
+supervision before it sends further game inputs. A separate safety replan can
+request a fresh policy decision when the selected defender disappears or has
+zero HP during verified selection; at most six policy calls are made for that
+exchange before the runner stops. This state-change replan is not an API retry.
+
 ### Decision-ledger contract (schema version 1)
 
 `series/decisions.jsonl` is UTF-8 JSON Lines: one immutable event per line.
@@ -221,6 +236,15 @@ the RNG state cannot be reliably reset or observed, record that limitation,
 randomize run order, and do not call nominally identical launches deterministic
 replays. Incomplete games remain excluded from the completed-game ordinal and
 must be reported separately.
+
+Treat the save as a specific prepared game state, not a validated retail-cap
+roster. During the active match `20260929T001312Z-20e33b`, a direct live
+roster read observed character 11 at 77 current HP / 60 maximum HP. This is
+present in the per-unit RAM observation, so it is not caused by the overlay's
+team-total arithmetic; its provenance and gameplay meaning have not been
+independently established. Record the exact seed-save hash and initial roster
+for every pilot, preserve raw HP values, and do not use normalized or aggregate
+HP as an outcome until this condition is explained and independently checked.
 
 For the initial hosted engineering pilot, use a new dedicated data directory,
 `--continuous --alternate-agent-seats --max-matches 2`, and a frozen seat-order
@@ -692,6 +716,18 @@ ledger dry run found 5,952 valid events, all `live`, with no malformed rows;
 the runner continued appending after the legacy cleanup. The fixed-seat series
 remains operational validation only.
 
+At 00:17:37 UTC on 2026-09-29, the read-only stream endpoint showed match
+`20260929T001312Z-20e33b` playing on turn 3 with no runner error. The series
+had 23 completed games (1P 5 wins, 2P 18); eleven official FE7 scores totaled
+1P 3,456 / 2P 6,048. A fresh remote ledger audit found 6,223 valid rows, all
+`live`, with no malformed lines, duplicate IDs, event-hash mismatches, missing
+common fields, unknown events, unlinked actions/exchanges, or private-reasoning
+keys. All 1,061 logged decisions were local `Depth-two minimax`; the stream
+snapshot counted two submitted exchanges per seat in the active match. This
+stream remains fixed-seat engineering validation, not hosted benchmark
+evidence. The official scores and ledger totals are live checkpoints, not a
+preregistered sample.
+
 The formal analysis command was also tried against this live root and refused
 it at historical match `20260927T151504Z-570000`, whose manifest lacks the
 frozen seat/policy fields required by the study analyzer. This root mixes
@@ -712,8 +748,9 @@ hosted work in a fresh, frozen `DataDir` as specified above.
   exact bytes and original ledger in the verified private archive above.
 - [ ] Configure Chutes and MiniMax provider adapters with approved model IDs
   and protected credentials; freeze exact model IDs and plan/API configuration.
-- [ ] Define legal action contract, prompt, parsing/repair behavior, timeout,
-  retry/fallback, and safe-stop semantics for each agent.
+- [x] Define legal action contract, prompt, parsing/repair behavior, timeout,
+  retry/fallback, and safe-stop semantics for each hosted agent in frozen policy
+  metadata; the six-call stale-state safety replan is separately identified.
 - [ ] Freeze provider reasoning/thinking configuration as an explicit study
   condition before hosted evaluation; the adapter excludes private reasoning
   payloads and records only the validated visible action/rationale.
