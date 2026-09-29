@@ -1,7 +1,7 @@
 # FE7 Link Arena Bench: working paper and study protocol
 
 **Status:** protocol draft; no confirmatory benchmark results are reported here.
-**Version:** 0.3, 2026-09-29
+**Version:** 0.4, 2026-09-29
 **Authors:** to be completed by the human research team before circulation.
 
 ## Working title
@@ -285,7 +285,7 @@ against captured evidence. The current reader is calibrated against the two
 archived final-result screens and rejects the terminal 30-point award panel.
 In unattended play it advances only that recognized panel and persists a
 score only when both clients agree with the terminal-roster winner across
-repeated paired reads. The live Zephyrus path has now recorded twelve paired
+repeated paired reads. The live Zephyrus path has now recorded thirteen paired
 official scores. Full digit coverage remains incomplete: the reader withholds
 scores containing uncalibrated glyphs 1 or 9 and does not infer results from
 intermediate panels. Report only verified scores, disclose unreadable or
@@ -311,6 +311,28 @@ level; do not treat individual turns as independent samples. Report the exact
 resampling unit, number of resamples, and interval method. Predeclare any
 additional hypothesis tests and correct for multiple confirmatory comparisons.
 No statistical significance or model ranking is claimed in this draft.
+
+### Exploratory operations series (not a model evaluation)
+
+At 00:51 UTC on 2026-09-29, the unattended stream had completed 25 matches
+with the same hand-coded depth-two minimax policy on both seats, one prepared
+team/save, and fixed seat roles. It recorded six 1P wins and nineteen 2P wins.
+Thirteen of the 25 games had verified FE7 final-screen points (52% coverage):
+the readable subset totals 1P 4,320 and 2P 6,912. Twelve of those thirteen
+score records explicitly report standard layouts on both bridges; one older
+record lacks layout metadata. The other twelve games have no verified point
+total and are not imputed.
+
+The lock-consistent series audit found 6,702 valid live events, including
+1,122 local-policy decisions. It found no malformed or legacy rows, event-hash
+problems, duplicate IDs, missing required fields, unknown event types, unlinked
+accepted inputs, or private-reasoning keys. These audit checks establish trace
+integrity for this snapshot; they do not show that minimax choices are good or
+that the policy is reliable as an LLM. No hosted requests, hosted rationales,
+hosted latency, or provider costs exist yet. Because this is a fixed-seat,
+single-team operational stream rather than a randomized, seat-swapped sample,
+we report counts only and make no inferential interval or model-comparison
+claim from it.
 
 ## 5. Provenance and data release
 
@@ -384,11 +406,11 @@ provider, game-content, privacy, and venue checks in the inventory are complete.
    extended sampling to 12 seconds without relaxing exact-screen,
    paired-agreement, or terminal-winner checks. The updated reader stored a
    paired 1P 576–288 2P score 6.39 seconds after terminal confirmation in game
-   fourteen. At 00:34 UTC on 2026-09-29, twelve of 24 completed live games had
-   parsed official scores, totaling 1P 4,032 / 2P 6,336; the other twelve lack
-   verified point totals. These totals describe only the readable subset. Of
-   the twelve score records, eleven explicitly label both bridge layouts as
-   standard; game eleven's score record lacks layout metadata. Uncalibrated
+   fourteen. At 00:51 UTC on 2026-09-29, thirteen of 25 completed live games
+   had parsed official scores, totaling 1P 4,320 / 2P 6,912; the other twelve
+   lack verified point totals. These totals describe only the readable subset.
+   Of the thirteen score records, twelve explicitly label both bridge layouts
+   as standard; game eleven's score record lacks layout metadata. Uncalibrated
    1/9 glyphs and the absence of a live shifted-layout sample remain coverage
    limitations.
 3. **Uncontrolled randomness.** FE7 combat uses RNG. A file-level save hash
@@ -781,19 +803,20 @@ No hosted-model decisions or private reasoning were present. This confirms the
 stream and audit are still progressing; it does not change the fixed-seat,
 exploratory status of the series.
 
-At 00:41 UTC, the same unattended minimax match was at turn 13 in the player
-phase, with coherent paired captures and the runner waiting at a turn boundary
-without error. One mGBA and one OBS process were present. The stream API still
-reported 24 completed games (1P 6 wins, 2P 18), with 12 verified official
-scores totaling 1P 4,032 / 2P 6,336; game 24's paired final-screen evidence
-records 1P 576 / 2P 288 and standard layouts on both bridges. The presence-only
-credential check still found no provider DPAPI file. A lock-consistent audit
-snapshot contained 6,648 valid live events and 1,116 local-policy decisions
-across the 24 matches, with no malformed rows, legacy rows, duplicate IDs,
-hash mismatches, missing fields, unknown events, unlinked actions/exchanges,
-private-reasoning keys, or missing hosted reasoning-capture policies. No
-hosted calls or hosted rationales were present. This was an engineering
-checkpoint, not a hosted-model run or confirmatory sample.
+At 00:51 UTC, match `20260929T004707Z-e283d8` was active at turn 4 with coherent
+paired captures and no runner error. One mGBA and one OBS process were present.
+The stream API reported 25 completed games (1P 6 wins, 2P 19), with 13
+verified official scores totaling 1P 4,320 / 2P 6,912. Game 25,
+`20260929T003009Z-49dc7c`, was a 2P win with final-screen points 1P 288 / 2P
+576, two stable paired reads, and standard layouts on both bridges. The
+presence-only credential check still found no provider DPAPI file. A
+lock-consistent audit snapshot contained 6,702 valid live events and 1,122
+local-policy decisions across 25 matches, with no malformed rows, legacy rows,
+duplicate IDs, hash mismatches, missing fields, unknown events, unlinked
+actions/exchanges, private-reasoning keys, or missing hosted
+reasoning-capture policies. No hosted calls or hosted rationales were present.
+This was an engineering checkpoint, not a hosted-model run or confirmatory
+sample.
 
 The formal analysis command was also tried against this live root and refused
 it at historical match `20260927T151504Z-570000`, whose manifest lacks the
@@ -804,8 +827,8 @@ reported from it. Preserve the old match files as source data; start future
 hosted work in a fresh, frozen `DataDir` as specified above.
 
 - [x] Calibrate the fail-closed reader against archived and live final-result
-  screens and reject four captured intermediate bonus panels. As of 00:34 UTC
-  on 2026-09-29, twelve live scores passed paired-read validation. Eleven
+  screens and reject four captured intermediate bonus panels. As of 00:51 UTC
+  on 2026-09-29, thirteen live scores passed paired-read validation. Twelve
   records label both layouts standard; game eleven lacks layout metadata.
   Shifted-layout support has offline fixture validation but no live sample yet.
   Complete 0–9 glyph coverage and broader independent validation remain open.
