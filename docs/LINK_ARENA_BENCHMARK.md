@@ -728,6 +728,16 @@ stream remains fixed-seat engineering validation, not hosted benchmark
 evidence. The official scores and ledger totals are live checkpoints, not a
 preregistered sample.
 
+At 00:29 UTC, the same active match had advanced to turn 15; the runner was
+`playing` with no error, and one mGBA plus one OBS process were present. The
+series still had 23 completed games and eleven official scores. A subsequent
+read-only audit found 6,392 valid live events, 1,084 local-policy decision
+rows, and zero malformed lines, duplicate IDs, hash mismatches, missing common
+fields, unknown events, unlinked actions/exchanges, or private-reasoning keys.
+No hosted-model decisions or private reasoning were present. This confirms the
+stream and audit are still progressing; it does not change the fixed-seat,
+exploratory status of the series.
+
 The formal analysis command was also tried against this live root and refused
 it at historical match `20260927T151504Z-570000`, whose manifest lacks the
 frozen seat/policy fields required by the study analyzer. This root mixes
