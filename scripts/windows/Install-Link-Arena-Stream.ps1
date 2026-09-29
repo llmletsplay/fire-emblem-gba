@@ -40,6 +40,20 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $RunnerRoot = (Resolve-Path $RunnerRoot).Path
+. (Join-Path $PSScriptRoot 'Get-Link-Arena-DotEnvValue.ps1')
+$DotEnvPath = Join-Path $RunnerRoot '.env'
+if (-not $ModelA -and $AgentA -eq 'minimax-api') {
+    $ModelA = Get-LinkArenaDotEnvValue -Path $DotEnvPath -Name 'MINIMAX_MODEL'
+}
+elseif (-not $ModelA -and $AgentA -eq 'chutes') {
+    $ModelA = Get-LinkArenaDotEnvValue -Path $DotEnvPath -Name 'CHUTES_MODEL'
+}
+if (-not $ModelB -and $AgentB -eq 'minimax-api') {
+    $ModelB = Get-LinkArenaDotEnvValue -Path $DotEnvPath -Name 'MINIMAX_MODEL'
+}
+elseif (-not $ModelB -and $AgentB -eq 'chutes') {
+    $ModelB = Get-LinkArenaDotEnvValue -Path $DotEnvPath -Name 'CHUTES_MODEL'
+}
 if (-not $Save) { $Save = Join-Path $RunnerRoot 'roms\fe7.sav' }
 $Save = (Resolve-Path $Save).Path
 $DataDir = [System.IO.Path]::GetFullPath($DataDir)
@@ -104,6 +118,13 @@ $hostedProviders = @($hostedProviders | Select-Object -Unique)
 if ($hostedProviders.Count -gt 0) {
     if (-not (Test-Path -LiteralPath $credentialImporter -PathType Leaf)) {
         throw "Hosted policies require the credential importer: $credentialImporter"
+    }
+    $credentialSetter = Join-Path $PSScriptRoot 'Set-Link-Arena-ProviderCredentials.ps1'
+    if ($DotEnvPath -and (Test-Path -LiteralPath $DotEnvPath -PathType Leaf)) {
+        if (-not (Test-Path -LiteralPath $credentialSetter -PathType Leaf)) {
+            throw "Hosted policies require the credential setter: $credentialSetter"
+        }
+        & $credentialSetter -CredentialPath $CredentialPath -EnvFile $DotEnvPath
     }
     & $credentialImporter -CredentialPath $CredentialPath
     foreach ($provider in $hostedProviders) {

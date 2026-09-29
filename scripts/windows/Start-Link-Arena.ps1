@@ -54,6 +54,21 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'Get-Link-Arena-DotEnvValue.ps1')
+$RepoRoot = (Resolve-Path $RepoRoot).Path
+$DotEnvPath = Join-Path $RepoRoot '.env'
+if (-not $ModelA -and $AgentA -eq 'minimax-api') {
+    $ModelA = Get-LinkArenaDotEnvValue -Path $DotEnvPath -Name 'MINIMAX_MODEL'
+}
+elseif (-not $ModelA -and $AgentA -eq 'chutes') {
+    $ModelA = Get-LinkArenaDotEnvValue -Path $DotEnvPath -Name 'CHUTES_MODEL'
+}
+if (-not $ModelB -and $AgentB -eq 'minimax-api') {
+    $ModelB = Get-LinkArenaDotEnvValue -Path $DotEnvPath -Name 'MINIMAX_MODEL'
+}
+elseif (-not $ModelB -and $AgentB -eq 'chutes') {
+    $ModelB = Get-LinkArenaDotEnvValue -Path $DotEnvPath -Name 'CHUTES_MODEL'
+}
 if ($Continuous -and -not ($AutoMinimax -or $AgentA -ne 'minimax' -or $AgentB -ne 'minimax')) {
     throw 'Continuous mode requires -AutoMinimax or at least one hosted model policy.'
 }
@@ -63,9 +78,8 @@ if ($MaxMatches -gt 0 -and -not $Continuous) {
 if (($AutoMinimax -or $AgentA -ne 'minimax' -or $AgentB -ne 'minimax') -and $ManualSetup) {
     throw 'Autonomous policies cannot be combined with -ManualSetup.'
 }
-if ($AgentA -ne 'minimax' -and -not $ModelA) { throw '-ModelA is required for a hosted seat A policy.' }
-if ($AgentB -ne 'minimax' -and -not $ModelB) { throw '-ModelB is required for a hosted seat B policy.' }
-$RepoRoot = (Resolve-Path $RepoRoot).Path
+if ($AgentA -ne 'minimax' -and -not $ModelA) { throw 'Pass -ModelA or set MINIMAX_MODEL / CHUTES_MODEL in .env for seat A.' }
+if ($AgentB -ne 'minimax' -and -not $ModelB) { throw 'Pass -ModelB or set MINIMAX_MODEL / CHUTES_MODEL in .env for seat B.' }
 $Runner = Join-Path $RepoRoot 'tools\link_arena.py'
 if (-not (Test-Path $Runner)) {
     throw "Link Arena runner not found: $Runner"

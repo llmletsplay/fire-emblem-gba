@@ -28,6 +28,12 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from dotenv import load_dotenv
+
+load_dotenv(ROOT / ".env", override=False)
+if not os.environ.get("MINIMAX_API_KEY") and os.environ.get("MINIMAX_TOKEN_PLAN_KEY"):
+    os.environ["MINIMAX_API_KEY"] = os.environ["MINIMAX_TOKEN_PLAN_KEY"]
+
 from src.link_arena.coordinator import InvalidAction, LinkArenaCoordinator, StaleObservation
 from src.link_arena.bridge import BridgeError
 from src.link_arena.autoplay import MinimaxAutoplay
@@ -228,6 +234,7 @@ def _runtime_provenance(mgba_path: str) -> dict[str, Any]:
         revision = subprocess.run(
             ["git", "rev-parse", "HEAD"], cwd=ROOT,
             check=True, capture_output=True, text=True, timeout=2,
+            env=_child_env_without_provider_credentials(),
         ).stdout.strip()
     except (OSError, subprocess.SubprocessError):
         revision = None
@@ -252,6 +259,15 @@ def _available_port(port: int) -> bool:
             return True
         except OSError:
             return False
+
+
+def _child_env_without_provider_credentials() -> dict[str, str]:
+    environment = os.environ.copy()
+    for name in list(environment):
+        upper_name = name.upper()
+        if upper_name.endswith("_API_KEY") or upper_name.endswith("_TOKEN_PLAN_KEY"):
+            environment.pop(name, None)
+    return environment
 
 
 def _find_mgba(requested: str | None) -> str:
@@ -546,7 +562,9 @@ def _start_match(
         command.extend(("--log-level", str(args.mgba_log_level)))
     command.extend(("--script", str(bridge_path), str(side_a), str(side_b)))
     print(f"Match: {session['match_id']}\nData: {match_dir}\nStarting mGBA's linked two-ROM session...")
-    process_env = os.environ.copy()
+    process_env = _child_env_without_provider_credentials()
+    # The emulator does not need hosted-provider credentials. Keep them out of
+    # its inherited environment while the Python runner retains access.
     if os.name == "nt":
         mgba_profile = match_dir / "mgba-profile"
         mgba_profile.mkdir()
@@ -795,6 +813,21 @@ class _ApiHandler(http.server.BaseHTTPRequestHandler):
 
 
 def start(args: argparse.Namespace) -> int:
+    for suffix in ("a", "b"):
+        provider = getattr(args, f"agent_{suffix}")
+        if provider == "minimax-api":
+            prefix = "MINIMAX"
+        elif provider == "chutes":
+            prefix = "CHUTES"
+        else:
+            continue
+        model_name = f"model_{suffix}"
+        if not getattr(args, model_name):
+            setattr(args, model_name, os.environ.get(f"{prefix}_MODEL"))
+        base_url_name = f"base_url_{suffix}"
+        if not getattr(args, base_url_name):
+            setattr(args, base_url_name, os.environ.get(f"{prefix}_BASE_URL"))
+
     policy_specs = {
         "A": (args.agent_a, args.model_a, args.base_url_a, args.api_key_env_a),
         "B": (args.agent_b, args.model_b, args.base_url_b, args.api_key_env_b),
