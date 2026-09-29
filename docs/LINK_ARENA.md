@@ -142,6 +142,51 @@ leaves current processes running and applies the new configuration on the
 next task start/logon. Do not use `-RestartNow` in the middle of a match; it
 stops the active isolated game and OBS process.
 
+### Hand off the live stream to a hosted pilot at a result boundary
+
+For an isolated hosted pilot, save the Chutes and MiniMax API keys first with
+`Set-Link-Arena-ProviderCredentials.ps1`, verify Chutes PAYG and MiniMax API
+plan eligibility, then run the installer below from the same Windows account
+as the stream. `-HandoffAtMatchBoundary` writes a one-shot local request. The
+current runner consumes it only after recording a verified result, displays
+that result for the configured interval, and exits without starting another
+minimax match. The installer waits for that confirmation and runner shutdown,
+then starts the new seat-swapped pairing while leaving the existing OBS
+process and live broadcast running. It waits for the new runner's API and first
+match manifest before reporting the handoff complete. It requires a fresh
+`DataDir`, an even `MaxMatches` of at least two, and
+`-AlternateAgentSeats`. A timeout or supervision error removes the pending
+request and does not reconfigure either scheduled task. A runner already idle
+at a recorded `MaxMatches` cap is a safe boundary;
+the installer stops only the matching runner and emulator for
+`-CurrentDataDir`, preserving OBS and other data-directory runs. A supervision
+error still requires operator attention before starting another series.
+
+Example for the proposed two-game operations pilot:
+
+```powershell
+& "$env:LOCALAPPDATA\FE7-Link-Arena\runner\scripts\windows\Install-Link-Arena-Stream.ps1" `
+  -RunnerRoot "$env:LOCALAPPDATA\FE7-Link-Arena\runner" `
+  -Save "$env:LOCALAPPDATA\FE7-Link-Arena\runner\roms\fe7.sav" `
+  -CurrentDataDir "$env:LOCALAPPDATA\FE7-Link-Arena" `
+  -DataDir "$env:LOCALAPPDATA\FE7-Link-Arena\experiments\pilot-glm51-minimax-m31" `
+  -AgentA chutes -ModelA 'zai-org/GLM-5.1-TEE' `
+  -AgentB minimax-api -ModelB 'MiniMax-M3.1-Flash-Preview' `
+  -MinimaxReasoningEffortB medium `
+  -MaxCompletionTokensA 2048 -MaxCompletionTokensB 2048 -AgentTimeout 120 `
+  -MaxMatches 2 -AlternateAgentSeats -SeatOrderSeed 0 `
+  -HandoffAtMatchBoundary
+```
+
+The pilot uses the same action schema and prompt on both seats, explicitly
+sets MiniMax M3.1 reasoning effort, and freezes separate Chutes pricing in its
+manifest. Two games validate startup, schema compliance, score capture,
+seat-swap persistence, and cost logging; they are too few for a model
+comparison. At the cap, the final result remains on screen and OBS continues
+streaming. Start a longer confirmatory schedule only after reviewing the
+pilot and freezing its hypotheses, sample size, exclusions, and account-level
+cost reporting.
+
 For a research pairing, `-AgentA`/`-ModelA` and `-AgentB`/`-ModelB` name the
 two policy slots. Add `-AlternateAgentSeats -SeatOrderSeed <integer>` to the
 runner or scheduled-task installer to swap those policy slots between the
