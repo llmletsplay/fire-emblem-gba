@@ -251,3 +251,10 @@ malformed lines, and continued appends; the stream was not restarted. The
 archive and manifest are private operational research data. The full audit
 counts and reasoning-capture boundary are recorded in
 [`LINK_ARENA_BENCHMARK.md`](LINK_ARENA_BENCHMARK.md).
+
+At 00:00:16 UTC on 2026-09-29, game twenty-three
+(`20260928T235608Z-b9d3f7`) was in turn 2 and the runner reported no error.
+The stream series had 22 completed games (1P 5, 2P 17) and ten paired official
+FE7 scores, cumulative 1P 3,168 / 2P 5,472. OBS and mGBA were both running.
+The canonical ledger audit counted 5,952 valid live events and no malformed
+rows. No hosted-model calls are represented in this local-minimax stream.

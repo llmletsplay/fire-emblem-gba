@@ -684,6 +684,14 @@ separately from logged per-request token usage. See the current
 [Chutes terms](https://chutes.ai/terms), [Chutes pricing](https://chutes.ai/pricing),
 and [MiniMax Token Plan guidance](https://platform.minimax.io/subscribe/token-plan).
 
+At 00:00:16 UTC on 2026-09-29, the stream API showed game twenty-three
+(`20260928T235608Z-b9d3f7`) at turn 2, with 22 completed games (1P 5 wins,
+2P 17) and no runner error. Ten games had official final scores, totaling
+1P 3,168 / 2P 5,472. OBS and mGBA processes were present. A lock-protected
+ledger dry run found 5,952 valid events, all `live`, with no malformed rows;
+the runner continued appending after the legacy cleanup. The fixed-seat series
+remains operational validation only.
+
 - [x] Calibrate the fail-closed reader against archived and live final-result
   screens and reject four captured intermediate bonus panels. The standard
   layout and 12-second paired-read window have three successful live scores.
