@@ -737,8 +737,9 @@ reported from it. Preserve the old match files as source data; start future
 hosted work in a fresh, frozen `DataDir` as specified above.
 
 - [x] Calibrate the fail-closed reader against archived and live final-result
-  screens and reject four captured intermediate bonus panels. The standard
-  layout and 12-second paired-read window have three successful live scores.
+  screens and reject four captured intermediate bonus panels. As of the latest
+  stream checkpoint, the standard layout and 12-second paired-read window have
+  eleven successful live scores.
   `layout_by_bridge` persisted as standard on both views for game fourteen.
   Shifted-layout support has offline fixture validation but no live sample yet.
   Complete 0–9 glyph coverage and broader independent validation remain open.
