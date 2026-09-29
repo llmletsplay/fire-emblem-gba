@@ -1,8 +1,12 @@
 # FE7 Link Arena Bench: working paper and study protocol
 
 **Status:** protocol draft; no confirmatory benchmark results are reported here.
-**Version:** 0.4, 2026-09-29
+**Version:** 0.5, 2026-09-29
 **Authors:** to be completed by the human research team before circulation.
+
+**Revision note:** the operational MiniMax candidate is now M2.5 because the
+authenticated account catalog lists it and does not list the earlier M3.1
+Flash Preview candidate. No confirmatory results are reported.
 
 ## Working title
 
@@ -454,19 +458,18 @@ provider, game-content, privacy, and venue checks in the inventory are complete.
 
 ## 7. Status before a confirmatory study
 
-At this protocol revision (2026-09-29), no hosted-model requests or hosted
-benchmark results are included. The unattended Zephyrus stream is running the
-repository's hand-coded depth-two minimax policy on both seats; this is not the
-MiniMax API model. A 2026-09-29 presence-only check found no DPAPI provider
-credential file in Zephyrus' Link Arena secrets directory. The Windows runner
-has an interactive provisioning script that encrypts keys
-with current-user DPAPI and loads them only into the task process; the
-scheduled-task installer accepts fixed per-seat hosted provider/model choices
-and fails closed if the selected provider credential is unavailable. This
-changes readiness tooling, not the live task: the current series remains local
-minimax. Choose exact model IDs, record provider plan/configuration, assign a
-separate `DataDir` to each experimental condition, and deliberately deploy a
-hosted condition at a safe match boundary before making inference calls.
+Before the synthetic preflight documented below, no hosted-model requests or
+hosted benchmark results were included. The unattended Zephyrus stream is
+running the repository's hand-coded depth-two minimax policy on both seats;
+this is not the MiniMax API model. A 2026-09-29 presence-only check found no
+DPAPI provider credential file in Zephyrus' Link Arena secrets directory. The
+Windows runner has an interactive provisioning script that encrypts keys with
+current-user DPAPI and loads them only into the task process; the scheduled-
+task installer accepts fixed per-seat hosted provider/model choices and fails
+closed if the selected provider credential is unavailable. The local `.env`
+key has now been verified separately, but no hosted policy has been deployed
+to the live series. Use a separate `DataDir` for each experimental condition
+and hand off only at a verified match boundary.
 
 ### Hosted pilot shortlist (not yet a frozen study condition)
 
@@ -481,26 +484,34 @@ invoice records. The current adapter asks for JSON and validates it strictly
 on receipt; it does not yet send a provider-side `response_format` constraint.
 [Chutes live model catalog](https://llm.chutes.ai/v1/models).
 
-The current MiniMax API reference lists `MiniMax-M3.1-Flash-Preview` and says
-it is available through Token Plan and MiniMax Code. This model always reasons;
-the request must set one of `low`, `medium`, `high`, `xhigh`, or `max`, and the
-runner's MiniMax adapter discards the separate provider-only reasoning field.
-The MiniMax Token Plan describes shared rolling quotas and recommends PAYG
-for production use. The plan entitlement and whether its terms cover this
-unattended harness must be checked against the actual account before any
-call. [MiniMax API reference](https://platform.minimax.io/docs/api-reference/text-chat-openai),
+The earlier candidate `MiniMax-M3.1-Flash-Preview` is not present in the
+authenticated account's current model catalog. The account's `.env` selects
+`MiniMax-M2.5`, which is listed and passed one schema-checked synthetic
+preflight. The current operational shortlist therefore uses `MiniMax-M2.5`;
+the M3.1 candidate is not considered available unless a later authenticated
+catalog check says otherwise. MiniMax M2.x thinking cannot effectively be
+disabled; the adapter uses `thinking: adaptive`, requests `reasoning_split`,
+and discards the separate provider-only reasoning field. The Token Plan quota
+endpoint returned success for this key, but the reported quota is account
+state, not a cost estimate or proof that the plan terms approve unattended
+benchmarking. Recheck current API access and terms before confirmatory runs.
+[MiniMax API reference](https://platform.minimax.io/docs/api-reference/text-chat-openai),
 [MiniMax Token Plan](https://platform.minimax.io/subscribe/token-plan).
 
 These are operational candidates, not a model ranking or a claim that the
-configurations are matched. The proposed bounded pilot uses these exact IDs,
-the same versioned observation/action contract, temperature 0, a 2,048-token
+configurations are matched. Once Chutes membership is available, the proposed
+bounded provider pilot uses `zai-org/GLM-5.1-TEE` and `MiniMax-M2.5`, the same
+versioned observation/action contract, temperature 0, a 2,048-token
 completion ceiling, and two seat-swapped matches in a dedicated data
-directory. Set MiniMax reasoning effort to `medium` explicitly and freeze the
-provider defaults and all request parameters in the manifest. Use the runner's
-120-second blocking-operation timeout, not a wall-clock deadline. First verify
-each model's strict JSON completion, legal-action rate, latency, resolved model
-ID, usage fields, and cost handling. The two-game pilot is an integration and
-operations check only; it cannot support a comparative performance claim.
+directory. Freeze the MiniMax `adaptive` thinking and `reasoning_split: true`
+settings, provider defaults, and all request parameters in each manifest. Use
+the runner's 120-second blocking-operation timeout, not a wall-clock deadline.
+First verify each model's strict JSON completion, legal-action rate, latency,
+resolved model ID, usage fields, and cost handling. Until Chutes access is
+available, a bounded MiniMax-M2.5 versus built-in minimax operations pilot can
+validate the runner and safe handoff, but it answers a different comparison
+and must use its own fresh `DataDir`. Either two-game pilot is an integration
+and operations check only; it cannot support a comparative performance claim.
 Chutes terms require PAYG for highly automated usage, so confirm PAYG is active
 before this unattended call loop. If either account/model is unavailable or
 the action contract fails, record the blocked pilot and do not silently swap
@@ -871,8 +882,12 @@ hosted work in a fresh, frozen `DataDir` as specified above.
   decision IDs join policy choices to every verified input. PR #33 quarantined
   the known malformed fragment from the canonical ledger and preserved its
   exact bytes and original ledger in the verified private archive above.
-- [ ] Configure Chutes and MiniMax provider adapters with approved model IDs
-  and protected credentials; freeze exact model IDs and plan/API configuration.
+- [x] Verify the local MiniMax API key against the model catalog and validate
+  one synthetic constrained decision; it is not a gameplay result.
+- [ ] Import MiniMax credentials into Zephyrus' DPAPI store and run a bounded
+  MiniMax-M2.5 versus depth-two minimax operations pilot at a safe boundary.
+- [ ] Add Chutes credentials after account eligibility is confirmed; freeze
+  both model IDs and plan/API configuration before the provider pilot.
 - [x] Define legal action contract, prompt, parsing/repair behavior, timeout,
   retry/fallback, and safe-stop semantics for each hosted agent in frozen policy
   metadata; the six-call stale-state safety replan is separately identified.
@@ -895,6 +910,32 @@ hosted work in a fresh, frozen `DataDir` as specified above.
   IDs, action/exchange joins, malformed lines, and private-reasoning-key absence.
 - [ ] Complete a venue-specific reproducibility, ethics, authorship, and
   third-party-asset/license checklist before public submission.
+
+### Operational status update (2026-09-29)
+
+The local project `.env` contains `MINIMAX_API_KEY` and configures
+`MiniMax-M2.5`; `CHUTES_API_KEY` is not set. An authenticated MiniMax model
+catalog request returned HTTP 200 and listed `MiniMax-M2.5`, but not the
+previously proposed `MiniMax-M3.1-Flash-Preview`. One
+synthetic two-unit adapter preflight at a 1,024-token completion ceiling
+returned HTTP 200 and passed the same strict action-schema validator used by
+the runner (286 prompt tokens, 282 completion tokens, 568 total; about 3.7 s).
+This was a synthetic API smoke check, not a game or player decision, and is
+excluded from all match counts and outcome analyses. A separate 128-token
+smoke request failed strict JSON validation; its malformed completion was not
+retained, and its usage metadata was not captured. This is an operational
+preflight limitation, not a benchmark exclusion rule. Keep the planned 2,048
+completion-token cap for any pilot unless the frozen protocol is explicitly
+revised.
+
+The adapter's validated smoke response did not persist provider-only
+`reasoning_content`; it saved no canonical game ledger row. The local `.env`
+is not committed. The runner now loads local dotenv configuration, and the
+Windows installer can import provider keys into the user's DPAPI credential
+store. No Zephyrus game pilot could be started during this update: the host SSH
+route returned a websocket handshake failure. Chutes access and membership
+are still pending. No hosted match result, comparison, or empirical claim is
+reported here.
 
 ## References
 

@@ -91,8 +91,56 @@ different account or machine. A MiniMax Token Plan still needs its
 Subscription Key (the API key issued for that plan); the interactive MiniMax
 Code login alone is not an API credential.
 
+If the project `.env` is already present on the Windows runner, the installer
+can import provider keys into the same DPAPI-protected file without an
+interactive prompt. It reads only `CHUTES_API_KEY`, `MINIMAX_API_KEY` (or
+`MINIMAX_TOKEN_PLAN_KEY`), and never prints their values:
+
+```powershell
+& "$env:LOCALAPPDATA\FE7-Link-Arena\runner\scripts\windows\Set-Link-Arena-ProviderCredentials.ps1" `
+  -EnvFile "$env:LOCALAPPDATA\FE7-Link-Arena\runner\.env"
+```
+
+To provision from the local project `.env` without copying that file to
+Zephyrus, run this from the repository root. The helper sends only provider
+keys over SSH stdin and writes them to the Windows user's DPAPI store; it
+prints the provider names updated, never the values:
+
+```sh
+python3 tools/provision_link_arena_credentials.py --host zephyrus.thomasjvu.com --env-file .env
+```
+
+The Link Arena CLI also loads the repository-root `.env` for local launches.
+`MINIMAX_MODEL` and `CHUTES_MODEL` provide model defaults when the matching
+hosted policy is selected and no `-ModelA`/`-ModelB` was supplied. Environment
+variables already set by the caller take precedence. On Windows, the stream
+installer imports the `.env` provider keys into the user's DPAPI credential
+store; the emulator child process has API-key and token-plan-key environment
+entries removed before launch.
+
 Then pass concrete provider model IDs. For an unattended series, add
 `-Continuous`:
+
+While Chutes membership is pending, use this separate, two-game operations
+pilot to compare the configured MiniMax API policy against the built-in
+depth-two minimax baseline. It reads `MINIMAX_MODEL` and the protected API key
+from the runner configuration. The match cap stops gameplay after the paired
+seat swap; OBS remains live on the final result until another runner is
+started.
+
+```powershell
+& "$env:LOCALAPPDATA\FE7-Link-Arena\runner\scripts\windows\Install-Link-Arena-Stream.ps1" `
+  -RunnerRoot "$env:LOCALAPPDATA\FE7-Link-Arena\runner" `
+  -Save "$env:LOCALAPPDATA\FE7-Link-Arena\runner\roms\fe7.sav" `
+  -CurrentDataDir "$env:LOCALAPPDATA\FE7-Link-Arena" `
+  -DataDir "$env:LOCALAPPDATA\FE7-Link-Arena\experiments\pilot-minimax-m25-vs-depth-two" `
+  -AgentA minimax-api -ModelA 'MiniMax-M2.5' -AgentB minimax `
+  -MaxCompletionTokensA 2048 -MaxMatches 2 -AlternateAgentSeats -SeatOrderSeed 0 `
+  -HandoffAtMatchBoundary
+```
+
+Use a new empty `DataDir` for each run. This pilot is for runner and protocol
+integration and cannot support a MiniMax-versus-Chutes performance claim.
 
 ```powershell
 & "$env:LOCALAPPDATA\FE7-Link-Arena\runner\scripts\windows\Start-Link-Arena.ps1" `
@@ -169,23 +217,21 @@ Example for the proposed two-game operations pilot:
   -RunnerRoot "$env:LOCALAPPDATA\FE7-Link-Arena\runner" `
   -Save "$env:LOCALAPPDATA\FE7-Link-Arena\runner\roms\fe7.sav" `
   -CurrentDataDir "$env:LOCALAPPDATA\FE7-Link-Arena" `
-  -DataDir "$env:LOCALAPPDATA\FE7-Link-Arena\experiments\pilot-glm51-minimax-m31" `
+  -DataDir "$env:LOCALAPPDATA\FE7-Link-Arena\experiments\pilot-glm51-minimax-m25" `
   -AgentA chutes -ModelA 'zai-org/GLM-5.1-TEE' `
-  -AgentB minimax-api -ModelB 'MiniMax-M3.1-Flash-Preview' `
-  -MinimaxReasoningEffortB medium `
+  -AgentB minimax-api -ModelB 'MiniMax-M2.5' `
   -MaxCompletionTokensA 2048 -MaxCompletionTokensB 2048 -AgentTimeout 120 `
   -MaxMatches 2 -AlternateAgentSeats -SeatOrderSeed 0 `
   -HandoffAtMatchBoundary
 ```
 
-The pilot uses the same action schema and prompt on both seats, explicitly
-sets MiniMax M3.1 reasoning effort, and freezes separate Chutes pricing in its
-manifest. Two games validate startup, schema compliance, score capture,
-seat-swap persistence, and cost logging; they are too few for a model
-comparison. At the cap, the final result remains on screen and OBS continues
-streaming. Start a longer confirmatory schedule only after reviewing the
-pilot and freezing its hypotheses, sample size, exclusions, and account-level
-cost reporting.
+The pilot uses the same action schema and prompt on both seats and freezes
+separate Chutes pricing in its manifest. Two games validate startup, schema
+compliance, score capture, seat-swap persistence, and cost logging; they are
+too few for a model comparison. At the cap, the final result remains on screen
+and OBS continues streaming. Start a longer confirmatory schedule only after
+reviewing the pilot and freezing its hypotheses, sample size, exclusions, and
+account-level cost reporting.
 
 For a research pairing, `-AgentA`/`-ModelA` and `-AgentB`/`-ModelB` name the
 two policy slots. Add `-AlternateAgentSeats -SeatOrderSeed <integer>` to the

@@ -1,11 +1,16 @@
 [CmdletBinding()]
 param(
     [string]$CredentialPath = (Join-Path $env:LOCALAPPDATA 'FE7-Link-Arena\secrets\provider-credentials.dpapi.json'),
+    [string]$EnvFile,
     [switch]$ClearChutes,
     [switch]$ClearMiniMax
 )
 
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'Get-Link-Arena-DotEnvValue.ps1')
+if ($EnvFile -and -not (Test-Path -LiteralPath $EnvFile -PathType Leaf)) {
+    throw "Provider environment file not found: $EnvFile"
+}
 $CredentialPath = [System.IO.Path]::GetFullPath($CredentialPath)
 $SecretDir = Split-Path -Parent $CredentialPath
 New-Item -ItemType Directory -Force -Path $SecretDir | Out-Null
@@ -31,14 +36,44 @@ if (Test-Path -LiteralPath $CredentialPath -PathType Leaf) {
 if ($ClearChutes) { $values.CHUTES_API_KEY = $null }
 if ($ClearMiniMax) { $values.MINIMAX_API_KEY = $null }
 
-if (-not $ClearChutes) {
+function Protect-LinkArenaCredential {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$PlainText
+    )
+    if ([string]::IsNullOrEmpty($PlainText)) { return $null }
+    $secureValue = ConvertTo-SecureString -String $PlainText -AsPlainText -Force
+    try {
+        return ConvertFrom-SecureString -SecureString $secureValue
+    }
+    finally {
+        $secureValue.Dispose()
+    }
+}
+
+if ($EnvFile) {
+    if (-not $ClearChutes) {
+        $plain = Get-LinkArenaDotEnvValue -Path $EnvFile -Name 'CHUTES_API_KEY'
+        if ($plain) { $values.CHUTES_API_KEY = Protect-LinkArenaCredential $plain }
+        $plain = $null
+    }
+    if (-not $ClearMiniMax) {
+        $plain = Get-LinkArenaDotEnvValue -Path $EnvFile -Name 'MINIMAX_API_KEY'
+        if (-not $plain) {
+            $plain = Get-LinkArenaDotEnvValue -Path $EnvFile -Name 'MINIMAX_TOKEN_PLAN_KEY'
+        }
+        if ($plain) { $values.MINIMAX_API_KEY = Protect-LinkArenaCredential $plain }
+        $plain = $null
+    }
+}
+elseif (-not $ClearChutes) {
     $secret = Read-Host 'Chutes API key (press Enter to keep the saved key)' -AsSecureString
     if ($secret.Length -gt 0) {
         $values.CHUTES_API_KEY = ConvertFrom-SecureString -SecureString $secret
     }
     $secret.Dispose()
 }
-if (-not $ClearMiniMax) {
+if (-not $EnvFile -and -not $ClearMiniMax) {
     $secret = Read-Host 'MiniMax API / Token Plan key (not Code login; Enter keeps saved key)' -AsSecureString
     if ($secret.Length -gt 0) {
         $values.MINIMAX_API_KEY = ConvertFrom-SecureString -SecureString $secret
