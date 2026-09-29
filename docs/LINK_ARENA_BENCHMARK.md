@@ -439,6 +439,44 @@ minimax. Choose exact model IDs, record provider plan/configuration, assign a
 separate `DataDir` to each experimental condition, and deliberately deploy a
 hosted condition at a safe match boundary before making inference calls.
 
+### Hosted pilot shortlist (not yet a frozen study condition)
+
+The 2026-09-29 public Chutes catalog lists `zai-org/GLM-5.1-TEE` with the
+`zai-org/GLM-5.1-FP8` root, JSON/structured-output support, and catalog rates
+of USD 0.98 per million input tokens, USD 3.08 per million output tokens, and
+USD 0.098 per million cached input tokens. Its `confidential_compute` flag is
+provider-reported catalog metadata, not an independent security audit. These
+rates are a dated discovery snapshot only; the runner must freeze fresh rates
+at hosted-agent initialization and the analysis treats them as estimates, not
+invoice records. The current adapter asks for JSON and validates it strictly
+on receipt; it does not yet send a provider-side `response_format` constraint.
+[Chutes live model catalog](https://llm.chutes.ai/v1/models).
+
+The current MiniMax API reference lists `MiniMax-M3.1-Flash-Preview` and says
+it is available through Token Plan and MiniMax Code. This model always reasons;
+the request must set one of `low`, `medium`, `high`, `xhigh`, or `max`, and the
+runner's MiniMax adapter discards the separate provider-only reasoning field.
+The MiniMax Token Plan describes shared rolling quotas and recommends PAYG
+for production use. The plan entitlement and whether its terms cover this
+unattended harness must be checked against the actual account before any
+call. [MiniMax API reference](https://platform.minimax.io/docs/api-reference/text-chat-openai),
+[MiniMax Token Plan](https://platform.minimax.io/subscribe/token-plan).
+
+These are operational candidates, not a model ranking or a claim that the
+configurations are matched. The proposed bounded pilot uses these exact IDs,
+the same versioned observation/action contract, temperature 0, a 2,048-token
+completion ceiling, and two seat-swapped matches in a dedicated data
+directory. Set MiniMax reasoning effort to `medium` explicitly and freeze the
+provider defaults and all request parameters in the manifest. Use the runner's
+120-second blocking-operation timeout, not a wall-clock deadline. First verify
+each model's strict JSON completion, legal-action rate, latency, resolved model
+ID, usage fields, and cost handling. The two-game pilot is an integration and
+operations check only; it cannot support a comparative performance claim.
+Chutes terms require PAYG for highly automated usage, so confirm PAYG is active
+before this unattended call loop. If either account/model is unavailable or
+the action contract fails, record the blocked pilot and do not silently swap
+providers, models, or settings.
+
 ### Exploratory operations checkpoint (2026-09-28)
 
 The unattended local-minimax series has six completed games, all recorded as
@@ -743,6 +781,20 @@ No hosted-model decisions or private reasoning were present. This confirms the
 stream and audit are still progressing; it does not change the fixed-seat,
 exploratory status of the series.
 
+At 00:41 UTC, the same unattended minimax match was at turn 13 in the player
+phase, with coherent paired captures and the runner waiting at a turn boundary
+without error. One mGBA and one OBS process were present. The stream API still
+reported 24 completed games (1P 6 wins, 2P 18), with 12 verified official
+scores totaling 1P 4,032 / 2P 6,336; game 24's paired final-screen evidence
+records 1P 576 / 2P 288 and standard layouts on both bridges. The presence-only
+credential check still found no provider DPAPI file. A lock-consistent audit
+snapshot contained 6,648 valid live events and 1,116 local-policy decisions
+across the 24 matches, with no malformed rows, legacy rows, duplicate IDs,
+hash mismatches, missing fields, unknown events, unlinked actions/exchanges,
+private-reasoning keys, or missing hosted reasoning-capture policies. No
+hosted calls or hosted rationales were present. This was an engineering
+checkpoint, not a hosted-model run or confirmatory sample.
+
 The formal analysis command was also tried against this live root and refused
 it at historical match `20260927T151504Z-570000`, whose manifest lacks the
 frozen seat/policy fields required by the study analyzer. This root mixes
@@ -794,11 +846,11 @@ hosted work in a fresh, frozen `DataDir` as specified above.
   [Guidelines](https://neurips.cc/Conferences/2026/EvaluationsDatasetsReviewerGuidelines).
 - NeurIPS. *Paper Checklist*.
   [Checklist](https://neurips.cc/public/guides/PaperChecklist).
-- Chutes. *Starter Guide / API documentation*. Accessed 2026-09-28.
+- Chutes. *Starter Guide / API documentation*. Accessed 2026-09-29.
   [Documentation](https://chutes.ai/docs/guides/starter-guide).
-- MiniMax. *Chat Completions API documentation*. Accessed 2026-09-28.
+- MiniMax. *Chat Completions API documentation*. Accessed 2026-09-29.
   [Documentation](https://platform.minimax.io/docs/api-reference/text-chat-openai).
-- MiniMax. *Token Plan*. Accessed 2026-09-28. API access and quotas depend on
+- MiniMax. *Token Plan*. Accessed 2026-09-29. API access and quotas depend on
   the account's current plan and key configuration; an interactive subscription
   should not be assumed to include unlimited API inference.
   [Plan details](https://platform.minimax.io/subscribe/token-plan).
