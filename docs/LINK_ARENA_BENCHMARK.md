@@ -692,6 +692,14 @@ ledger dry run found 5,952 valid events, all `live`, with no malformed rows;
 the runner continued appending after the legacy cleanup. The fixed-seat series
 remains operational validation only.
 
+The formal analysis command was also tried against this live root and refused
+it at historical match `20260927T151504Z-570000`, whose manifest lacks the
+frozen seat/policy fields required by the study analyzer. This root mixes
+supervised history with the ongoing stream and is not a dedicated experiment
+directory, so no confidence intervals or model-comparison estimates are
+reported from it. Preserve the old match files as source data; start future
+hosted work in a fresh, frozen `DataDir` as specified above.
+
 - [x] Calibrate the fail-closed reader against archived and live final-result
   screens and reject four captured intermediate bonus panels. The standard
   layout and 12-second paired-read window have three successful live scores.
