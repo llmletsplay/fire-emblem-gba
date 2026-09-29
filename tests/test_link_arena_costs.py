@@ -3,13 +3,60 @@ from __future__ import annotations
 from io import BytesIO
 import json
 import unittest
-from unittest.mock import patch
+from unittest.mock import ANY, MagicMock, patch
 
 from src.link_arena.agents import OpenAICompatibleAgent
 from tools.analyze_link_arena_benchmark import _estimate_chutes_cost_usd
 
 
 class LinkArenaCostTests(unittest.TestCase):
+    def test_hosted_policy_freezes_timeout_and_failure_contract(self):
+        agent = OpenAICompatibleAgent(
+            "A", provider="minimax-api", model="fixture-model",
+            timeout_seconds=17.5,
+        )
+        metadata = agent.benchmark_metadata()
+        self.assertEqual(metadata["client_transport_timeout_seconds"], 17.5)
+        self.assertEqual(metadata["prompt_template"], "fe7-link-arena-choice-v2")
+        self.assertEqual(metadata["action_contract"]["rationale_max_characters"], 400)
+        self.assertEqual(metadata["action_contract"]["json_parse_repairs"], 0)
+        self.assertEqual(metadata["execution_policy"]["api_retries"], 0)
+        self.assertEqual(metadata["execution_policy"]["format_repair_attempts"], 0)
+        self.assertEqual(metadata["execution_policy"]["invalid_response_fallback"], "none")
+        self.assertEqual(
+            metadata["execution_policy"]["stale_state_replans"]["maximum_policy_calls_per_exchange"],
+            6,
+        )
+
+    def test_hosted_request_uses_and_logs_frozen_timeout(self):
+        payload = {
+            "id": "fixture-request",
+            "model": "fixture-model",
+            "choices": [{"message": {"content": json.dumps({
+                "attacker_id": 1, "defender_id": 2, "weapon_id": 3,
+                "rationale": "The selected attacker has a usable weapon.",
+            })}}],
+            "usage": {"prompt_tokens": 20, "completion_tokens": 12},
+        }
+        response = MagicMock()
+        response.status = 200
+        response.read.return_value = json.dumps(payload).encode("utf-8")
+        response.__enter__.return_value = response
+        response.__exit__.return_value = False
+        agent = OpenAICompatibleAgent(
+            "A", provider="minimax-api", model="fixture-model",
+            timeout_seconds=17.5,
+        )
+        with patch.dict("os.environ", {"MINIMAX_API_KEY": "fixture-secret"}), patch(
+            "src.link_arena.agents.urlopen", return_value=response,
+        ) as open_url:
+            agent._request_decision({"units": []})
+        open_url.assert_called_once_with(ANY, timeout=17.5)
+        self.assertEqual(
+            agent.last_call_metadata["request_parameters"]["client_transport_timeout_seconds"],
+            17.5,
+        )
+
     def test_chutes_catalog_snapshot_captures_rates_and_hashes(self):
         catalog = {
             "object": "list",
