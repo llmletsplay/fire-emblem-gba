@@ -178,11 +178,18 @@ record without collecting hidden reasoning. Screenshot files remain local
 artifacts; released traces must convert machine-specific paths to stable
 match-relative paths or omit them while retaining hashes.
 
-Run `python tools/audit_link_arena_ledger.py <path-to-decisions.jsonl>` before
+After the runner has stopped, run
+`python tools/audit_link_arena_ledger.py <path-to-decisions.jsonl>` before
 analysis or release. It reports malformed rows and integrity/linkage issues.
 For hosted decisions and failed hosted calls, it also requires the frozen rationale-only capture
 policy; missing or altered policy metadata fails the audit. The analysis JSON
 repeats that policy beside each agent's outcome and usage summaries.
+Do not audit the actively written Windows ledger until its file-sharing
+behavior is resolved: an audit on 2026-09-29 coincided with a runner
+`Permission denied` during a ledger append. The audit is read-only, but the
+interrupted match makes the live procedure unsuitable for unattended use.
+Preserve the raw directory and audit a quiesced ledger or verified offline
+snapshot instead.
 The optional `--export-valid <derived-path.jsonl>` writes only parseable event
 rows to a separate derived file and writes an adjacent `.audit.json` report;
 it never edits the original append-only ledger.
@@ -501,6 +508,13 @@ providers, models, or settings.
 
 ### Exploratory operations checkpoint (2026-09-28)
 
+The dated entries in this section are audit snapshots, not statements of the
+current stream state. On 2026-09-28, the malformed 39-byte fragment and
+redundant legacy imports were removed from the live canonical ledger under
+lock. The original bytes remain unchanged in the private pre-cleanup archive
+for provenance; later live-ledger audits report no malformed or legacy rows.
+Earlier entries below preserve what each audit actually observed at that time.
+
 The unattended local-minimax series has six completed games, all recorded as
 2P wins by synchronized roster elimination; the seventh game began through the
 automatic handoff and was in setup at the latest checkpoint. This is one
@@ -817,6 +831,22 @@ actions/exchanges, private-reasoning keys, or missing hosted
 reasoning-capture policies. No hosted calls or hosted rationales were present.
 This was an engineering checkpoint, not a hosted-model run or confirmatory
 sample.
+
+At approximately 01:12 UTC, a lock-held audit snapshot contained 7,009 valid
+events across 26 matches, all with `trace_origin=live`; 1,160 decisions were
+`local/unknown`. It reported no malformed or legacy rows, duplicate IDs, hash
+mismatches, missing fields, unknown event types, unlinked actions/exchanges,
+private-reasoning keys, or hosted-policy capture gaps. No hosted decisions or
+rationales were present. Around the same time, the active next match
+(`20260929T010410Z-a6ccd9`) stopped autoplay with `Permission denied` while
+appending to the decision ledger. The overlap with the live audit suggests a
+possible file-access interaction, but does not establish causality. The match
+has no verified result and is not in the 26-game series score; its raw files
+are retained. The local-minimax task was restarted without stopping OBS, and
+replacement match `20260929T012518Z-f433ea` was initializing at the next
+inspection. Treat the interrupted attempt as an operational incident, not a
+policy outcome. Until the Windows file-access behavior is resolved, perform
+full ledger audits only on a quiesced ledger or a verified offline snapshot.
 
 The formal analysis command was also tried against this live root and refused
 it at historical match `20260927T151504Z-570000`, whose manifest lacks the

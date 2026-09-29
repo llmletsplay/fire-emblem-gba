@@ -38,6 +38,17 @@ from src.link_arena.series import DecisionLedger, MatchSeries
 
 DEFAULT_ROM = ROOT / "roms" / "fe7.gba"
 DEFAULT_SAVE = ROOT / "roms" / "fe7-link-arena-maxed.sav"
+_STOP_AFTER_MATCH_REQUEST = ".stop-after-current-match.request"
+
+
+def _consume_stop_after_current_match(data_dir: Path) -> bool:
+    """Consume a local one-shot request to exit after the verified result."""
+    request = data_dir / "series" / _STOP_AFTER_MATCH_REQUEST
+    try:
+        request.unlink()
+    except FileNotFoundError:
+        return False
+    return True
 
 
 def _twitch_channel(value: str) -> str:
@@ -684,7 +695,10 @@ class _ApiHandler(http.server.BaseHTTPRequestHandler):
                 return
             try:
                 lifecycle = self.server.series_state.get("state")
-                if lifecycle in {"between_matches", "starting_next_match", "stopped_for_supervision"}:
+                if lifecycle in {
+                    "between_matches", "starting_next_match", "stopped_for_supervision",
+                    "stopped_for_handoff",
+                }:
                     cached = copy.deepcopy(self.server.last_stream_snapshot)
                     if cached is None:
                         self._json(503, {"error": "waiting for the next match to initialize"})
@@ -955,6 +969,26 @@ def start(args: argparse.Namespace) -> int:
             if recorded:
                 print(f"Match {current.session['match_id']} complete: {result['winner']} wins; "
                       f"series {series.snapshot()['wins']}")
+            try:
+                handoff_requested = _consume_stop_after_current_match(data_dir)
+            except OSError as exc:
+                server.series_state = {
+                    "state": "stopped_for_supervision",
+                    "error": f"could not consume safe-handoff request: {type(exc).__name__}",
+                }
+                print(f"Could not consume safe-handoff request: {type(exc).__name__}")
+                return
+            if handoff_requested:
+                server.series_state = {
+                    "state": "stopped_for_handoff",
+                    "stage": "verified_result_recorded",
+                    "games_played": series.snapshot()["games_played"],
+                }
+                print("Safe handoff requested; final result recorded, no next match will start.")
+                if args.between_matches_seconds and stop_event.wait(args.between_matches_seconds):
+                    return
+                server.shutdown()
+                return
             if args.max_matches is not None and series.snapshot()["games_played"] >= args.max_matches:
                 server.series_state = {
                     "state": "complete",
@@ -971,6 +1005,24 @@ def start(args: argparse.Namespace) -> int:
             server.series_state = {"state": "between_matches", "stage": "next_match_countdown"}
             if stop_event.wait(args.between_matches_seconds):
                 return
+            try:
+                handoff_requested = _consume_stop_after_current_match(data_dir)
+            except OSError as exc:
+                server.series_state = {
+                    "state": "stopped_for_supervision",
+                    "error": f"could not consume safe-handoff request: {type(exc).__name__}",
+                }
+                print(f"Could not consume safe-handoff request: {type(exc).__name__}")
+                return
+            if handoff_requested:
+                server.series_state = {
+                    "state": "stopped_for_handoff",
+                    "stage": "verified_result_recorded",
+                    "games_played": series.snapshot()["games_played"],
+                }
+                print("Safe handoff requested during the result display; no next match will start.")
+                server.shutdown()
+                return
             _stop_match(current)
 
             delays = (0, 5, 15, 30)
@@ -983,6 +1035,24 @@ def start(args: argparse.Namespace) -> int:
                     "stage": f"attempt_{attempt}",
                 }
                 if delay and stop_event.wait(delay):
+                    return
+                try:
+                    handoff_requested = _consume_stop_after_current_match(data_dir)
+                except OSError as exc:
+                    server.series_state = {
+                        "state": "stopped_for_supervision",
+                        "error": f"could not consume safe-handoff request: {type(exc).__name__}",
+                    }
+                    print(f"Could not consume safe-handoff request: {type(exc).__name__}")
+                    return
+                if handoff_requested:
+                    server.series_state = {
+                        "state": "stopped_for_handoff",
+                        "stage": "verified_result_recorded",
+                        "games_played": series.snapshot()["games_played"],
+                    }
+                    print("Safe handoff requested while closing the previous match; no next match will start.")
+                    server.shutdown()
                     return
                 try:
                     next_assignment = _seat_assignment_for(
