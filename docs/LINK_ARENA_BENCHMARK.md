@@ -1,7 +1,7 @@
 # FE7 Link Arena Bench: working paper and study protocol
 
 **Status:** protocol draft; no confirmatory benchmark results are reported here.
-**Version:** 0.2, 2026-09-29
+**Version:** 0.3, 2026-09-29
 **Authors:** to be completed by the human research team before circulation.
 
 ## Working title
@@ -285,11 +285,12 @@ against captured evidence. The current reader is calibrated against the two
 archived final-result screens and rejects the terminal 30-point award panel.
 In unattended play it advances only that recognized panel and persists a
 score only when both clients agree with the terminal-roster winner across
-repeated paired reads. This runtime path still requires live Zephyrus
-validation. The current reader withholds scores containing uncalibrated glyphs
-1 or 9, and does not infer results from intermediate panels. Until the runtime
-path and full digit coverage are validated, report the synchronized
-terminal-roster winner separately and do not treat it as FE7 points or rank.
+repeated paired reads. The live Zephyrus path has now recorded twelve paired
+official scores. Full digit coverage remains incomplete: the reader withholds
+scores containing uncalibrated glyphs 1 or 9 and does not infer results from
+intermediate panels. Report only verified scores, disclose unreadable or
+missing results, and report the synchronized terminal-roster winner
+separately. Do not treat that winner as FE7 points or rank.
 
 ### Secondary outcomes
 
@@ -377,16 +378,19 @@ provider, game-content, privacy, and venue checks in the inventory are complete.
 2. **Outcome gap.** The result reader recognizes the standard final-rank
    layout and the shifted view shown by the opposite linked client. Manual
    calibration fixtures parse 520–346 and 576–288 and reject retained bonus
-   transition panels. The deployed reader recorded paired FE7 results in games
-   eleven and fourteen. Game ten's shifted 1P view was missed by the original
+   transition panels. Game ten's shifted 1P view was missed by the original
    reader; merged PR #18 added that layout. Game twelve's final screen arrived
    too late for two paired reads in the old 4.5-second window. Merged PR #20
    extended sampling to 12 seconds without relaxing exact-screen,
-   paired-agreement, or terminal-winner checks. The updated reader was deployed
-   before game fourteen, which stored a paired 1P 576–288 2P score 6.39 seconds
-   after terminal confirmation and recorded both bridge layouts. At 21:40 UTC,
-   two of fourteen results had official points; W–L–D and the partial point
-   totals still do not constitute a complete official-score record.
+   paired-agreement, or terminal-winner checks. The updated reader stored a
+   paired 1P 576–288 2P score 6.39 seconds after terminal confirmation in game
+   fourteen. At 00:34 UTC on 2026-09-29, twelve of 24 completed live games had
+   parsed official scores, totaling 1P 4,032 / 2P 6,336; the other twelve lack
+   verified point totals. These totals describe only the readable subset. Of
+   the twelve score records, eleven explicitly label both bridge layouts as
+   standard; game eleven's score record lacks layout metadata. Uncalibrated
+   1/9 glyphs and the absence of a live shifted-layout sample remain coverage
+   limitations.
 3. **Uncontrolled randomness.** FE7 combat uses RNG. A file-level save hash
    does not prove identical RNG state or reproducible trajectories across
    launches. Pairing and seat balancing mitigate but do not remove this issue.
@@ -728,11 +732,12 @@ stream remains fixed-seat engineering validation, not hosted benchmark
 evidence. The official scores and ledger totals are live checkpoints, not a
 preregistered sample.
 
-At 00:29 UTC, the same active match had advanced to turn 15; the runner was
-`playing` with no error, and one mGBA plus one OBS process were present. The
-series still had 23 completed games and eleven official scores. A subsequent
-read-only audit found 6,392 valid live events, 1,084 local-policy decision
-rows, and zero malformed lines, duplicate IDs, hash mismatches, missing common
+At 00:34 UTC, match `20260929T003009Z-49dc7c` was at turn 3 in the player phase,
+waiting for a turn boundary with no runner error; one mGBA and one OBS process
+were present. The series had 24 completed games (1P 6 wins, 2P 18) and twelve
+official scores totaling 1P 4,032 / 2P 6,336. A fresh read-only audit exited
+successfully with 6,457 valid live events and 1,091 local-policy decision rows.
+It found no malformed lines, duplicate IDs, hash mismatches, missing common
 fields, unknown events, unlinked actions/exchanges, or private-reasoning keys.
 No hosted-model decisions or private reasoning were present. This confirms the
 stream and audit are still progressing; it does not change the fixed-seat,
@@ -747,10 +752,9 @@ reported from it. Preserve the old match files as source data; start future
 hosted work in a fresh, frozen `DataDir` as specified above.
 
 - [x] Calibrate the fail-closed reader against archived and live final-result
-  screens and reject four captured intermediate bonus panels. As of the latest
-  stream checkpoint, the standard layout and 12-second paired-read window have
-  eleven successful live scores.
-  `layout_by_bridge` persisted as standard on both views for game fourteen.
+  screens and reject four captured intermediate bonus panels. As of 00:34 UTC
+  on 2026-09-29, twelve live scores passed paired-read validation. Eleven
+  records label both layouts standard; game eleven lacks layout metadata.
   Shifted-layout support has offline fixture validation but no live sample yet.
   Complete 0–9 glyph coverage and broader independent validation remain open.
 - [x] Deploy and inspect the series-wide decision ledger on Zephyrus; validate
