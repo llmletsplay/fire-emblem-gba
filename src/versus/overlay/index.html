@@ -1,1 +1,52 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Fire Emblem Versus Tournament</title><link rel="stylesheet" href="/overlay.css"></head><body><div id="broadcast"><header><span>LLM LET’S PLAY</span><h1>Fire Emblem Versus</h1><div id="status">Waiting for tournament</div></header><main><section><div class="seats"><article id="blue">Blue</article><article id="red">Red</article></div><img id="video" width="1200" height="800" alt="Live native Fire Emblem emulator video"><div id="video-status">Waiting for emulator video</div><div id="phase"></div><p class="legend">LIVE GAME VIDEO · FIRE EMBLEM: THE SACRED STONES</p></section><aside><h2>Tournament standings</h2><table><thead><tr><th>Entrant</th><th>W</th><th>D</th><th>L</th><th>Pts</th></tr></thead><tbody id="standings"></tbody></table><h2>Current decision</h2><p id="decision">—</p><h2>Match</h2><p id="match">—</p><p id="result"></p><p id="error"></p></aside></main></div><script src="/overlay.js"></script></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Fire Emblem Versus Tournament</title>
+  <link rel="stylesheet" href="/overlay.css">
+</head>
+<body>
+  <div id="broadcast">
+    <header>
+      <span>LLM LET’S PLAY</span>
+      <h1>Fire Emblem Versus</h1>
+      <div id="status">Waiting for tournament</div>
+    </header>
+    <main>
+      <section>
+        <div class="seats">
+          <article id="blue">Blue</article>
+          <article id="red">Red</article>
+        </div>
+        <img id="video" width="1200" height="800" alt="Live native Fire Emblem emulator video">
+        <div id="video-status">Waiting for emulator video</div>
+        <div id="phase"></div>
+        <p class="legend">LIVE GAME VIDEO · FIRE EMBLEM: THE SACRED STONES</p>
+      </section>
+      <aside>
+        <h2>Tournament standings</h2>
+        <table>
+          <thead><tr><th>Entrant</th><th>W</th><th>D</th><th>L</th><th>Pts</th></tr></thead>
+          <tbody id="standings"></tbody>
+        </table>
+        <section class="decision blue-decision">
+          <h2>Blue decision <span id="blue-thinking"></span></h2>
+          <p id="blue-decision">Waiting for Blue</p>
+          <small id="blue-action"></small>
+        </section>
+        <section class="decision red-decision">
+          <h2>Red decision <span id="red-thinking"></span></h2>
+          <p id="red-decision">Waiting for Red</p>
+          <small id="red-action"></small>
+        </section>
+        <h2>Match</h2>
+        <p id="match">—</p>
+        <p id="result"></p>
+        <p id="error"></p>
+      </aside>
+    </main>
+  </div>
+  <script src="/overlay.js"></script>
+</body>
+</html>

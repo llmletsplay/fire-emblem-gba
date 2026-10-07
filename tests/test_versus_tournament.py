@@ -192,6 +192,55 @@ class TournamentTests(unittest.TestCase):
             self.assertNotIn(first["id"], called)
             self.assertEqual(resumed.snapshot()["status"], "complete")
 
+    def test_decisions_keep_both_sides_and_reset_between_games(self):
+        class Session:
+            id = "test-match"
+            sequence = 0
+
+            def __init__(self, **kwargs):
+                kwargs["evidence"].mkdir(parents=True)
+
+            def stable(self):
+                return [{"active": self.sequence % 2}]
+
+            def observe(self, seat):
+                return {
+                    "active_seat": seat,
+                    "sequence": self.sequence,
+                    "round": 1,
+                    "state_hash": "test",
+                    "units": [],
+                    "legal_actions": [{"id": "end", "type": "end"}],
+                    "outcome": 1 if self.sequence == 2 else 0,
+                    "victory_reason": "elimination",
+                }
+
+            def act(self, seat, request):
+                self.sequence += 1
+                return {"accepted": True, "sequence": self.sequence}
+
+            def close(self):
+                pass
+
+        with tempfile.TemporaryDirectory() as d:
+            t = self.make_tournament(d)
+            t.config["action_delay_seconds"] = 0
+            t.session_factory = Session
+            t.play(t.games[0])
+            decisions = t.snapshot()["decisions"]
+            self.assertEqual([v["seat"] for v in decisions], [0, 1])
+            self.assertEqual([v["sequence"] for v in decisions], [0, 1])
+            snapshots = []
+            publish = t.publish
+
+            def capture(**updates):
+                publish(**updates)
+                snapshots.append(t.snapshot())
+
+            t.publish = capture
+            t.play(t.games[1])
+            self.assertEqual(snapshots[0]["decisions"], [None, None])
+
     def test_resume_rejects_changed_config(self):
         with tempfile.TemporaryDirectory() as d:
             t = self.make_tournament(d)
