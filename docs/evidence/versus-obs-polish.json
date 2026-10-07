@@ -1,0 +1,30 @@
+{
+  "canvas": [
+    1920,
+    1080
+  ],
+  "native_frame": [
+    240,
+    160
+  ],
+  "display_frame": [
+    1200,
+    800
+  ],
+  "host_tests": 10,
+  "overlay_state_checks": [
+    "waiting",
+    "thinking",
+    "complete",
+    "draw",
+    "long_rationale",
+    "12_entrant_paging"
+  ],
+  "visual_checks": [
+    "1080p_bounds",
+    "long_names_keep_army_labels",
+    "long_rationales_keep_action_stamps",
+    "complete_32_of_32_draw_no_thinking"
+  ],
+  "notes": "OBS browser-source layout verified in browser at 1920x1080. No OBS recording or paid hosted-model tournament claimed."
+}

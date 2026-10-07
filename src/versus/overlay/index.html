@@ -14,22 +14,22 @@
       <div id="status">Waiting for tournament</div>
     </header>
     <main>
-      <section>
+      <section class="game-panel">
         <div class="seats">
           <article id="blue">Blue</article>
           <article id="red">Red</article>
         </div>
-        <img id="video" width="1200" height="800" alt="Live native Fire Emblem emulator video">
+        <img id="video" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='160'%3E%3Cpath fill='%23172439' d='M0 0h240v160H0z'/%3E%3C/svg%3E" width="1200" height="800" alt="Live native Fire Emblem emulator video">
         <div id="video-status">Waiting for emulator video</div>
-        <div id="phase"></div>
-        <p class="legend">LIVE GAME VIDEO · FIRE EMBLEM: THE SACRED STONES</p>
+        <div class="game-footer"><span id="phase"></span><span id="objective">Native FE8 battle</span></div>
+        <p class="legend">FIRE EMBLEM VERSUS · NATIVE GBA VIDEO</p>
       </section>
       <aside>
         <h2>Tournament standings</h2>
-        <table>
+        <div class="standings-scroll"><table>
           <thead><tr><th>Entrant</th><th>W</th><th>D</th><th>L</th><th>Pts</th></tr></thead>
           <tbody id="standings"></tbody>
-        </table>
+        </table></div>
         <section class="decision blue-decision">
           <h2>Blue decision <span id="blue-thinking"></span></h2>
           <p id="blue-decision">Waiting for Blue</p>
