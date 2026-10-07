@@ -1,0 +1,105 @@
+{
+  "kind": "real-linked-mgba-native-video",
+  "games": [
+    {
+      "id": 0,
+      "entrants": [
+        "Baseline A",
+        "Baseline B"
+      ],
+      "map": "forest-forts",
+      "parties": [
+        "balanced",
+        "balanced"
+      ],
+      "objective": "elimination",
+      "opener": 0,
+      "scenario": 0,
+      "repetition": 0,
+      "outcome": 1,
+      "victory_reason": "elimination",
+      "actions": 44,
+      "round": 7,
+      "match_id": "2c8c95e669734510963b8d3e92275379",
+      "rom_sha256": "09d0d40b17fb09d3e2f53b55eedf79cd8240b0f578c6845bb59cbd0d17b0c0df",
+      "evidence": "game-0000-dbf8f73b"
+    },
+    {
+      "id": 1,
+      "entrants": [
+        "Baseline A",
+        "Baseline B"
+      ],
+      "map": "forest-forts",
+      "parties": [
+        "balanced",
+        "balanced"
+      ],
+      "objective": "elimination",
+      "opener": 1,
+      "scenario": 0,
+      "repetition": 0,
+      "outcome": 2,
+      "victory_reason": "elimination",
+      "actions": 33,
+      "round": 5,
+      "match_id": "77639f0604c54c74983d818489a4315e",
+      "rom_sha256": "09d0d40b17fb09d3e2f53b55eedf79cd8240b0f578c6845bb59cbd0d17b0c0df",
+      "evidence": "game-0001-38cd0d11"
+    },
+    {
+      "id": 2,
+      "entrants": [
+        "Baseline B",
+        "Baseline A"
+      ],
+      "map": "forest-forts",
+      "parties": [
+        "balanced",
+        "balanced"
+      ],
+      "objective": "elimination",
+      "opener": 0,
+      "scenario": 0,
+      "repetition": 0,
+      "outcome": 1,
+      "victory_reason": "elimination",
+      "actions": 44,
+      "round": 7,
+      "match_id": "b3e10de467ea4823b922810eb0f09744",
+      "rom_sha256": "09d0d40b17fb09d3e2f53b55eedf79cd8240b0f578c6845bb59cbd0d17b0c0df",
+      "evidence": "game-0002-d76709f6"
+    },
+    {
+      "id": 3,
+      "entrants": [
+        "Baseline B",
+        "Baseline A"
+      ],
+      "map": "forest-forts",
+      "parties": [
+        "balanced",
+        "balanced"
+      ],
+      "objective": "elimination",
+      "opener": 1,
+      "scenario": 0,
+      "repetition": 0,
+      "outcome": 2,
+      "victory_reason": "elimination",
+      "actions": 33,
+      "round": 5,
+      "match_id": "9a40bf85658a4a85b8fcdc08397b0b30",
+      "rom_sha256": "09d0d40b17fb09d3e2f53b55eedf79cd8240b0f578c6845bb59cbd0d17b0c0df",
+      "evidence": "game-0003-fef3b35e"
+    }
+  ],
+  "native_resolution": [
+    240,
+    160
+  ],
+  "both_video_endpoints_verified": true,
+  "browser_preview_verified": true,
+  "imagegen_artwork": "src/versus/overlay/artwork.png",
+  "native_audio": false
+}

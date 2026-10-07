@@ -181,6 +181,7 @@ class Tournament:
                 sort_keys=True,
             ).encode()
         ).hexdigest()
+        self.video_directory = None
         self.results = []
         ledger = self.output / "results.json"
         if ledger.exists():
@@ -217,6 +218,11 @@ class Tournament:
                     "models": [self.entrants[e] for e in last["entrants"]],
                 }
                 self.state["last_result"] = last
+                self.video_directory = self.output / last["evidence"] / "frames"
+        if self.results and self.video_directory is None:
+            self.video_directory = (
+                self.output / self.results[-1].get("evidence", "") / "frames"
+            )
         self.publish()
 
     def _validate_scenarios(self):
@@ -280,7 +286,9 @@ class Tournament:
             red_party=parties.index(game["parties"][1]),
             objective=self.catalog["objectives"].index(game["objective"]),
             evidence=evidence,
+            video=True,
         )
+        self.video_directory = evidence / "frames"
         agents = [make_agent(self.entrants[e]) for e in game["entrants"]]
         count = 0
         public_match = {
