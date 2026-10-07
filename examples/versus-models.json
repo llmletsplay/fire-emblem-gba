@@ -1,0 +1,14 @@
+{
+  "entrants": [
+    {"id": "Chutes model A", "provider": "chutes", "model": "REPLACE_WITH_CHUTES_MODEL_ID", "max_completion_tokens": 4096},
+    {"id": "Chutes model B", "provider": "chutes", "model": "REPLACE_WITH_ANOTHER_CHUTES_MODEL_ID", "max_completion_tokens": 4096},
+    {"id": "MiniMax", "provider": "minimax-api", "model": "REPLACE_WITH_MINIMAX_MODEL_ID", "max_completion_tokens": 4096}
+  ],
+  "scenarios": [
+    {"map": "central-keep", "parties": ["balanced", "balanced"], "objective": "either"},
+    {"map": "fort-race", "parties": ["veterans", "veterans"], "objective": "either"}
+  ],
+  "repetitions": 1,
+  "action_delay_seconds": 1,
+  "max_actions": 1000
+}

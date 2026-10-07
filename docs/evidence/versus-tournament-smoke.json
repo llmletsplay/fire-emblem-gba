@@ -1,0 +1,99 @@
+{
+  "date": "2026-10-07",
+  "kind": "real-linked-mgba-local-agents",
+  "hosted_models_exercised": false,
+  "results": [
+    {
+      "id": 0,
+      "entrants": [
+        "Baseline A",
+        "Baseline B"
+      ],
+      "map": "forest-forts",
+      "parties": [
+        "balanced",
+        "balanced"
+      ],
+      "objective": "elimination",
+      "opener": 0,
+      "scenario": 0,
+      "repetition": 0,
+      "outcome": 1,
+      "victory_reason": "elimination",
+      "actions": 44,
+      "round": 7,
+      "match_id": "ddf7cc9d38d5481d94250b893079b2b0",
+      "rom_sha256": "09d0d40b17fb09d3e2f53b55eedf79cd8240b0f578c6845bb59cbd0d17b0c0df",
+      "evidence": "game-0000-eaf95ab9"
+    },
+    {
+      "id": 1,
+      "entrants": [
+        "Baseline A",
+        "Baseline B"
+      ],
+      "map": "forest-forts",
+      "parties": [
+        "balanced",
+        "balanced"
+      ],
+      "objective": "elimination",
+      "opener": 1,
+      "scenario": 0,
+      "repetition": 0,
+      "outcome": 2,
+      "victory_reason": "elimination",
+      "actions": 33,
+      "round": 5,
+      "match_id": "fd8915a27c3b42e0acd435395c62a07e",
+      "rom_sha256": "09d0d40b17fb09d3e2f53b55eedf79cd8240b0f578c6845bb59cbd0d17b0c0df",
+      "evidence": "game-0001-b315bf9b"
+    },
+    {
+      "id": 2,
+      "entrants": [
+        "Baseline B",
+        "Baseline A"
+      ],
+      "map": "forest-forts",
+      "parties": [
+        "balanced",
+        "balanced"
+      ],
+      "objective": "elimination",
+      "opener": 0,
+      "scenario": 0,
+      "repetition": 0,
+      "outcome": 1,
+      "victory_reason": "elimination",
+      "actions": 44,
+      "round": 7,
+      "match_id": "3d4005d07a124cf29ac1c55e11f6d937",
+      "rom_sha256": "09d0d40b17fb09d3e2f53b55eedf79cd8240b0f578c6845bb59cbd0d17b0c0df",
+      "evidence": "game-0002-70441cbd"
+    },
+    {
+      "id": 3,
+      "entrants": [
+        "Baseline B",
+        "Baseline A"
+      ],
+      "map": "forest-forts",
+      "parties": [
+        "balanced",
+        "balanced"
+      ],
+      "objective": "elimination",
+      "opener": 1,
+      "scenario": 0,
+      "repetition": 0,
+      "outcome": 2,
+      "victory_reason": "elimination",
+      "actions": 33,
+      "round": 5,
+      "match_id": "4b1de597c2434487935fc962a2a39790",
+      "rom_sha256": "09d0d40b17fb09d3e2f53b55eedf79cd8240b0f578c6845bb59cbd0d17b0c0df",
+      "evidence": "game-0003-7bd59e1c"
+    }
+  ]
+}

@@ -1,0 +1,3 @@
+[submodule "vendor/fire-emblem-versus"]
+	path = vendor/fire-emblem-versus
+	url = https://github.com/thomasjvu/fire-emblem-versus.git
