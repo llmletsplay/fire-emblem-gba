@@ -75,3 +75,5 @@ Catalog version 7 changes Woodland to a river battlefield with three two-tile br
 To showcase all eight maps with local baseline agents, run `python tools/versus_tournament.py examples/versus-maps.json --output runtime/versus-maps`. Each map runs four games with entrant-seat and opening-side swaps. The stream still shows native emulator frames.
 
 Catalog-8 validation passed 14 elimination matches across both opening sides and 28 captures across both armies and capture modes on the seven changed maps. Native core/linked checks, eighteen max-level preset checks and ten tournament tests passed. The pinned submodule records the ROM hash in docs/evidence/maps-v08-tests.json.
+
+See [the OBS setup and recovery guide](VERSUS_OBS.md) and its reusable source settings for full-canvas framing and a recording check.

@@ -1,0 +1,15 @@
+{
+  "name": "Fire Emblem Versus",
+  "id": "browser_source",
+  "settings": {
+    "url": "http://127.0.0.1:8770/",
+    "width": 1920,
+    "height": 1080,
+    "is_local_file": false,
+    "fps_custom": true,
+    "fps": 30,
+    "shutdown": false,
+    "restart_when_active": false,
+    "css": ""
+  }
+}
