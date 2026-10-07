@@ -1,0 +1,81 @@
+{
+  "entrants": [
+    {
+      "id": "Baseline A",
+      "provider": "local"
+    },
+    {
+      "id": "Baseline B",
+      "provider": "local"
+    }
+  ],
+  "scenarios": [
+    {
+      "map": "forest-forts",
+      "parties": [
+        "balanced",
+        "balanced"
+      ],
+      "objective": "either"
+    },
+    {
+      "map": "woodland",
+      "parties": [
+        "balanced",
+        "balanced"
+      ],
+      "objective": "either"
+    },
+    {
+      "map": "crossroads",
+      "parties": [
+        "balanced",
+        "balanced"
+      ],
+      "objective": "either"
+    },
+    {
+      "map": "open-field",
+      "parties": [
+        "balanced",
+        "balanced"
+      ],
+      "objective": "either"
+    },
+    {
+      "map": "twin-groves",
+      "parties": [
+        "balanced",
+        "balanced"
+      ],
+      "objective": "either"
+    },
+    {
+      "map": "central-keep",
+      "parties": [
+        "balanced",
+        "balanced"
+      ],
+      "objective": "either"
+    },
+    {
+      "map": "forest-ring",
+      "parties": [
+        "balanced",
+        "balanced"
+      ],
+      "objective": "either"
+    },
+    {
+      "map": "fort-race",
+      "parties": [
+        "balanced",
+        "balanced"
+      ],
+      "objective": "either"
+    }
+  ],
+  "repetitions": 1,
+  "action_delay_seconds": 1,
+  "max_actions": 1000
+}
