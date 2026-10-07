@@ -202,6 +202,29 @@ class TournamentTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 Tournament(c, t.output, t.engine, session_factory=lambda **k: None)
 
+    def test_native_video_route_uses_emulator_pixels(self):
+        from PIL import Image
+        import io
+
+        with tempfile.TemporaryDirectory() as d:
+            t = self.make_tournament(d)
+            t.video_directory = Path(d) / "frames"
+            t.video_directory.mkdir()
+            Image.new("RGB", (240, 160), (17, 34, 51)).save(
+                t.video_directory / "seat-0.ppm"
+            )
+            http = server(t, 0)
+            threading.Thread(target=http.serve_forever, daemon=True).start()
+            try:
+                with urlopen(f"http://127.0.0.1:{http.server_port}/video/0.png") as r:
+                    self.assertEqual(r.headers["Content-Type"], "image/png")
+                    image = Image.open(io.BytesIO(r.read()))
+                self.assertEqual(image.size, (240, 160))
+                self.assertEqual(image.getpixel((0, 0)), (17, 34, 51))
+            finally:
+                http.shutdown()
+                http.server_close()
+
     def test_stream_is_read_only_and_has_no_session_credentials(self):
         with tempfile.TemporaryDirectory() as d:
             t = self.make_tournament(d)
@@ -212,7 +235,7 @@ class TournamentTests(unittest.TestCase):
                     data = json.load(r)
                 self.assertNotIn("keys", data)
                 with urlopen(f"http://127.0.0.1:{http.server_port}/") as r:
-                    self.assertIn(b"Live ROM tactical map", r.read())
+                    self.assertIn(b"Live native Fire Emblem emulator video", r.read())
             finally:
                 http.shutdown()
                 http.server_close()
