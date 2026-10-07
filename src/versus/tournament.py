@@ -198,11 +198,12 @@ class Tournament:
             "standings": standings(config, self.results),
             "match": None,
             "observation": None,
+            "decisions": [None, None],
         }
         snapshot_path = self.output / "stream-state.json"
         if ledger.exists() and snapshot_path.exists():
             previous = json.loads(snapshot_path.read_text())
-            for key in ["match", "observation", "decision", "last_result"]:
+            for key in ["match", "observation", "decision", "decisions", "last_result"]:
                 if key in previous:
                     self.state[key] = previous[key]
         if self.results and not self.state.get("observation"):
@@ -301,6 +302,7 @@ class Tournament:
             match=public_match,
             observation=None,
             decision=None,
+            decisions=[None, None],
             error=None,
         )
         try:
@@ -333,7 +335,17 @@ class Tournament:
                         a["id"] for a in o["legal_actions"]
                     }:
                         raise RuntimeError("Agent selected an illegal action")
-                    self.publish(status="playing", decision={"seat": seat, **decision})
+                    public_decision = {
+                        "seat": seat,
+                        "sequence": o["sequence"],
+                        "round": o["round"],
+                        **decision,
+                    }
+                    decisions = self.snapshot()["decisions"]
+                    decisions[seat] = public_decision
+                    self.publish(
+                        status="playing", decision=public_decision, decisions=decisions
+                    )
                     if self.stop.wait(self.config.get("action_delay_seconds", 0.5)):
                         break
                     request = dict(
