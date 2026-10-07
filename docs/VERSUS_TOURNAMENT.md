@@ -57,3 +57,5 @@ node --check src/versus/overlay/overlay.js
 ```
 
 Tests cover balanced seats/openers/preset assignment, native outcome scoring, provider request formats through a local mock API, illegal-output rejection, credential exclusion, failure handling, resume identity and the read-only stream route. The local four-game smoke tournament exercises two real linked cores per match. Hosted-provider play needs exact model IDs and available credentials; a mock API test is not a claim that paid hosted models were exercised.
+
+The broadcast uses bundled Poltawski Nowy and Epilogue fonts (SIL OFL), a restrained anime background, and a CSS frame aligned to native 3:2 game video. The ROM uses quiet outdoor terrain tiles and restores battle UI graphics after the lobby transition.
