@@ -30,6 +30,9 @@ def server(tournament, port):
                 except (OSError, ValueError):
                     self.send_error(503)
                     return
+            elif path in ["/fonts/title.ttf", "/fonts/body.ttf"]:
+                payload = (ASSETS / path[1:]).read_bytes()
+                kind = "font/ttf"
             elif path == "/artwork.png":
                 payload = (ASSETS / "artwork.png").read_bytes()
                 kind = "image/png"
