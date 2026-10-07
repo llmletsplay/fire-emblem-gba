@@ -1,0 +1,10 @@
+{
+  "entrants": [
+    {"id": "Baseline A", "provider": "local"},
+    {"id": "Baseline B", "provider": "local"}
+  ],
+  "scenarios": [{"map": "forest-forts", "parties": ["balanced", "balanced"], "objective": "elimination"}],
+  "repetitions": 1,
+  "action_delay_seconds": 0,
+  "max_actions": 1000
+}
