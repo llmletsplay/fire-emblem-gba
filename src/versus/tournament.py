@@ -162,7 +162,14 @@ def engine_session(engine):
 
 
 class Tournament:
-    def __init__(self, config, output, engine, session_factory=None):
+    def __init__(
+        self, config, output, engine, session_factory=None,
+        desktop=False, terminal_human=False, browser_video=True,
+    ):
+        self.desktop = desktop
+        self.terminal_human = terminal_human
+        self.browser_video = browser_video
+        self.live_session = None
         self.config = config
         self.output = Path(output)
         self.output.mkdir(parents=True, exist_ok=True)
@@ -228,6 +235,8 @@ class Tournament:
             self.video_directory = (
                 self.output / self.results[-1].get("evidence", "") / "frames"
             )
+        if not self.browser_video:
+            self.video_directory = None
         self.publish()
 
     def _validate_scenarios(self):
@@ -284,16 +293,32 @@ class Tournament:
         maps = [m["id"] for m in self.catalog["maps"]]
         parties = [p["id"] for p in self.catalog["parties"]]
         evidence = self.output / f"game-{game['id']:04}-{uuid.uuid4().hex[:8]}"
-        s = self.session_factory(
+        reuse = self.live_session if self.desktop and not self.browser_video else None
+        if reuse is None:
+            self.close()
+        options = dict(
             red=bool(game["opener"]),
             map_id=maps.index(game["map"]),
             blue_party=parties.index(game["parties"][0]),
             red_party=parties.index(game["parties"][1]),
             objective=self.catalog["objectives"].index(game["objective"]),
             evidence=evidence,
-            video=True,
+            video=self.browser_video,
         )
-        self.video_directory = evidence / "frames"
+        if self.desktop:
+            options.update(
+                desktop=True,
+                human_seats=sum(
+                    1 << i for i, entrant in enumerate(game["entrants"])
+                    if self.entrants[entrant]["provider"] == "human"
+                    and not self.terminal_human
+                ),
+            )
+        if reuse is not None:
+            options["reuse"] = reuse
+        s = self.session_factory(**options)
+        self.live_session = s
+        self.video_directory = evidence / "frames" if self.browser_video else None
         agents = [make_agent(self.entrants[e]) for e in game["entrants"]]
         count = 0
         public_match = {
@@ -333,6 +358,20 @@ class Tournament:
                             "Action limit reached without native outcome"
                         )
                     seat = o["active_seat"]
+                    if self.entrants[game["entrants"][seat]]["provider"] == "human" and not self.terminal_human:
+                        if not self.desktop:
+                            raise RuntimeError("Human play requires the native window; use --terminal-human for legacy input")
+                        self.publish(status="human-turn", thinking_seat=seat)
+                        response = s.human_action(seat, o["sequence"], self.stop)
+                        decision = {"action_id": "native-ui", "rationale": "Human played through the native map controls"}
+                        decisions = self.snapshot()["decisions"]
+                        decisions[seat] = {"seat": seat, "sequence": o["sequence"], "round": o["round"], **decision}
+                        self.publish(status="playing", decisions=decisions)
+                        count += 1
+                        log.write(json.dumps({"sequence": response["sequence"], "entrant": game["entrants"][seat],
+                                              "decision": decision, "metadata": {"provider": "human", "input": "native-ui"}}) + "\n")
+                        log.flush()
+                        continue
                     self.publish(status="thinking", thinking_seat=seat)
                     decision = agents[seat].choose(o)
                     if decision["action_id"] not in {
@@ -377,4 +416,11 @@ class Tournament:
                     log.flush()
             raise RuntimeError("Tournament stopped before native outcome")
         finally:
-            s.close()
+            # Keep the final native result on screen for OBS until the next game or shutdown.
+            if not self.desktop or self.stop.is_set() or sys.exc_info()[0] is not None:
+                self.close()
+
+    def close(self):
+        if self.live_session is not None:
+            session, self.live_session = self.live_session, None
+            session.close()

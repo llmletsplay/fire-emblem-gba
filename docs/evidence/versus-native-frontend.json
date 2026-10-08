@@ -1,0 +1,44 @@
+{
+  "date": "2026-10-08",
+  "rom_sha256": "9f0a8b714e4865797526d114d79eff6c08026669bc140b6a6805f6bb13c0f704",
+  "native_frontend": "SDL2 around two linked pinned mGBA cores",
+  "main_unit_tests": 15,
+  "overlay_state_tests": "passed: human turn and transparent information layer plus existing cases",
+  "desktop_input_regression": [
+    "inactive seat rejection",
+    "native cancellation",
+    "Blue and Red move/Wait",
+    "native End",
+    "agent handoff",
+    "surrender",
+    "peer hash agreement",
+    "same process across new map/opener/permissions and fresh match identity"
+  ],
+  "baseline_agent_match": {
+    "outcome": 2,
+    "victory_reason": "elimination",
+    "actions": 60,
+    "round": 13
+  },
+  "visible_mixed_match": {
+    "native_keyboard_actions": [
+      "Wait",
+      "End"
+    ],
+    "agent": "local baseline",
+    "returned_to_human": true,
+    "sequence": 7,
+    "screenshot": "versus-native-keyboard.png",
+    "native_audio_backend": "coreaudio; device initialized"
+  },
+  "server": "CLI defaults to no server; obsolete preview stopped and port 8770 has no listener",
+  "unverified": [
+    "physical game controller",
+    "actual OBS capture recording",
+    "Linux desktop",
+    "Windows desktop unsupported",
+    "paid hosted providers",
+    "latency benchmark"
+  ],
+  "obs_attempt": "OBS opened; source Add control did not respond through UI automation; empty test scene removed"
+}

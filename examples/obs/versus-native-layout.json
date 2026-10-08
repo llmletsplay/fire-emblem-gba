@@ -1,0 +1,43 @@
+{
+  "canvas": {
+    "width": 1920,
+    "height": 1080
+  },
+  "importable_scene_collection": false,
+  "layers_bottom_to_top": [
+    {
+      "name": "Background",
+      "type": "color",
+      "color": "#101a2a"
+    },
+    {
+      "name": "Native mGBA",
+      "type": "platform-native-window-capture",
+      "target": "Fire Emblem Versus \u2014 Native mGBA",
+      "crop": "client game area, excluding title bar and letterbox",
+      "position": {
+        "x": 56,
+        "y": 196
+      },
+      "size": {
+        "width": 1200,
+        "height": 800
+      },
+      "scale_filter": "point"
+    },
+    {
+      "name": "Versus information",
+      "type": "browser_source",
+      "source_settings": "versus-browser-source.json",
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "size": {
+        "width": 1920,
+        "height": 1080
+      },
+      "optional": true
+    }
+  ]
+}
