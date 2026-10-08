@@ -1,8 +1,8 @@
 {
-  "name": "Fire Emblem Versus",
+  "name": "Versus information (native capture overlay)",
   "id": "browser_source",
   "settings": {
-    "url": "http://127.0.0.1:8770/",
+    "url": "http://127.0.0.1:8770/?overlay=1",
     "width": 1920,
     "height": 1080,
     "is_local_file": false,

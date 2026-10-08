@@ -42,3 +42,9 @@ td:last-child { color:#dacb9a; font-weight:700; }
 #result:empty { display:none; }
 #error { margin:0; padding:10px 20px; font-size:12px; color:#f4a7b0; }
 #broadcast[data-status="error"] #status,#broadcast[data-status="disconnected"] #status { color:#f4a7b0; border-color:#c77780; }
+
+/* OBS captures the native window beneath this optional transparent information layer. */
+html:has(#broadcast[data-overlay="true"]),body:has(#broadcast[data-overlay="true"]) { background:transparent; }
+#broadcast[data-overlay="true"] { background:transparent; }
+#broadcast[data-overlay="true"] #video { visibility:hidden; }
+#broadcast[data-overlay="true"] #video-status { display:none; }

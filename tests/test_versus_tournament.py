@@ -4,7 +4,7 @@ from pathlib import Path
 import tempfile
 import threading
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch, Mock
 from urllib.request import urlopen
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -267,6 +267,75 @@ class TournamentTests(unittest.TestCase):
             t.publish = capture
             t.play(t.games[1])
             self.assertEqual(snapshots[0]["decisions"], [None, None])
+
+    def test_native_human_uses_ui_and_keeps_result_window(self):
+        instances = []
+        class NativeSession:
+            id = 'native-ui-test'
+            sequence = 0
+            closed = False
+            def __init__(self, **kwargs):
+                self.kwargs = kwargs
+                kwargs['evidence'].mkdir(parents=True)
+                instances.append(self)
+            def stable(self):
+                return [{'active': self.sequence % 2}]
+            def observe(self, seat):
+                return {'active_seat': seat, 'sequence': self.sequence, 'round': 1,
+                        'outcome': 1 if self.sequence == 2 else 0, 'victory_reason': 'surrender'}
+            def human_action(self, seat, sequence, stop):
+                self.assertion = (seat, sequence)
+                self.sequence += 1
+                return {'accepted': True, 'sequence': self.sequence}
+            def act(self, *args):
+                raise AssertionError('Human input must not use the agent mailbox')
+            def close(self):
+                self.closed = True
+        with tempfile.TemporaryDirectory() as d:
+            t = self.make_tournament(d)
+            t.desktop, t.browser_video = True, False
+            for e in t.entrants.values():
+                e['provider'] = 'human'
+            t.session_factory = NativeSession
+            with patch('src.versus.agents.HumanAgent.choose', side_effect=AssertionError('No terminal input')):
+                result = t.play(t.games[0])
+            self.assertEqual(result['outcome'], 1)
+            self.assertEqual(instances[0].kwargs['human_seats'], 3)
+            self.assertFalse(instances[0].kwargs['video'])
+            self.assertIsNone(t.video_directory)
+            self.assertFalse(instances[0].closed)
+            t.close()
+            self.assertTrue(instances[0].closed)
+            self.assertEqual(t.snapshot()['decisions'][1]['action_id'], 'native-ui')
+
+    def test_native_window_is_reused_for_next_game(self):
+        with tempfile.TemporaryDirectory() as d:
+            t = self.make_tournament(d)
+            previous = Mock()
+            t.live_session, t.desktop, t.browser_video = previous, True, False
+            # Constructor failure must leave the previous owner available for cleanup.
+            t.session_factory = Mock(side_effect=RuntimeError('setup failed'))
+            with self.assertRaisesRegex(RuntimeError, 'setup failed'):
+                t.play(t.games[0])
+            self.assertIs(t.session_factory.call_args.kwargs['reuse'], previous)
+            previous.close.assert_not_called()
+            t.close()
+            previous.close.assert_called_once()
+
+    def test_cli_starts_no_server_by_default(self):
+        from tools import versus_tournament as cli
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / 'config.json'
+            p.write_text(json.dumps(CONFIG))
+            runner = Mock()
+            runner.snapshot.return_value = {'status': 'complete'}
+            runner.results = []
+            with patch('sys.argv', ['versus_tournament.py', str(p), '--output', str(Path(d) / 'run'), '--exit-on-complete']), patch.object(cli, 'Tournament', return_value=runner) as constructor, patch.object(cli, 'server') as http, patch('builtins.print'):
+                self.assertEqual(cli.main(), 0)
+            http.assert_not_called()
+            self.assertTrue(constructor.call_args.kwargs['desktop'])
+            self.assertFalse(constructor.call_args.kwargs['browser_video'])
+            runner.close.assert_called_once()
 
     def test_resume_rejects_changed_config(self):
         with tempfile.TemporaryDirectory() as d:

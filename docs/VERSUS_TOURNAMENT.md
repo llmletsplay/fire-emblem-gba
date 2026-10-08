@@ -4,13 +4,15 @@ The standalone repository is currently private: cloning the submodule requires G
 
 The standalone FE8 ROM hack is a pinned Git submodule at `vendor/fire-emblem-versus`. The campaign runner and old FE7 Link Arena runner remain separate. This tournament runner uses the hack's two linked mGBA cores, native legal-action catalog and confirmed outcomes.
 
-For human vs agent, human vs human hotseat and agent vs agent commands, see [Playing Fire Emblem Versus](VERSUS_PLAY.md). Human entrants use `provider: "human"` and select ROM legal actions in the terminal. The browser remains a spectator view.
+For human vs agent, human vs human hotseat and agent vs agent commands, see [Playing Fire Emblem Versus](VERSUS_PLAY.md). Human entrants use `provider: "human"` and play through native keyboard/controller map controls. The native window is the default; the optional browser layer shows information only.
 
 ## Setup
 
 ```sh
 git submodule update --init --recursive
 python3 vendor/fire-emblem-versus/tools/manage.py bootstrap --base /absolute/path/to/fe8-usa.gba --with-tests
+# SDL2 development headers and pkg-config are required for the native window.
+python3 vendor/fire-emblem-versus/tools/manage.py desktop
 ```
 
 Use your own FE8 USA ROM (SHA-1 `c25b145e37456171ada4b0d440bf88a19f4d509f`). Requirements and build instructions are in the submodule README. Baseline build needs Git, Make, a host C compiler, GNU Arm tools, libpng, Python NumPy and Pillow; agent play builds the pinned mGBA library. No physical cable is needed. The ROM hack currently supplies eight maps, eighteen preset parties and level-20 units.
@@ -43,7 +45,7 @@ python3 tools/versus_tournament.py examples/versus-local.json --output runtime/v
 python3 tools/versus_tournament.py /absolute/path/to/tournament.json --output runtime/versus-models --port 8770
 ```
 
-Add `http://127.0.0.1:8770/` as an OBS Browser Source, width **1920**, height **1080**. The source displays actual 240×160 mGBA video, enlarged with crisp nearest-neighbor pixels, inside a restrained imagegen-created anime background and precisely aligned CSS frame, alongside entrant/preset labels, current phase, separate Blue/Red public decision summaries, standings and last result. Native video is exported independently of action confirmation so movement and combat remain visible while commands resolve. The browser polls at up to 10 fps; native audio is not currently exported. Both emulator feeds are available at `/video/0.png` and `/video/1.png`; the main layout shows the blue core. The `/state` endpoint is read-only and excludes seat credentials and API keys. No OBS or broadcast service is automatically started. The HTTP server binds to loopback; use OBS on the same machine. Leave the runner open after completion to keep final standings visible, or pass `--exit-on-complete` for batch runs.
+The default runner opens **Fire Emblem Versus — Native mGBA** and starts no web server. OBS captures the native window/audio directly. Add `--overlay` for an optional transparent standings/decision layer at `http://127.0.0.1:8770/?overlay=1`; it does not fetch gameplay screenshots. See [OBS setup](VERSUS_OBS.md) for source placement and capture settings. `--headless` supports batch agents, `--terminal-human` preserves legacy terminal input, and `--browser-video` explicitly enables the old screenshot scene. The native SDL frontend is verified on macOS; its build currently targets POSIX hosts.
 
 Each pair plays four games per scenario and repetition: both seat assignments crossed with both opening armies. Parties follow their assigned entrant when seats swap. To compare models on equal rosters, select identical parties. All models receive the same public observation schema and legal actions. Games use the ROM's deterministic initial state/RNG; repetitions repeat that setup, not randomized seed samples. Wins score 3 points, draws 1, losses 0. Score order ties are displayed alphabetically rather than pretending to establish a tiebreak winner.
 
@@ -70,7 +72,7 @@ Catalog version 8 has eight 15×15 maps and eighteen level-20 fixed-stat parties
 
 Elimination disables capture. Seizure and Either require the explicit Seize action at the enemy gate; Wait does not capture. No surviving defenders loses in every mode. Surrender ends the match; mutual elimination and the native 30-round limit draw. See the submodule's docs/PARTIES_MAPS_OBJECTIVES.md for each map's design.
 
-The completed native regression covered 36 elimination matches, 52 captures, all 324 independent party pairings, all eighteen level-20 presets, native controls, linked peer agreement and Seize-menu execution. The submodule's docs/evidence/maps-v06-tests.json records the tested ROM hash. Ten main-project tournament tests verify the host interface, including per-army decision retention and reset. Four live emulator games completed with native elimination and seizure outcomes. Hosted API mock tests do not establish that paid models were run.
+The completed native regression covered 36 elimination matches, 52 captures, all 324 independent party pairings, all eighteen level-20 presets, native controls, linked peer agreement and Seize-menu execution. The submodule's docs/evidence/maps-v06-tests.json records the tested ROM hash. Ten main-project tournament tests verify the host interface, including per-army decision retention and reset. Native frontend checks are documented separately in VERSUS_PLAY.md. Four live emulator games completed with native elimination and seizure outcomes. Hosted API mock tests do not establish that paid models were run.
 
 Catalog version 7 changes Woodland to a river battlefield with three two-tile bridge crossings, mirrored banks and no healing forts. It retains exactly two home castles. River terrain uses native FE8 class movement rules; ground-route validation requires usable bridge routes. Catalog version 8 redesigns the other seven maps with distinct lakes, woods and road layouts. The targeted Woodland regression covers both opening sides and both capturing armies under Seizure and Either.
 
