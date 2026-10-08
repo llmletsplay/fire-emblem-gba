@@ -1,0 +1,25 @@
+{
+  "format": "single",
+  "entrants": [
+    {
+      "id": "Player 1",
+      "provider": "human"
+    },
+    {
+      "id": "Player 2",
+      "provider": "human"
+    }
+  ],
+  "scenarios": [
+    {
+      "map": "woodland",
+      "parties": [
+        "balanced",
+        "balanced"
+      ],
+      "objective": "either"
+    }
+  ],
+  "action_delay_seconds": 0.5,
+  "max_actions": 1000
+}
