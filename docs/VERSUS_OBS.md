@@ -26,6 +26,10 @@ Set the OBS base canvas to 1920×1080. Reset the source transform and fit it to 
 
 The property names and behavior are documented in the [official OBS Browser Source guide](https://obsproject.com/kb/browser-source).
 
+## Broadcast design
+
+The overlay uses bundled monospace typography, dark navy framing and restrained gold borders. Army nameplates and separate Blue/Red decision cards use matching colors; the active army has a brighter underline. Standings and match results occupy the sidebar while the native game retains its exact 5× pixel scale. The complete composition, including the objective footer, fits within the 1080p canvas.
+
 ## Before going live
 
 Check that both army names and presets fit, the active army is highlighted, the objective and round are visible, and the game animates independently of model decisions. Blue and Red summaries show public rationales only. For hosted models, configure the provider examples and credentials in the runner environment; no credentials belong in OBS.
