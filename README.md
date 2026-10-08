@@ -211,3 +211,7 @@ ROMs, saves, API keys, private logs, or generated runtime artifacts.
 This project is not affiliated with, endorsed by, or sponsored by Nintendo or
 Intelligent Systems. Fire Emblem, The Blazing Blade, and The Sacred Stones are
 trademarks of their respective owners.
+
+## Fire Emblem Versus
+
+Play the native FE8 ROM hack as [human vs agent, agent vs agent, or human vs human hotseat](docs/VERSUS_PLAY.md). See [tournament/provider setup](docs/VERSUS_TOURNAMENT.md) and [OBS streaming](docs/VERSUS_OBS.md).

@@ -8,7 +8,7 @@ from unittest.mock import patch
 from urllib.request import urlopen
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from src.versus.agents import ModelAgent
+from src.versus.agents import ModelAgent, HumanAgent
 from src.versus.tournament import (
     Tournament,
     load_config,
@@ -35,6 +35,33 @@ CONFIG = {
 
 
 class TournamentTests(unittest.TestCase):
+    def test_human_rejects_invalid_and_requires_confirmation(self):
+        observation = {"active_seat": 1, "round": 2, "sequence": 3,
+                       "units": [], "legal_actions": [
+                           {"id": "end-3", "type": "end"},
+                           {"id": "attack-3", "type": "attack"}]}
+        with patch("builtins.input", side_effect=["999", "/attack", "1", "n", "units", "next", "all", "attack-3", "y"]), patch("builtins.print"):
+            decision = HumanAgent({"id": "Player"}).choose(observation)
+        self.assertEqual(decision["action_id"], "attack-3")
+        with patch("builtins.input", side_effect=EOFError), patch("builtins.print"):
+            with self.assertRaisesRegex(RuntimeError, "interactive terminal"):
+                HumanAgent({"id": "Player"}).choose(observation)
+
+    def test_single_match_and_human_examples(self):
+        for name in ["human-agent", "human-human"]:
+            config = load_config(Path(__file__).parents[1] / f"examples/versus-{name}.json")
+            games = schedule(config)
+            self.assertEqual(len(games), 1)
+            self.assertEqual(games[0]["opener"], 0)
+            self.assertEqual(games[0]["entrants"][0], config["entrants"][0]["id"])
+        with tempfile.TemporaryDirectory() as d:
+            c = copy.deepcopy(CONFIG)
+            c["format"] = "single"
+            p = Path(d) / "config.json"
+            p.write_text(json.dumps(c))
+            with self.assertRaisesRegex(ValueError, "two entrants"):
+                load_config(p)
+
     def test_seats_openers_and_parties_are_balanced(self):
         games = schedule(CONFIG)
         self.assertEqual(len(games), 12)

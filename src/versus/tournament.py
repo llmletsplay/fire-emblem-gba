@@ -66,9 +66,9 @@ def load_config(path):
     for e in entrants:
         if not isinstance(e.get("id"), str) or not e["id"].strip():
             raise ValueError("Entrant IDs must be nonempty strings")
-        if e.get("provider") not in {"local", "chutes", "minimax-api"}:
-            raise ValueError("Provider must be local, chutes or minimax-api")
-        if e["provider"] != "local" and not e.get("model"):
+        if e.get("provider") not in {"local", "human", "chutes", "minimax-api"}:
+            raise ValueError("Provider must be human, local, chutes or minimax-api")
+        if e["provider"] not in {"local", "human"} and not e.get("model"):
             raise ValueError("Hosted entrants require an exact model ID")
         if any(k in e for k in ("api_key", "token", "password")):
             raise ValueError(
@@ -92,6 +92,10 @@ def load_config(path):
             or value < minimum
         ):
             raise ValueError(f"{field} must be at least {minimum}")
+    if config.get("format", "round-robin") not in {"round-robin", "single"}:
+        raise ValueError("format must be single or round-robin")
+    if config.get("format") == "single" and (len(entrants) != 2 or len(config["scenarios"]) != 1 or config.get("repetitions", 1) != 1):
+        raise ValueError("Single matches require two entrants, one scenario and one repetition")
     return config
 
 
@@ -121,7 +125,7 @@ def schedule(config):
                                 "repetition": rep,
                             }
                         )
-    return games
+    return games[:1] if config.get("format") == "single" else games
 
 
 def standings(config, results):

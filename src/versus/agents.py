@@ -78,6 +78,56 @@ class LocalAgent:
         }
 
 
+class HumanAgent:
+    """Terminal hotseat controller selecting only native legal actions."""
+
+    def __init__(self, config):
+        self.config = config
+        self.last_call_metadata = {"provider": "human"}
+
+    def choose(self, observation):
+        actions = observation["legal_actions"]
+        print(f"\n{self.config['id']} · {'Red' if observation['active_seat'] else 'Blue'} "
+              f"· round {observation['round']} · action {observation['sequence']}", flush=True)
+        print("Coordinates are zero-based: x right, y down. 'units' shows the roster.\n"
+              "Search with /text (e.g. /attack), 'next' pages, 'all' resets.\n"
+              "Enter a displayed number or exact action ID; Ctrl-C stops the match.")
+        filtered, offset = list(enumerate(actions)), 0
+        while True:
+            for index, action in filtered[offset:offset + 20]:
+                print(f"[{index}] {json.dumps(action, separators=(',', ':'))}")
+            print(f"Showing {offset + 1 if filtered else 0}–{min(offset + 20, len(filtered))} "
+                  f"of {len(filtered)} matches", flush=True)
+            try:
+                value = input("Action > ").strip()
+            except EOFError:
+                raise RuntimeError("Human input closed; run in an interactive terminal") from None
+            if value == "units":
+                print(json.dumps(observation['units'], indent=2))
+            elif value == "next":
+                offset = offset + 20 if offset + 20 < len(filtered) else 0
+            elif value == "all":
+                filtered, offset = list(enumerate(actions)), 0
+            elif value.startswith("/"):
+                query = value[1:].lower()
+                filtered = [(i, a) for i, a in enumerate(actions)
+                            if query in json.dumps(a).lower()]
+                offset = 0
+            else:
+                selected = next((a for a in actions if a['id'] == value), None)
+                if selected is None and value.isdecimal():
+                    index = int(value)
+                    selected = actions[index] if index < len(actions) else None
+                if selected is not None:
+                    print("Selected: " + json.dumps(selected), flush=True)
+                    confirm = input("Submit this action? [y/N] > ").strip().lower()
+                    if confirm in {"y", "yes"}:
+                        return {"action_id": selected['id'],
+                                "rationale": "Human selected " + selected['type']}
+                else:
+                    print("Invalid action. Choose a current legal action.")
+
+
 class ModelAgent:
     def __init__(self, config):
         self.config = config
@@ -194,4 +244,4 @@ class ModelAgent:
 
 
 def make_agent(config):
-    return LocalAgent(config) if config["provider"] == "local" else ModelAgent(config)
+    return {"local": LocalAgent, "human": HumanAgent}.get(config["provider"], ModelAgent)(config)

@@ -8,6 +8,8 @@ python tools/versus_tournament.py examples/versus-maps.json --output runtime/ver
 
 A built standalone checkout can be selected with `--engine-root /absolute/path/to/fire-emblem-versus/decomp`. Keep each tournament's output directory: it stores resumable results and match evidence. Use a new output directory for a fresh tournament. Keep the runner open after completion to display final standings.
 
+For human controller setup and all three match modes, see [Playing Fire Emblem Versus](VERSUS_PLAY.md). Human actions are selected in the runner terminal; the OBS page remains read-only.
+
 ## Scene setup
 
 Create an OBS scene named **Versus — Match**. Add a Browser Source named **Fire Emblem Versus** with the following settings. The reusable [source settings](../examples/obs/versus-browser-source.json) are a configuration reference, not an importable scene collection.

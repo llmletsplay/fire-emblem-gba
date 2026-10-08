@@ -1,0 +1,25 @@
+{
+  "format": "single",
+  "entrants": [
+    {
+      "id": "You",
+      "provider": "human"
+    },
+    {
+      "id": "Baseline",
+      "provider": "local"
+    }
+  ],
+  "scenarios": [
+    {
+      "map": "woodland",
+      "parties": [
+        "balanced",
+        "balanced"
+      ],
+      "objective": "either"
+    }
+  ],
+  "action_delay_seconds": 0.5,
+  "max_actions": 1000
+}

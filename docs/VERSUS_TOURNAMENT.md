@@ -4,6 +4,8 @@ The standalone repository is currently private: cloning the submodule requires G
 
 The standalone FE8 ROM hack is a pinned Git submodule at `vendor/fire-emblem-versus`. The campaign runner and old FE7 Link Arena runner remain separate. This tournament runner uses the hack's two linked mGBA cores, native legal-action catalog and confirmed outcomes.
 
+For human vs agent, human vs human hotseat and agent vs agent commands, see [Playing Fire Emblem Versus](VERSUS_PLAY.md). Human entrants use `provider: "human"` and select ROM legal actions in the terminal. The browser remains a spectator view.
+
 ## Setup
 
 ```sh
@@ -24,7 +26,7 @@ export CHUTES_API_KEY='your-key'
 export MINIMAX_API_KEY='your-key'
 ```
 
-Each entrant has `id`, `provider` (`chutes`, `minimax-api`, or `local`) and, for hosted models, `model`. Optional settings are `base_url`, `api_key_env`, `timeout_seconds`, `temperature`, `max_completion_tokens`, `minimax_thinking`, and `minimax_reasoning_effort`. The existing project's provider endpoint defaults are reused; MiniMax reasoning settings are validated without network calls during configuration. MiniMax M3.1 requires an explicit reasoning effort. A `local` entrant is a deterministic tactical baseline, not a hosted MiniMax model and not an exact minimax combat solver. The old FE7 minimax policy cannot directly control this FE8 game mode.
+Each entrant has `id`, `provider` (`chutes`, `minimax-api`, `local`, or `human`) and, for hosted models, `model`. Optional settings are `base_url`, `api_key_env`, `timeout_seconds`, `temperature`, `max_completion_tokens`, `minimax_thinking`, and `minimax_reasoning_effort`. The existing project's provider endpoint defaults are reused; MiniMax reasoning settings are validated without network calls during configuration. MiniMax M3.1 requires an explicit reasoning effort. A `local` entrant is a deterministic tactical baseline, not a hosted MiniMax model and not an exact minimax combat solver. The old FE7 minimax policy cannot directly control this FE8 game mode.
 
 Chutes uses the [OpenAI-compatible chat endpoint](https://chutes.ai/agents/connect). MiniMax uses its [OpenAI-compatible endpoint](https://platform.minimax.io/docs/api-reference/text-openai-api); reasoning output is separated and only the final action JSON is consumed. Each decision receives native units, terrain, objectives and every ROM-generated legal action. The model must return exactly `action_id` and a short public `rationale`. Invalid output or provider failure stops the tournament; there is no silent baseline substitution or artificial match loss.
 
