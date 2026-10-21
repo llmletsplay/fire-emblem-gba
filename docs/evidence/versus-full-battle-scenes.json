@@ -1,0 +1,35 @@
+{
+  "date": "2026-10-21",
+  "rom_sha256": "a847ec5339dd3c7524d812e5fb31cb5f4f25bb648f5fa86a97665cb240f6053a",
+  "engine_commit": "5a170047820fa6462f234ae901523b139ac8093c",
+  "presentation": "Full native character animations, terrain backgrounds, faction palettes",
+  "fixes": [
+    "Class-supported ranks only: 181 supported, 0 unsupported",
+    "Close map panels and move cursor before injected agent/peer actions",
+    "Compact active-army round/30 panel"
+  ],
+  "validation": {
+    "native_scene_regression": "all 18 preset ranks; Fire, bow, sword and axe full scenes active and return to map",
+    "linked_agent_matches": [
+      {
+        "opener": "blue",
+        "actions": 60,
+        "attacks": 22,
+        "outcome": "red-win"
+      },
+      {
+        "opener": "red",
+        "actions": 116,
+        "attacks": 42,
+        "outcome": "draw"
+      }
+    ],
+    "native_runtime": "movement, menus, combat/counterattack, Heal, Vulnerary, fatal counterattack, surrender, rematches, draw, missing-peer timeout",
+    "main_tournament_tests": 15,
+    "overlay_tests": "passed"
+  },
+  "screenshots": [
+    "versus-full-battle.png",
+    "versus-battle-map-restored.png"
+  ]
+}
