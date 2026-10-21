@@ -1,6 +1,6 @@
 # Playing Fire Emblem Versus
 
-All three modes run the real FE8 ROM hack in two linked mGBA cores. The browser shows native emulator video; the ROM supplies legal actions and confirms outcomes. No physical cable is needed.
+All three modes run the real FE8 ROM hack in two linked mGBA cores. The native emulator window displays the game; the ROM supplies legal actions and confirms outcomes. No physical cable is needed.
 
 | Mode | Controllers | Starting example |
 | --- | --- | --- |
@@ -9,6 +9,12 @@ All three modes run the real FE8 ROM hack in two linked mGBA cores. The browser 
 | Human vs human | Two people sharing the native window, alternating turns | `examples/versus-human-human.json` |
 
 Human play now uses normal Fire Emblem controls in the native emulator window. OBS captures that window directly. No web server starts by default. An optional transparent browser layer displays scores and decisions; it does not carry gameplay video. Remote matchmaking and separate remote human clients are not implemented. The legacy terminal selector remains available only with `--terminal-human`.
+
+## Battle scenes and UI
+
+Full FE8 character battle scenes are enabled by default: melee, ranged weapons, spells and healing use the native animation engine, terrain backdrops and HP/stat panels. Blue and Red use faction palettes. Both linked cores finish and confirm an action before the next turn proceeds. Agent actions close stale map panels and move the cursor to the acting unit. The map phase panel displays the army and round out of 30.
+
+After updating the submodule, rebuild the ROM with `python3 vendor/fire-emblem-versus/tools/manage.py build` and restart the runner. Existing emulator sessions retain their loaded ROM. Presets keep level 20 and fixed stats; weapon ranks now apply only to types supported by the class.
 
 ## Build once
 
