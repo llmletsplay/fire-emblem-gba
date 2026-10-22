@@ -10,6 +10,10 @@ All three modes run the real FE8 ROM hack in two linked mGBA cores. The native e
 
 Human play now uses normal Fire Emblem controls in the native emulator window. OBS captures that window directly. No web server starts by default. An optional transparent browser layer displays scores and decisions; it does not carry gameplay video. Remote matchmaking and separate remote human clients are not implemented. The legacy terminal selector remains available only with `--terminal-human`.
 
+## Browser online play
+
+For two humans playing from separate browsers, use [Versus Online](VERSUS_ONLINE.md). The real ROM runs locally in mGBA WebAssembly; PartyKit hosts rooms, seat ownership, synchronized commands and reconnect replay. This is separate from the native-window model tournament runner described below.
+
 ## Battle scenes and UI
 
 Full FE8 character battle scenes are enabled by default: melee, ranged weapons, spells and healing use the native animation engine, terrain backdrops and HP/stat panels. Blue and Red use faction palettes. Both linked cores finish and confirm an action before the next turn proceeds. Agent actions close stale map panels and move the cursor to the acting unit. The map phase panel displays the army and round out of 30.
