@@ -36,3 +36,5 @@ The room coordinates and verifies peer reports; it does not run an authoritative
 The complete [standalone browser guide](../vendor/fire-emblem-versus/docs/BROWSER_ONLINE.md) covers build dependencies, native controls, hosting, protocol, trust limits and verification commands. [Browser evidence](evidence/browser-online.json) records WASM, WebSocket, native regression and two-client UI checks.
 
 For the original single-player FE8 game, see [browser campaign setup](FE8_BROWSER_CAMPAIGN.md).
+
+The browser distribution now bundles the decomp-built game. Players join without providing a ROM; the Versus patch is applied locally. Rebuild the submodule browser assets and deploy the complete `dist/` artifact, including `game/`.
