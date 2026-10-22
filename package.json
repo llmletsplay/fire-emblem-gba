@@ -26,7 +26,9 @@
     "build:all": "npm run build:stream && npm run build:web",
     "clean": "rm -rf fe-client/public/chronicle fe-client/dist fe-web/dist assets/chronicle screenshot_*.png latest.png",
     "versus:online": "npm --prefix vendor/fire-emblem-versus/browser run rooms",
-    "versus:online:build": "python3 vendor/fire-emblem-versus/tools/manage.py build && python3 vendor/fire-emblem-versus/tools/build_browser.py && npm --prefix vendor/fire-emblem-versus/browser run build"
+    "versus:online:build": "python3 vendor/fire-emblem-versus/tools/manage.py build && python3 vendor/fire-emblem-versus/tools/build_browser.py && npm --prefix vendor/fire-emblem-versus/browser run build",
+    "fe8:browser": "npm --prefix vendor/fire-emblem-versus/browser run dev -- --port 5173",
+    "fe8:browser:build": "npm run versus:online:build"
   },
   "devDependencies": {
     "baseline-browser-mapping": "^2.8.31",
