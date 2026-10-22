@@ -28,7 +28,9 @@
     "versus:online": "npm --prefix vendor/fire-emblem-versus/browser run rooms",
     "versus:online:build": "python3 vendor/fire-emblem-versus/tools/manage.py build && python3 vendor/fire-emblem-versus/tools/build_browser.py && npm --prefix vendor/fire-emblem-versus/browser run build",
     "fe8:browser": "npm --prefix vendor/fire-emblem-versus/browser run dev -- --port 5173",
-    "fe8:browser:build": "npm run versus:online:build"
+    "fe8:browser:build": "npm run versus:online:build",
+    "fe8:native:build": "python3 vendor/fire-emblem-versus/tools/build_native.py",
+    "fe8:native:test": "node vendor/fire-emblem-versus/native/tests/runtime.mjs"
   },
   "devDependencies": {
     "baseline-browser-mapping": "^2.8.31",
