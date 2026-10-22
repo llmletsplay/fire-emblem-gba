@@ -1,0 +1,27 @@
+{
+  "date": "2026-10-21",
+  "rom_sha256": "1b2638d1e23f3fdf9f5dea935771fdcf77e9327dd4e860110656103aebd056c5",
+  "browser_protocol": 1,
+  "engine": "Pinned mGBA compiled to WebAssembly",
+  "rooms": "PartyKit",
+  "tests": {
+    "unit_tests": 8,
+    "live_websocket": "seat assignment, wrong-turn rejection, spectators, pending-action reconnect, dual confirmation, credentials hidden",
+    "wasm": "two real instances; local BPS checksums; native movement/Wait; gated approval; duplicate rejection; reconnect replay; 12-command full battle transcript including Fire, bow, sword and axe",
+    "native": "linked regression both openers and all 18 presets; native browser gate RNG/duplicate/padding checks",
+    "production_browser_ui": "two browser tabs, local clean ROM patching, both armies move with native menus, Blue ends its phase to Red, held confirm does not repeat action",
+    "production_build": "passed",
+    "npm_audit": "0 vulnerabilities"
+  },
+  "deployment": {
+    "local": "http://127.0.0.1:1999/",
+    "public": "not deployed; PartyKit account not signed in"
+  },
+  "limits": [
+    "Browser rooms currently support humans and spectators; hosted-model room adapters are not implemented",
+    "Cooperative peer validation, not ranked anti-cheat",
+    "No WAN/device latency benchmark",
+    "Touch and Web Audio controls implemented; physical-device/audio listening verification not performed"
+  ],
+  "screenshot": "browser-online.png"
+}
