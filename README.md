@@ -215,3 +215,7 @@ trademarks of their respective owners.
 ## Fire Emblem Versus
 
 Play the native FE8 ROM hack as [human vs agent, agent vs agent, or human vs human hotseat](docs/VERSUS_PLAY.md). See [tournament/provider setup](docs/VERSUS_TOURNAMENT.md) and [OBS streaming](docs/VERSUS_OBS.md).
+
+## Full FE8 campaign in the browser
+
+Play the original single-player FE8 USA game with native save slots, browser resume and portable backups: [setup and controls](docs/FE8_BROWSER_CAMPAIGN.md). Run `npm run fe8:browser` after building the browser core.

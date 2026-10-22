@@ -34,3 +34,5 @@ The room waits when a player disconnects. The same tab's private seat credential
 The room coordinates and verifies peer reports; it does not run an authoritative game emulator on the edge. This is cooperative play, not ranked anti-cheat. Keep hosted model/API credentials in the native/server runner rather than exposing them in the browser.
 
 The complete [standalone browser guide](../vendor/fire-emblem-versus/docs/BROWSER_ONLINE.md) covers build dependencies, native controls, hosting, protocol, trust limits and verification commands. [Browser evidence](evidence/browser-online.json) records WASM, WebSocket, native regression and two-client UI checks.
+
+For the original single-player FE8 game, see [browser campaign setup](FE8_BROWSER_CAMPAIGN.md).
