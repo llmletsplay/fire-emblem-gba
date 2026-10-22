@@ -22,3 +22,5 @@ Save data belongs to the exact browser origin; localhost ports and a public depl
 The runtime remains real mGBA WebAssembly emulation, rather than directly compiled FE8 C. See the [architecture and native-port work](../vendor/fire-emblem-versus/docs/BROWSER_ARCHITECTURE.md) for the remaining platform and asset dependencies.
 
 Verified: automatic bundled-game loading, normal new-game/story flow, desktop and narrow player layouts, fullscreen, theater view, sound toggling, persistent checkpoint after reload, checkpoint file import/export, `.sav` export/import, real-core SRAM initialization and fresh-core restore, checksum/version rejection and ordered IndexedDB persistence. Existing online Versus protocol and full battle-scene emulator regressions also passed. A complete playthrough of both routes has not been performed. Public hosting still requires the operator's PartyKit authentication/deployment.
+
+Players do not install mGBA: it is a WebAssembly library embedded in the current site. The separate direct native engine target is documented in [native port status](FE8_NATIVE_PORT.md) and is not yet a playable campaign.
