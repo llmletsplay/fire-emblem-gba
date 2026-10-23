@@ -1,24 +1,40 @@
-# Browser runtime and direct native port
+# FE8 browser runtimes and native port
 
-## Do players need mGBA installed?
+Players install no emulator, extension, compiler or other application, and supply no ROM. The default campaign and Versus still use the bundled mGBA WASM reference runtime. The separate native campaign verification build compiles FE8 C directly to WASM and loads its original data pack without ARM emulation.
 
-No. The playable campaign and Versus sites run a bundled WebAssembly library inside the browser. Players install no emulator, browser extension, Node, Python or compiler. They also do not supply a ROM: the site includes its game data. mGBA currently provides the GBA CPU, graphics, audio and timing needed to preserve original FE8 behavior.
+## Native campaign verification build
 
-A direct engine port is a different architecture: compile the FE8 C gameplay code into WebAssembly and replace GBA-specific platform services with browser backends. This removes the emulator dependency, but is not achieved by putting a ROM in the website or compiling a few C files.
+The standalone submodule now strictly links all 364 adapted C units with no unresolved symbols. Actual native execution reaches the title/New Game menu, campaign introduction, prologue map and full battle scene. A 9,000-frame test exercises that path. Native browser visual/playability verification and the production migration remain incomplete.
 
-## Direct native target: development only
-
-The standalone submodule now has a separate native target with no mGBA dependency, ARM interpreter or runtime ROM load:
+Developer commands, from the standalone checkout:
 
 ```sh
-npm run fe8:native:build
-npm run fe8:native:test
+python3 tools/compile_native_engine.py
+python3 tools/verify_native_data_abi.py
+python3 tools/verify_native_ram_abi.py
+python3 tools/link_native_engine.py --adapted
+python3 tools/stage_native_game.py
+cd browser
+npm run test:native
+npm run dev -- --port 1999
 ```
 
-These are developer commands requiring Emscripten, not player setup. The build prepares the pinned source checkout if missing. It compiles original RNG and process-scheduler C plus portable OAM/checksum/tilemap routines, a software video backend, decompression/BIOS services and native RAM storage. Structure-layout assertions preserve the FE8 wasm32 ABI. The module manifest explicitly says `playable_campaign: false`; it is not the current campaign runtime.
+Open `/campaign.html?engine=native`. That URL loads a native engine module and Web Audio host; it downloads no `.gba` and initializes no mGBA core. The existing player controls/save manager support it. Native and reference saves use separate storage keys; portable `.sav` files can transfer between engines. Native checkpoints bind the exact WASM build and do not include immutable assets.
 
-Validated locally: scheduler blocking/sleep/callback order, native browser execution, 24 graphics/checksum cases and 512 RNG steps compared with original ARM routines. The test-only ARM reference uses Unicorn; it is not included in the browser runtime. A ROM-free CI job builds the native C and tests scheduler/RNG, decompression, all 169 original RAM symbol addresses/aliases, and 34 complete video framebuffer snapshots. Those frames also match the development video reference pixel for pixel; this checks rendering primitives, not full-game scenes.
+The build requires Emscripten and the local matching source/data build. Those are developer requirements, not player setup. The smaller `npm run fe8:native:build` / `npm run fe8:native:test` commands remain ROM-free diagnostics, with `playable_campaign: false` in their diagnostic manifest. They are distinct from the full engine above.
 
-The portable compilation audit accepts 359/359 C translation units using reviewed native-only patches. That count is neither linking success nor a gameplay-completion percentage. The strict full-engine link still has 5,342 unresolved references: 5,322 original data symbols, 18 assembly/platform functions and two constants. Remaining work includes asset/symbol relocation, hardware-address mapping, audio, remaining BIOS services, input/timing/saves and the complete game loop. The full native campaign is unfinished.
+## Verification evidence
 
-See [native build and differential checks](../vendor/fire-emblem-versus/native/README.md) and [architecture](../vendor/fire-emblem-versus/docs/BROWSER_ARCHITECTURE.md). The existing [playable browser campaign](FE8_BROWSER_CAMPAIGN.md) remains available during this work.
+- 10,380 native C initializer objects and 24,030 explicit pointer fields match original bytes. The data exporter retains 1,259 original data sections and excludes executable ARM text.
+- 422 emitted RAM object sizes checked; one private boolean narrowing retains its original pooled allocation. All 640 original RAM aliases are preserved.
+- 61 save record sizes, alignments and offsets match the original agbcc compiler, including Dungeon bitfields crossing storage-unit boundaries. The native save writer calculates SRAM offsets explicitly instead of truncating native pointers.
+- 149 MP2K command cases, 317 PCM mixer/VSync cases, 258 sequencer/note-allocation cases and 42 text/sprite/movement assembly cases match original ARM execution. Reference execution is test-only.
+- All 34 synthetic video scenes pass complete-frame and scanline rendering. A separate fixture checks a mid-frame affine reference reload.
+- Actual-engine host tests verify music reaches output, deterministic checkpoint continuation, fresh-instance checkpoint/SRAM restoration and original save packing/loading of a prologue unit. The fixture checkpoint is about 1.75 MiB.
+- Browser unit tests, TypeScript validation and production build pass. This does not replace visual interaction or a complete campaign playthrough.
+
+## Remaining completion gates
+
+Verify the native browser player visually, including input, audio, full combat, reset and save-manager persistence. Exercise campaign route/chapter events and gameplay against the reference. Integrate the native Versus overlay/online transport and tournament controls. Promote the verified native campaign as the default and package its final distribution. A complete two-route campaign playthrough has not been verified.
+
+See [native build details](../vendor/fire-emblem-versus/native/README.md), [browser architecture](../vendor/fire-emblem-versus/docs/BROWSER_ARCHITECTURE.md) and [current campaign setup](FE8_BROWSER_CAMPAIGN.md).

@@ -30,7 +30,9 @@
     "fe8:browser": "npm --prefix vendor/fire-emblem-versus/browser run dev -- --port 5173",
     "fe8:browser:build": "npm run versus:online:build",
     "fe8:native:build": "python3 vendor/fire-emblem-versus/tools/build_native.py",
-    "fe8:native:test": "node vendor/fire-emblem-versus/native/tests/runtime.mjs && node vendor/fire-emblem-versus/native/tests/bios.mjs && node vendor/fire-emblem-versus/native/tests/memory.mjs && node vendor/fire-emblem-versus/native/tests/video.mjs"
+    "fe8:native:test": "node vendor/fire-emblem-versus/native/tests/runtime.mjs && node vendor/fire-emblem-versus/native/tests/bios.mjs && node vendor/fire-emblem-versus/native/tests/memory.mjs && node vendor/fire-emblem-versus/native/tests/video.mjs",
+    "fe8:native:full:build": "python3 vendor/fire-emblem-versus/tools/compile_native_engine.py && python3 vendor/fire-emblem-versus/tools/verify_native_data_abi.py && python3 vendor/fire-emblem-versus/tools/verify_native_ram_abi.py && python3 vendor/fire-emblem-versus/tools/link_native_engine.py --adapted && python3 vendor/fire-emblem-versus/tools/stage_native_game.py",
+    "fe8:native:full:test": "npm --prefix vendor/fire-emblem-versus/browser run test:native"
   },
   "devDependencies": {
     "baseline-browser-mapping": "^2.8.31",
